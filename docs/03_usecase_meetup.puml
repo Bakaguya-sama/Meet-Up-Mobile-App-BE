@@ -1,0 +1,94 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam actorStyle awesome
+
+actor "Người dùng" as User
+actor "Người tạo meetup" as Organizer
+actor "Thành viên meetup" as Member
+actor "Quản trị viên" as Admin
+actor "Google Maps Platform" as Google
+actor "Firebase Cloud Messaging" as FCM
+actor "Dịch vụ AI" as AI
+
+Organizer --|> User
+Member --|> User
+
+rectangle "Hệ thống MeetUp" {
+  usecase "Đăng ký / Đăng nhập" as UCAuth
+  usecase "Quản lý hồ sơ" as UCProfile
+  usecase "Tìm kiếm và quản lý bạn bè" as UCFriend
+  usecase "Thiết lập quyền vị trí" as UCPrivacy
+  usecase "Chia sẻ / dừng chia sẻ vị trí" as UCShare
+  usecase "Xem bản đồ bạn bè" as UCMap
+  usecase "Tạo / sửa / hủy meetup" as UCCreate
+  usecase "Chọn sở thích trong meetup" as UCMeetupPreference
+  usecase "Chọn recommendation mode" as UCMode
+  usecase "Mời và phản hồi meetup" as UCInvite
+  usecase "Tìm địa điểm cho nhóm" as UCRecommend
+  usecase "Xem ETA và thông tin địa điểm" as UCPlaceInfo
+  usecase "Vote địa điểm" as UCVote
+  usecase "Chốt địa điểm" as UCSelect
+  usecase "Nhận thông báo" as UCNotify
+  usecase "Mở dẫn đường" as UCNavigate
+  usecase "Xem lịch sử và lưu yêu thích" as UCHistory
+  usecase "Lọc địa điểm đang mở cửa" as UCFilter
+  usecase "Chat nhóm trong meetup" as UCChat
+  usecase "Giải thích đề xuất bằng AI" as UCExplain
+  usecase "Bật và nhận gợi ý bạn ở gần" as UCNearby
+  usecase "Quản lý tài khoản vi phạm" as UCModerate
+  usecase "Xem báo cáo và tình trạng dịch vụ" as UCMonitor
+  usecase "Kiểm tra quyền xem vị trí" as UCAuthorize
+  usecase "Đồng bộ vị trí và trạng thái realtime" as UCRealtime
+  usecase "Lấy Places và ETA tuyến đường" as UCRoutes
+  usecase "Gửi thông báo đẩy" as UCPush
+}
+
+User --> UCAuth
+User --> UCProfile
+User --> UCFriend
+User --> UCPrivacy
+User --> UCShare
+User --> UCMap
+User --> UCHistory
+User --> UCFilter
+User --> UCNearby
+
+Organizer --> UCCreate
+Organizer --> UCMode
+Organizer --> UCRecommend
+Organizer --> UCSelect
+Member --> UCInvite
+Member --> UCMeetupPreference
+Member --> UCVote
+Member --> UCNavigate
+Member --> UCChat
+
+UCShare .> UCAuthorize : <<include>>
+UCShare .> UCRealtime : <<include>>
+UCMap .> UCAuthorize : <<include>>
+UCMap .> UCRealtime : <<include>>
+UCCreate .> UCInvite : <<include>>
+UCCreate .> UCMode : <<include>>
+UCInvite .> UCPush : <<include>>
+UCInvite .> UCMeetupPreference : <<include>>
+UCRecommend .> UCRoutes : <<include>>
+UCRecommend .> UCMeetupPreference : <<include>>
+UCRecommend .> UCMode : <<include>>
+UCRecommend .> UCPlaceInfo : <<include>>
+UCRecommend .> UCFilter : <<extend>>
+UCExplain .> UCRecommend : <<extend>>
+UCVote .> UCRealtime : <<include>>
+UCSelect .> UCPush : <<include>>
+UCNotify .> UCPush : <<include>>
+UCNearby .> UCAuthorize : <<include>>
+UCNearby .> UCPush : <<include>>
+UCNavigate --> Google
+UCRoutes --> Google
+UCPush --> FCM
+UCExplain --> AI
+
+Admin --> UCModerate
+Admin --> UCMonitor
+@enduml
