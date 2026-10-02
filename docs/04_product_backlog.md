@@ -16,9 +16,9 @@
 | PB-06 | Cài đặt quyền chia sẻ vị trí | Core | 8 | Có 4 chế độ, thời hạn, vị trí gần đúng | PB-05 |
 | PB-07 | Gửi/nhận vị trí realtime có TTL | Core | 13 | Socket xác thực; Redis TTL; chỉ người được phép nhận | PB-06 |
 | PB-08 | Bản đồ bạn bè và nhãn vị trí cũ | Core | 8 | Ghim, updatedAt, accuracy, nhãn cũ sau 5 phút | PB-07 |
-| PB-09 | Tạo/sửa/hủy meetup và cấu hình mode | Core | 13 | Không giới hạn thành viên; chọn `recommendationMode`; thời gian và trạng thái rõ | PB-03 |
+| PB-09 | Tạo/sửa/hủy meetup và quản lý thành viên | Core | 13 | Không giới hạn thành viên; thời gian, trạng thái và lời mời rõ | PB-03 |
 | PB-10 | Lời mời và phản hồi meetup | Core | 5 | Accept/reject; người tạo nhận cập nhật realtime | PB-09 |
-| PB-11 | Chia sẻ vị trí trong meetup | Core | 8 | Tự dừng khi rời/hủy/kết thúc; không leak dữ liệu | PB-06, PB-09 |
+| PB-11 | Dùng vị trí thành viên trong meetup | Core | 8 | Thành viên `accepted` đã bật chia sẻ trong hồ sơ được dùng; tự dừng phát vào room khi rời/hủy/kết thúc | PB-06, PB-09 |
 | PB-12 | Tìm địa điểm theo loại/bán kính | Core | 8 | Trả top 5 có tên, rating, trạng thái giờ mở cửa nếu có | PB-09 |
 | PB-13 | ETA, sở thích meetup và xếp hạng công bằng | Core | 21 | Profile chỉ prefill; preference trong meetup là chính; xử lý 3 mức quy mô | PB-07, PB-09, PB-12 |
 | PB-14 | Vote realtime và chốt địa điểm | Core | 8 | Một vote/người; đổi trước hạn; người tạo chốt | PB-10, PB-13 |
@@ -57,7 +57,7 @@ Excel là nguồn phân công Backend chính. Hiện nhóm có hai người Back
 | Nhóm chức năng | Người sở hữu | Ranh giới rõ ràng |
 |---|---|---|
 | Socket và vị trí | Backend 2 | Nền tảng Socket sở hữu kết nối, xác thực khi kết nối, room, presence và cách phát event. Chức năng vị trí chỉ nhận `location:update`, kiểm quyền, lưu Redis TTL và phát `LocationUpdated`. |
-| Meetup và recommendation mode | Backend 1 / Backend 2 | Backend 1 lưu `recommendationMode`, kiểm tra quyền đổi mode và quản lý thành viên meetup. Backend 2 định nghĩa trọng số và cách xếp hạng của từng mode. |
+| Meetup và xếp hạng | Backend 1 / Backend 2 | Backend 1 quản lý trạng thái và thành viên meetup. Backend 2 sở hữu thuật toán xếp hạng cố định theo ETA, sở thích meetup và rating. |
 | Vote và realtime | Backend 1 / Backend 2 | Backend 1 sở hữu luật vote/chốt và phát `VoteUpdated`. Backend 2 chỉ cung cấp kênh Socket để gửi event. |
 | FCM | Backend 2 | Chỉ sở hữu token thiết bị, worker và hàm gửi chung. Luồng meetup, vote hoặc nearby quyết định lúc nào cần phát event, không tự gọi logic FCM. |
 | Nearby friend | Backend 2 | Phải dùng quyền từ privacy, vị trí realtime và nền tảng FCM. Không tự đọc hoặc phát tọa độ chính xác. |

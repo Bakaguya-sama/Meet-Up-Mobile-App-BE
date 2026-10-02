@@ -26,7 +26,6 @@ Tất cả chức năng từng nằm ở SHOULD HAVE nay là **cam kết triển
 |---|---|---|
 | Lọc đang mở cửa | Loại nơi đã đóng cửa tại thời điểm tìm kiếm | Chỉ áp dụng khi Places trả được dữ liệu; thiếu dữ liệu phải hiện rõ |
 | Yêu thích và lịch sử | Dễ dùng lại nơi đã chọn, xem lại kế hoạch | Không lưu lịch sử GPS trong lịch sử meetup |
-| Chia sẻ có thời hạn | Người dùng kiểm soát rõ thời điểm kết thúc | Tự thu hồi quyền và xóa cache khi hết hạn |
 | ETA từng người và dẫn đường | Nhóm tự đánh giá sự công bằng, đi đến nơi đã chốt | ETA chỉ dùng vị trí còn hiệu lực |
 | Chat nhóm | Trao đổi trong một meetup, không cần app chat riêng | Chỉ thành viên đang/đã thuộc meetup xem được tin nhắn |
 | AI giải thích đề xuất | Hiểu vì sao địa điểm được xếp hạng cao | Chỉ gửi dữ liệu tổng hợp, không gửi tọa độ hoặc tên riêng không cần thiết |
@@ -38,17 +37,17 @@ Tất cả chức năng từng nằm ở SHOULD HAVE nay là **cam kết triển
 
 1. **Trạng thái meetup rõ ràng.** Cần có Nháp, Đang mời, Đang chọn, Đã chốt, Đã hủy, Đã kết thúc. Không có trạng thái, lời mời, vote và quyền chia sẻ khó kiểm soát.
 2. **Xử lý vị trí cũ.** Vị trí quá 5 phút phải hiện “cũ”, không dùng để tính ETA nếu người dùng không xác nhận. Vị trí thiếu của thành viên phải được báo rõ.
-3. **Ràng buộc quyền truy cập ở backend.** Client không được tự quyết định ai xem vị trí. Mỗi lần gửi hoặc phát vị trí, backend phải kiểm tra quan hệ bạn bè, chế độ chia sẻ và meetup còn hiệu lực.
+3. **Ràng buộc quyền truy cập ở backend.** Client không được tự quyết định ai xem vị trí. Mỗi lần gửi hoặc phát vị trí, backend phải kiểm tra quan hệ bạn bè, cờ chia sẻ vị trí trong hồ sơ, trạng thái `accepted` và meetup còn hiệu lực.
 4. **Quy tắc chọn địa điểm.** Xác định ai có quyền chốt, khi nào hết hạn vote, hòa phiếu xử lý thế nào, và có được đổi lựa chọn hay không.
 5. **Hủy/rời meetup.** Thành viên có thể từ chối, rời; người tạo có thể hủy. Hệ thống phải dừng chia sẻ vị trí theo meetup ngay khi meetup kết thúc/hủy.
 6. **Lỗi mạng và quyền GPS.** Có màn hình giải thích quyền bị từ chối, mạng mất, GPS không chính xác, và nút thử lại. Không được hiển thị vị trí cũ như thời gian thực.
 
 ### Nên bổ sung để tăng chất lượng môn học
 
-1. **Thời gian và tình trạng tham gia.** Người tạo chọn thời gian bắt đầu; ứng dụng nhắc trước 30 phút. Khi vào meetup, thành viên chọn “đang tham gia” hoặc “không chia sẻ vị trí”.
+1. **Thời gian và tình trạng tham gia.** Người tạo chọn thời gian bắt đầu; ứng dụng nhắc trước 30 phút. Thành viên chấp nhận hoặc từ chối meetup; vị trí chỉ được dùng khi họ đã bật cờ chia sẻ trong hồ sơ.
 2. **Chế độ lấy vị trí thích ứng.** Không cần suy đoán hoạt động phức tạp. Quy tắc đơn giản: khi ở meetup và đang di chuyển, cập nhật mỗi 20–30 giây hoặc sau 50 m; khi đứng yên, mỗi 2 phút; khi tắt chia sẻ, không lấy vị trí. Ghi số lần cập nhật để so sánh pin.
 3. **Độ tin cậy của vị trí.** Lưu `accuracy`, `updatedAt`; cảnh báo khi sai số lớn hơn 100 m. Địa điểm chỉ tính ETA cho thành viên có dữ liệu còn hiệu lực.
-4. **Chế độ chia sẻ có thời hạn.** Khi hết hạn phải tự dừng, xoá vị trí tạm và báo cho người dùng. Đây là demo quyền riêng tư rất trực quan.
+4. **Đồng bộ cờ chia sẻ.** Khi người dùng tắt chia sẻ trong hồ sơ, backend phải dừng nhận/phát vị trí ngay và xoá dữ liệu tạm trong Redis. Đây là demo quyền riêng tư rất trực quan.
 5. **Công bằng của gợi ý.** Ngoài thời gian trung bình, bắt buộc dùng thời gian lâu nhất của một người. Hiển thị ETA mỗi người để nhóm tự kiểm tra.
 
 ### Chưa nằm trong cam kết triển khai
@@ -76,19 +75,10 @@ Meetup không đặt giới hạn số thành viên. Tuy nhiên, không thể co
 | 21–50 | Chia Route Matrix thành các batch, tổng hợp sau khi hoàn thành | Có thể mất thêm thời gian |
 | Trên 50 | Gom cụm vị trí, tìm top địa điểm theo cụm, sau đó tính ETA chi tiết cho top 3 | Ước lượng theo cụm, hiển thị rõ trên UI |
 
-Người tạo chọn một `recommendationMode`:
-
-| Mode | Cách ưu tiên |
-|---|---|
-| `balanced` | Cân bằng ETA, công bằng và sở thích. Đây là mặc định. |
-| `organizer_priority` | Tăng trọng số sở thích của người tạo, nhưng không bỏ qua Max ETA của nhóm. |
-| `majority_preference` | Ưu tiên hoạt động có nhiều thành viên chọn nhất. |
-| `consensus_only` | Chỉ trả nơi không vi phạm yêu cầu “không muốn” hoặc điều kiện bắt buộc của bất kỳ thành viên nào. |
-
-Sở thích profile chỉ dùng để điền sẵn form. Lựa chọn trong meetup mới là dữ liệu quyết định. Mỗi người có thể đánh dấu “rất muốn”, “muốn” hoặc “không muốn” cho hoạt động/bối cảnh như cà phê, xem phim, trong nhà, yên tĩnh.
+Engine dùng một cách xếp hạng cố định, cân bằng Avg ETA, Max ETA, sở thích meetup và rating. Sở thích profile chỉ dùng để điền sẵn form. Lựa chọn trong meetup mới là dữ liệu quyết định. Mỗi người có thể đánh dấu “rất muốn”, “muốn” hoặc “không muốn” cho hoạt động/bối cảnh như cà phê, xem phim, trong nhà, yên tĩnh.
 
 ## Quyết định phạm vi đề xuất
 
-Làm phần lõi trước cho meetup có số thành viên linh hoạt: tạo meetup, mời/xác nhận, chọn sở thích tạm thời, chọn `recommendationMode`, chia sẻ vị trí chỉ trong meetup, lấy top 5 địa điểm, hiển thị ETA, vote, chốt, nhắc lịch và mở Google Maps. Sau đó hoàn thiện bộ tính năng mở rộng đã cam kết: lọc đang mở cửa, yêu thích, lịch sử, chat, AI giải thích và phát hiện bạn ở gần. Chức năng kết bạn và màn hình bản đồ bạn bè vẫn cần có, nhưng không cần theo dõi 24/7.
+Làm phần lõi trước cho meetup có số thành viên linh hoạt: tạo meetup, mời/xác nhận, chọn sở thích tạm thời, chia sẻ vị trí trong meetup, lấy top 5 địa điểm, hiển thị ETA, vote, chốt, nhắc lịch và mở Google Maps. Sau đó hoàn thiện bộ tính năng mở rộng đã cam kết: lọc đang mở cửa, yêu thích, lịch sử, chat, AI giải thích và phát hiện bạn ở gần. Chức năng kết bạn và màn hình bản đồ bạn bè vẫn cần có, nhưng không cần theo dõi 24/7.
 
 Điểm khác biệt nên trình bày khi bảo vệ: “Ứng dụng không chỉ tìm quán ở trung tâm hình học. Nó dùng vị trí còn hiệu lực, ETA của từng người, trạng thái mở cửa và mức công bằng để hỗ trợ cả nhóm ra quyết định, trong khi quyền chia sẻ tự hết hạn.”

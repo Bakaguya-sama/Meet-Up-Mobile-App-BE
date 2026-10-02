@@ -10,7 +10,7 @@ MeetUp giúp một nhóm bạn chọn nơi gặp mặt thuận tiện hơn. Ứn
 |---|---|
 | Người dùng | Đăng nhập, kết bạn, quản lý quyền vị trí, tạo hoặc tham gia meetup. |
 | Người tạo meetup | Người dùng tạo meetup; có quyền mời, chỉnh sửa khi chưa chốt, chốt hoặc hủy. |
-| Thành viên meetup | Nhận lời mời, cho phép chia sẻ trong meetup, xem đề xuất và vote. |
+| Thành viên meetup | Nhận lời mời, xem đề xuất và vote. Vị trí được dùng khi thành viên đã bật chia sẻ vị trí trong hồ sơ. |
 | Quản trị viên | Khóa tài khoản vi phạm, xem báo cáo và tình trạng dịch vụ. |
 | Google Maps Platform | Trả địa điểm, giờ mở cửa, giá/rating và ETA tuyến đường. |
 | Firebase Cloud Messaging | Gửi thông báo đẩy. |
@@ -22,14 +22,14 @@ Người tạo meetup và thành viên meetup đều là Người dùng. Google 
 
 ### 3.1 Tạo và chốt meetup
 
-1. Người tạo nhập tên, thời gian, loại địa điểm, bán kính, `recommendationMode` và mời một hoặc nhiều bạn.
+1. Người tạo nhập tên, thời gian, loại địa điểm, bán kính và mời một hoặc nhiều bạn.
 2. Hệ thống tạo meetup ở trạng thái **Đang mời**, gửi thông báo.
-3. Người được mời chấp nhận hoặc từ chối. Khi chấp nhận, họ chọn sở thích tạm thời cho meetup; profile chỉ dùng để điền sẵn khi họ chưa chọn. Người chấp nhận có thể bật “chia sẻ vị trí trong meetup”.
+3. Người được mời chấp nhận hoặc từ chối. Khi chấp nhận, họ chọn sở thích tạm thời cho meetup; profile chỉ dùng để điền sẵn khi họ chưa chọn. Nếu đã bật chia sẻ vị trí trong hồ sơ, vị trí hợp lệ tự được dùng cho meetup.
 4. Khi có ít nhất 2 người tham gia và có đủ vị trí còn hiệu lực, người tạo bấm **Tìm địa điểm**. Engine tính chính xác với tối đa 20 người, chạy batch với 21–50 người và gom cụm khi trên 50 người.
 5. Hệ thống tìm địa điểm, lấy ETA và hiển thị tối đa 5 nơi cùng lý do xếp hạng.
 6. Thành viên vote. Đến hạn vote, người tạo chốt một nơi (hoặc hệ thống gợi ý nơi có nhiều vote nhất khi người tạo bấm chốt).
 7. Hệ thống thông báo, meetup thành **Đã chốt**; mỗi người có thể mở Google Maps để đi.
-8. Đến khi kết thúc hoặc hủy, hệ thống tắt quyền chia sẻ theo meetup và chuyển trạng thái **Đã kết thúc** hoặc **Đã hủy**.
+8. Đến khi kết thúc hoặc hủy, hệ thống ngừng phát vị trí vào room meetup và chuyển trạng thái **Đã kết thúc** hoặc **Đã hủy**.
 
 ### 3.3 Chức năng mở rộng đã cam kết
 
@@ -39,25 +39,20 @@ Người dùng có thể bật phát hiện bạn ở gần. Khi hai người l�
 
 Khi người dùng yêu cầu, hệ thống dùng điểm xếp hạng, ETA trung bình/lớn nhất, trạng thái mở cửa và sở thích để tạo lời giải thích ngắn. Dịch vụ AI chỉ nhận dữ liệu tổng hợp như “3 thành viên, Max ETA 15 phút”; không nhận latitude/longitude, lịch sử GPS hoặc tên thật.
 
-### 3.4 Sở thích và recommendation mode
+### 3.4 Sở thích meetup
 
 Profile có thể lưu sở thích dài hạn để điền sẵn form. Khi tạo hoặc nhận meetup, mỗi người chọn sở thích tạm thời cho lần gặp đó. Tag hoạt động/bối cảnh có ba mức: `high`, `normal`, `avoid`. `MeetupMemberPreference` là nguồn dữ liệu chính; `UserPreference` chỉ là `profile_fallback` khi thành viên chưa chọn gì.
 
-| Mode | Hành vi |
-|---|---|
-| `balanced` | Cân bằng Avg ETA, Max ETA và điểm sở thích. Đây là mặc định. |
-| `organizer_priority` | Tăng trọng số sở thích của người tạo nhưng vẫn giới hạn Max ETA. |
-| `majority_preference` | Tăng điểm cho hoạt động được nhiều thành viên chọn nhất. |
-| `consensus_only` | Loại nơi vi phạm tag `avoid` hoặc điều kiện bắt buộc của bất kỳ người nào. |
+Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ETA, điểm sở thích meetup và rating. Tag `avoid` làm hạ điểm địa điểm không phù hợp nhưng không có chế độ xếp hạng do người dùng chọn.
 
 ### 3.2 Chia sẻ vị trí
 
-1. Người dùng chọn một trong bốn chế độ: Không chia sẻ, Chỉ khi dùng ứng dụng, Trong meetup, Có thời hạn.
+1. Người dùng bật hoặc tắt chia sẻ vị trí trong hồ sơ.
 2. Ứng dụng xin quyền hệ điều hành trước khi bắt đầu.
 3. Khi có GPS mới, app gửi tọa độ, độ chính xác và thời điểm gửi.
-4. Backend xác thực, kiểm tra quyền rồi lưu vị trí mới nhất vào Redis với TTL 5 phút.
-5. Backend chỉ phát vị trí cho bạn bè hoặc thành viên meetup được phép xem.
-6. Khi hết TTL, hết thời hạn, rời/hủy/kết thúc meetup hoặc tắt quyền, vị trí không còn được phát và bị xóa khỏi cache.
+4. Backend xác thực, kiểm tra cờ chia sẻ rồi lưu vị trí mới nhất vào Redis với TTL 5 phút.
+5. Backend chỉ phát vị trí cho bạn bè đã kết bạn. Trong meetup, vị trí chỉ dùng cho thành viên `accepted` đã bật chia sẻ vị trí trong hồ sơ.
+6. Khi hết TTL, rời/hủy/kết thúc meetup hoặc tắt cờ chia sẻ trong hồ sơ, vị trí không còn được phát và bị xóa khỏi cache.
 
 ## 4. Quy tắc nghiệp vụ
 
@@ -67,7 +62,7 @@ Profile có thể lưu sở thích dài hạn để điền sẵn form. Khi tạ
 | BR-02 | Quan hệ bạn bè phải được chấp nhận trước khi gửi lời mời meetup hoặc xem vị trí theo quan hệ bạn bè. |
 | BR-03 | Quyền xem vị trí được backend kiểm tra cho từng lần phát dữ liệu. Không tin cậy cờ quyền do mobile tự gửi. |
 | BR-04 | Vị trí chỉ còn hiệu lực 5 phút. UI hiển thị thời điểm cập nhật; quá 5 phút là vị trí cũ. |
-| BR-05 | Chế độ “Trong meetup” tự dừng khi người dùng rời meetup hoặc meetup hủy/kết thúc. |
+| BR-05 | Thành viên `accepted` có cờ chia sẻ vị trí trong hồ sơ đang bật được dùng vị trí cho meetup. Khi rời/hủy/kết thúc meetup, backend ngừng phát vị trí vào room của meetup đó. |
 | BR-06 | Meetup cần ít nhất 2 thành viên chấp nhận và ít nhất 2 vị trí còn hiệu lực mới cho phép tìm địa điểm theo nhóm. |
 | BR-07 | Người tạo chỉ chỉnh sửa thành viên/bộ lọc trước khi chốt. Sau khi chốt chỉ được hủy meetup. |
 | BR-08 | Mỗi thành viên có tối đa một vote cho một meetup; vote mới thay vote cũ trước hạn vote. |
@@ -84,8 +79,6 @@ Profile có thể lưu sở thích dài hạn để điền sẵn form. Khi tạ
 | BR-19 | Meetup không giới hạn số thành viên. Chỉ thành viên có trạng thái tham gia và vị trí còn hiệu lực được dùng để tính recommendation. |
 | BR-20 | Tối đa 20 thành viên tính ETA chính xác. Với 21–50 người, Route Matrix chia batch. Trên 50 người, hệ thống gom cụm vị trí và UI ghi rõ kết quả là ước lượng theo cụm. |
 | BR-21 | Sở thích do thành viên chọn trong meetup luôn ưu tiên hơn profile. Profile chỉ được dùng khi không có lựa chọn tạm thời. |
-| BR-22 | Chỉ người tạo thay đổi `recommendationMode` trước khi meetup chốt. Mặc định là `balanced`. |
-| BR-23 | `consensus_only` không trả địa điểm vi phạm tag `avoid` hoặc điều kiện bắt buộc của bất kỳ thành viên có vị trí hợp lệ nào. |
 
 ## 5. Công thức xếp hạng đơn giản
 
@@ -98,7 +91,7 @@ Với mỗi nơi `p`, hệ thống tính ETA của từng người bằng Google
 - `PhatNguyenVong`: phạt khi loại địa điểm không đúng nhu cầu.
 - `Rating`: điểm đánh giá chuẩn hóa 0–5.
 
-`PhatNguyenVong` tính từ `MeetupMemberPreference`. Tag `high` có trọng số cao hơn `normal`; tag `avoid` hạ điểm hoặc loại địa điểm khi mode là `consensus_only`. Tùy `recommendationMode`, hệ thống thay đổi trọng số preference nhưng không bỏ qua Max ETA.
+`PhatNguyenVong` tính từ `MeetupMemberPreference`. Tag `high` có trọng số cao hơn `normal`; tag `avoid` hạ điểm địa điểm không phù hợp. Max ETA luôn được dùng để bảo vệ tính công bằng.
 
 Hệ thống không dùng `priceLevel`, Budget filter hoặc PricePenalty. `priceLevel` là mức phân loại tham khảo từ Google Places, không phải giá thực tế; dùng nó để loại hoặc hạ hạng địa điểm có thể tạo gợi ý sai.
 
@@ -126,7 +119,7 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 **Tác nhân:** Người dùng.  
 **Điều kiện trước:** Đã đăng nhập; có quyền hệ điều hành nếu muốn bật chia sẻ.  
-**Luồng chính:** Chọn chế độ chia sẻ và người/meetup được xem; app lấy GPS theo tần suất phù hợp; backend kiểm tra quyền, lưu TTL và phát tới đúng người.  
+**Luồng chính:** Bật/tắt chia sẻ vị trí trong hồ sơ; app lấy GPS theo tần suất phù hợp; backend kiểm tra quyền, lưu TTL và phát tới đúng bạn bè/room meetup.  
 **Ngoại lệ:** Từ chối quyền GPS, GPS tắt, accuracy kém, mạng mất, hết thời hạn.  
 **Kết quả:** Người được phép thấy ghim vị trí và thời điểm cập nhật; người không được phép không thấy dữ liệu.
 
@@ -142,7 +135,7 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 **Tác nhân:** Người tạo meetup.  
 **Điều kiện trước:** Đã đăng nhập và có ít nhất một bạn bè.  
-**Luồng chính:** Nhập thông tin meetup, chọn bạn, chọn `recommendationMode`, xác nhận tạo; backend tạo trạng thái Đang mời và FCM gửi lời mời.  
+**Luồng chính:** Nhập thông tin meetup, chọn bạn, xác nhận tạo; backend tạo trạng thái Đang mời và FCM gửi lời mời.  
 **Ngoại lệ:** Thời gian bắt đầu ở quá khứ, không có thành viên hoặc bán kính không hợp lệ. Không có giới hạn cứng số người được mời.  
 **Kết quả:** Meetup có danh sách mời và hạn phản hồi.
 
@@ -150,7 +143,7 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 **Tác nhân:** Thành viên meetup.  
 **Điều kiện trước:** Có lời mời đang hiệu lực.  
-**Luồng chính:** Mở lời mời, xem thông tin, chọn Chấp nhận hoặc Từ chối; nếu chấp nhận, chọn/sửa sở thích tạm thời và có thể bật chia sẻ trong meetup.  
+**Luồng chính:** Mở lời mời, xem thông tin, chọn Chấp nhận hoặc Từ chối; nếu chấp nhận, chọn/sửa sở thích tạm thời. Nếu cờ chia sẻ vị trí trong hồ sơ đang bật, vị trí hợp lệ tự được dùng cho meetup.  
 **Ngoại lệ:** Meetup đã hủy/đã chốt hoặc lời mời hết hạn.  
 **Kết quả:** Trạng thái thành viên được cập nhật realtime cho người tạo.
 
@@ -158,9 +151,9 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 **Tác nhân:** Người tạo meetup; Google Maps Platform.  
 **Điều kiện trước:** Có tối thiểu 2 thành viên và 2 vị trí còn hiệu lực; meetup chưa chốt.  
-**Luồng chính:** Người tạo bấm tìm; backend đọc sở thích meetup, tính điểm trung tâm, lấy nơi ứng viên, chọn chiến lược exact/batch/cluster theo số người, lấy route matrix, chấm điểm theo `recommendationMode` và trả top 5.  
+**Luồng chính:** Người tạo bấm tìm; backend đọc sở thích meetup, tính điểm trung tâm, lấy nơi ứng viên, chọn chiến lược exact/batch/cluster theo số người, lấy route matrix, chấm điểm theo thuật toán cố định và trả top 5.  
 **Ngoại lệ:** Thiếu vị trí, API giới hạn/lỗi, không tìm thấy nơi phù hợp.  
-**Kết quả:** Danh sách có tên, ảnh nếu có, rating, giá, giờ mở cửa, Avg ETA, Max ETA, ETA từng người và lý do xếp hạng.
+**Kết quả:** Danh sách có tên, ảnh nếu có, rating, giờ mở cửa, Avg ETA, Max ETA, ETA từng người và lý do xếp hạng.
 
 ### UC-08 Vote và chốt địa điểm
 
@@ -170,19 +163,19 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 **Ngoại lệ:** Vote sau hạn, vote nơi không nằm trong danh sách hiện tại, người tạo không có quyền với meetup khác.  
 **Kết quả:** Địa điểm và thời gian được chốt, mọi thành viên nhận FCM.
 
-### UC-09 Thiết lập sở thích và recommendation mode
+### UC-09 Thiết lập sở thích meetup
 
 **Tác nhân:** Người tạo meetup, Thành viên meetup.  
 **Điều kiện trước:** Meetup chưa chốt.  
-**Luồng chính:** Người tạo chọn mode; mỗi thành viên chọn tag hoạt động/bối cảnh với mức `high`, `normal` hoặc `avoid`. App điền sẵn từ profile nhưng lưu lựa chọn meetup riêng.  
-**Ngoại lệ:** Không có lựa chọn thì dùng `profile_fallback`; người không phải người tạo không đổi mode.  
+**Luồng chính:** Mỗi thành viên chọn tag hoạt động/bối cảnh với mức `high`, `normal` hoặc `avoid`. App điền sẵn từ profile nhưng lưu lựa chọn meetup riêng.  
+**Ngoại lệ:** Không có lựa chọn thì dùng `profile_fallback`.  
 **Kết quả:** Recommendation có dữ liệu preference rõ ràng, có thể giải thích được.
 
 ### UC-10 Dẫn đường và kết thúc meetup
 
 **Tác nhân:** Thành viên meetup; Google Maps Platform.  
 **Điều kiện trước:** Meetup đã chốt.  
-**Luồng chính:** Người dùng bấm Dẫn đường để mở Google Maps; khi meetup kết thúc/hủy, backend thu hồi quyền chia sẻ theo meetup và xóa cache phù hợp.  
+**Luồng chính:** Người dùng bấm Dẫn đường để mở Google Maps; khi meetup kết thúc/hủy, backend ngừng phát vị trí vào room meetup và xóa cache phù hợp.  
 **Kết quả:** Meetup được lưu lịch sử, không còn phát vị trí theo meetup.
 
 ### UC-11 Lọc, yêu thích, lịch sử và dẫn đường

@@ -1,0 +1,35 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam actorStyle awesome
+
+actor "Quản trị viên" as Admin
+
+rectangle "Hệ thống MeetUp - Quản trị" {
+  usecase "Đăng nhập trang quản trị" as UCAdminAuth
+  usecase "Xem danh sách tài khoản" as UCViewAccounts
+  usecase "Xem chi tiết tài khoản" as UCViewAccount
+  usecase "Khóa tài khoản" as UCLockAccount
+  usecase "Mở khóa tài khoản" as UCUnlockAccount
+  usecase "Xem báo cáo người dùng" as UCViewReports
+  usecase "Xử lý báo cáo người dùng" as UCHandleReport
+  usecase "Xem số liệu người dùng và meetup" as UCViewMetrics
+  usecase "Xem trạng thái dịch vụ" as UCViewHealth
+  usecase "Ghi audit log" as UCAuditLog
+}
+
+Admin --> UCAdminAuth
+Admin --> UCViewAccounts
+Admin --> UCViewReports
+Admin --> UCViewMetrics
+Admin --> UCViewHealth
+
+UCViewAccounts .> UCViewAccount : <<include>>
+UCLockAccount .> UCViewAccount : <<extend>>
+UCUnlockAccount .> UCViewAccount : <<extend>>
+UCHandleReport .> UCViewReports : <<extend>>
+UCLockAccount .> UCAuditLog : <<include>>
+UCUnlockAccount .> UCAuditLog : <<include>>
+UCHandleReport .> UCAuditLog : <<include>>
+@enduml
