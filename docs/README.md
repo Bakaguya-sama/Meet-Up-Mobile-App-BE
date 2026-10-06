@@ -13,6 +13,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `04_product_backlog.md` | Theo dõi backlog theo sprint, tiêu chí hoàn thành và phụ thuộc. |
 | `05_ke_hoach_kiem_thu.md` | Chuẩn bị demo và đo các điểm “pervasive” quan trọng. |
 | `06_database_schema.dbml` | Dán vào dbdiagram.io để xem mô hình dữ liệu PostgreSQL/PostGIS và ranh giới dữ liệu Redis TTL. |
+| `08_huong_dan_cau_truc_ddd.md` | Quy ước bounded context, layer, dependency, domain model và quy trình phát triển backend theo DDD. |
 | `MeetUp_Product_Backlog_Function_Points.xlsx` | Chia việc theo Function Points, backlog và tiến độ. |
 
 ## Cách dùng nhanh
