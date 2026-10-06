@@ -32,4 +32,42 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    files: [
+      'src/bounded-contexts/*/domain/**/*.ts',
+      'src/shared-kernel/domain/**/*.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            '@nestjs/*',
+            'typeorm',
+            'ioredis',
+            '**/application/*',
+            '**/infrastructure/*',
+            '**/presentation/*',
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/bounded-contexts/*/application/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            '@nestjs/*',
+            'typeorm',
+            'ioredis',
+            '**/infrastructure/*',
+            '**/presentation/*',
+          ],
+        },
+      ],
+    },
+  },
 );
