@@ -1,0 +1,515 @@
+  // MeetUp Backend database schema
+  // Import this file at https://dbdiagram.io/ to view the ERD.
+  // Database: PostgreSQL + PostGIS. Current user locations stay in Redis with TTL.
+
+  Project MeetUp_Backend {
+    database_type: 'PostgreSQL'
+    Note: 'Schema for the agreed project scope. Budget filter and Google priceLevel are intentionally excluded.'
+  }
+
+  Enum friendship_status {
+    pending
+    accepted
+    rejected
+    blocked
+  }
+
+  Enum meetup_status {
+    draft
+    inviting
+    choosing
+    selected
+    cancelled
+    finished
+  }
+
+  Enum meetup_member_status {
+    invited
+    accepted
+    declined
+    left
+    removed
+  }
+
+  Enum preference_level {
+    high
+    normal
+    avoid
+  }
+
+  Enum route_strategy {
+    exact
+    batch
+    cluster
+  }
+
+  Enum report_status {
+    open
+    reviewing
+    resolved
+    dismissed
+  }
+
+  Table user_accounts {
+    id uuid [pk]
+    email varchar(255) [not null, unique]
+    password_hash varchar(255) // Null for an account that only uses Google OAuth.
+    display_name varchar(100) [not null]
+    avatar_url varchar(1000)
+    is_locked boolean [not null, default: false]
+    locked_reason varchar(500)
+    last_login_at timestamptz
+    created_at timestamptz [not null]
+    updated_at timestamptz [not null]
+    deleted_at timestamptz
+  }
+
+  Table oauth_identities {
+    id uuid [pk]
+    user_account_id uuid [not null]
+    provider varchar(30) [not null, default: 'google']
+    provider_account_id varchar(255) [not null]
+    provider_email varchar(255)
+    created_at timestamptz [not null]
+    updated_at timestamptz [not null]
+
+    Indexes {
+      (provider, provider_account_id) [unique]
+      (user_account_id, provider) [unique]
+    }
+  }
+
+  Table user_sessions {
+    id uuid [pk]
+    user_account_id uuid [not null]
+    refresh_token_hash varchar(255) [not null, unique]
+    refresh_token_family_id uuid [not null]
+    parent_session_id uuid
+    replaced_by_session_id uuid
+    device_name varchar(150)
+    expires_at timestamptz [not null]
+    revoked_at timestamptz
+    reuse_detected_at timestamptz
+    created_at timestamptz [not null]
+
+    Indexes {
+      (user_account_id, expires_at)
+      (refresh_token_family_id)
+    }
+  }
+
+  // user_a_id and user_b_id are stored in sorted UUID order.
+  // This prevents two rows for the same friend pair.
+  Table friendships {
+    id uuid [pk]
+    user_a_id uuid [not null]
+    user_b_id uuid [not null]
+    requested_by_id uuid [not null]
+    status friendship_status [not null, default: 'pending']
+    requested_at timestamptz [not null]
+    responded_at timestamptz
+    updated_at timestamptz [not null]
+
+    Indexes {
+      (user_a_id, user_b_id) [unique]
+      (user_b_id, status)
+    }
+  }
+
+  Table user_preferences {
+    id uuid [pk]
+    user_id uuid [not null, unique]
+    updated_at timestamptz [not null]
+
+    Note: 'Long-term profile preference. It only pre-fills a meetup form.'
+  }
+
+  Table activity_tags {
+    id smallint [pk]
+    code varchar(50) [not null, unique] // food, coffee, movie, mall, park, entertainment
+    display_name varchar(100) [not null]
+    is_active boolean [not null, default: true]
+  }
+
+  Table user_preference_tags {
+    user_preference_id uuid [not null]
+    activity_tag_id smallint [not null]
+    level preference_level [not null, default: 'normal']
+    created_at timestamptz [not null]
+
+    Indexes {
+      (user_preference_id, activity_tag_id) [pk]
+    }
+  }
+
+  Table privacy_settings {
+    id uuid [pk]
+    user_id uuid [not null, unique]
+    is_location_sharing_enabled boolean [not null, default: false]
+    use_approximate_location boolean [not null, default: false]
+    nearby_feature_enabled boolean [not null, default: false]
+    updated_at timestamptz [not null]
+  }
+
+  Table meetup_sessions {
+    id uuid [pk]
+    organizer_id uuid [not null]
+    title varchar(150) [not null]
+    description varchar(1000)
+    scheduled_at timestamptz [not null]
+    vote_deadline_at timestamptz
+    search_radius_m integer [not null]
+    status meetup_status [not null, default: 'draft']
+    chosen_recommendation_place_id uuid
+    chosen_by_id uuid
+    chosen_at timestamptz
+    cancelled_at timestamptz
+    finished_at timestamptz
+    created_at timestamptz [not null]
+    updated_at timestamptz [not null]
+
+    Indexes {
+      (organizer_id, status)
+      (scheduled_at, status)
+    }
+  }
+
+  Table meetup_participants {
+    id uuid [pk]
+    meetup_id uuid [not null]
+    user_id uuid [not null]
+    status meetup_member_status [not null, default: 'invited']
+    invited_by_id uuid [not null]
+    responded_at timestamptz
+    joined_at timestamptz
+    left_at timestamptz
+
+    Indexes {
+      (meetup_id, user_id) [unique]
+      (user_id, status)
+    }
+  }
+
+  // This is the authoritative preference for a meetup.
+  Table meetup_participant_preferences {
+    meetup_participant_id uuid [not null]
+    activity_tag_id smallint [not null]
+    level preference_level [not null, default: 'normal']
+    source varchar(30) [not null, default: 'meetup_input'] // meetup_input or profile_fallback
+    updated_at timestamptz [not null]
+
+    Indexes {
+      (meetup_participant_id, activity_tag_id) [pk]
+    }
+  }
+
+  Table recommendation_runs {
+    id uuid [pk]
+    meetup_id uuid [not null]
+    requested_by_id uuid [not null]
+    route_strategy route_strategy [not null]
+    valid_member_count integer [not null]
+    status varchar(30) [not null] // pending, completed, failed
+    failure_reason varchar(500)
+    created_at timestamptz [not null]
+    completed_at timestamptz
+
+    Note: 'Do not store individual current coordinates. The run only records strategy and result metadata.'
+  }
+
+  // External place data persisted only when it is shown in a recommendation or saved as a favorite.
+  Table place_snapshots {
+    id uuid [pk]
+    provider varchar(30) [not null, default: 'google_places']
+    provider_place_id varchar(255) [not null]
+    name varchar(255) [not null]
+    formatted_address varchar(500)
+    location geography [note: 'PostGIS geography(Point, 4326) for a place, not a user location.']
+    primary_type varchar(100)
+    rating numeric(3, 2)
+    user_rating_count integer
+    opening_status varchar(50) // open, closed, unknown
+    opening_hours_json jsonb
+    photo_reference varchar(500)
+    captured_at timestamptz [not null]
+
+    Indexes {
+    (provider, provider_place_id) [unique]
+      (location) [type: gist]
+    }
+  }
+
+  Table recommendation_places {
+    id uuid [pk]
+    recommendation_run_id uuid [not null]
+    place_snapshot_id uuid [not null]
+    rank smallint [not null]
+    score numeric(12, 4) [not null]
+    avg_eta_seconds integer [not null]
+    max_eta_seconds integer [not null]
+    preference_penalty numeric(12, 4) [not null, default: 0]
+    rating_adjustment numeric(12, 4) [not null, default: 0]
+    rule_explanation varchar(1000)
+    created_at timestamptz [not null]
+
+    Indexes {
+      (recommendation_run_id, rank) [unique]
+      (recommendation_run_id, place_snapshot_id) [unique]
+    }
+  }
+
+  Table recommendation_place_etas {
+    recommendation_place_id uuid [not null]
+    meetup_participant_id uuid [not null]
+    duration_seconds integer [not null]
+    distance_m integer
+    is_estimated boolean [not null, default: false]
+
+    Indexes {
+      (recommendation_place_id, meetup_participant_id) [pk]
+    }
+  }
+
+  Table votes {
+    id uuid [pk]
+    meetup_id uuid [not null]
+    recommendation_place_id uuid [not null]
+    meetup_participant_id uuid [not null]
+    created_at timestamptz [not null]
+    updated_at timestamptz [not null]
+
+    Indexes {
+      (meetup_id, meetup_participant_id) [unique]
+      (recommendation_place_id)
+    }
+  }
+
+  Table favorite_places {
+    id uuid [pk]
+    user_id uuid [not null]
+    place_snapshot_id uuid [not null]
+    created_at timestamptz [not null]
+
+    Indexes {
+      (user_id, place_snapshot_id) [unique]
+    }
+  }
+
+  Enum chat_message_kind {
+    text
+    media
+    mixed
+    system
+  }
+
+  Enum chat_media_type {
+    image
+    video
+    audio
+    file
+  }
+
+  Table meetup_chat_messages {
+    id uuid [pk]
+    meetup_id uuid [not null]
+    sender_participant_id uuid [not null]
+    message_kind chat_message_kind [not null, default: 'text']
+    text_content varchar(2000)
+    sent_at timestamptz [not null]
+    edited_at timestamptz
+    deleted_at timestamptz
+
+    Indexes {
+      (meetup_id, sent_at)
+    }
+  }
+
+  Table user_devices {
+    id uuid [pk]
+    user_id uuid [not null]
+    fcm_token varchar(500) [not null, unique]
+    platform varchar(20) [not null, default: 'android']
+    last_seen_at timestamptz [not null]
+    revoked_at timestamptz
+    created_at timestamptz [not null]
+  }
+
+  Table notification_campaigns {
+    id uuid [pk]
+    campaign_name varchar(150) [not null]
+    campaign_type varchar(30) [not null] // event_driven, scheduled, manual
+    audience_filter_json jsonb
+    title_template varchar(150) [not null]
+    body_template varchar(500) [not null]
+    scheduled_at timestamptz
+    started_at timestamptz
+    finished_at timestamptz
+    created_by_user_id uuid
+    created_at timestamptz [not null]
+  }
+
+  Table notification_deliveries {
+    id uuid [pk]
+    recipient_user_id uuid [not null]
+    device_id uuid
+    notification_campaign_id uuid
+    meetup_id uuid
+    notification_event varchar(50) [not null] // e.g. meetup_invitation, place_selected, nearby_friend
+    title varchar(150) [not null]
+    body varchar(500) [not null]
+    data_json jsonb
+  delivery_status varchar(30) [not null, default: 'pending'] // pending, sent, failed
+    sent_at timestamptz
+    read_at timestamptz
+    failure_reason varchar(500)
+    created_at timestamptz [not null]
+
+    Indexes {
+      (recipient_user_id, read_at)
+      (meetup_id, notification_event)
+    }
+  }
+
+  Table chat_message_attachments {
+    id uuid [pk]
+    chat_message_id uuid [not null]
+    media_type chat_media_type [not null]
+    storage_key varchar(1000) [not null]
+    original_file_name varchar(255)
+    mime_type varchar(100) [not null]
+    byte_size bigint [not null]
+    width_px integer
+    height_px integer
+    duration_seconds integer
+    upload_status varchar(30) [not null, default: 'pending']
+    created_at timestamptz [not null]
+
+    Note: 'Future media support. The binary file stays in object storage, not PostgreSQL.'
+  }
+
+  Table outbox_events {
+    id uuid [pk]
+    aggregate_type varchar(50) [not null]
+    aggregate_id uuid [not null]
+    event_type varchar(100) [not null]
+    payload_json jsonb [not null]
+    occurred_at timestamptz [not null]
+    available_at timestamptz [not null]
+    published_at timestamptz
+    attempt_count integer [not null, default: 0]
+    last_error varchar(1000)
+
+    Indexes {
+      (published_at, available_at)
+      (aggregate_type, aggregate_id)
+    }
+
+    Note: 'Written in the same transaction as a domain change. A worker publishes it to Socket.IO, FCM or other consumers.'
+  }
+
+  Table ai_explanation_cache {
+    id uuid [pk]
+    recommendation_run_id uuid [not null]
+    input_hash varchar(64) [not null, unique]
+    explanation varchar(1500) [not null]
+    source varchar(30) [not null] // ai or rule_fallback
+    expires_at timestamptz
+    created_at timestamptz [not null]
+
+    Note: 'Only receives aggregate ETA, ranking and preference data. No coordinates, GPS history or real name.'
+  }
+
+  Table nearby_preferences {
+    user_id uuid [pk]
+    radius_m integer [not null, default: 1000]
+    cooldown_minutes integer [not null, default: 120]
+    updated_at timestamptz [not null]
+  }
+
+  // user_a_id and user_b_id are stored in sorted UUID order.
+  Table nearby_suggestion_cooldowns {
+    user_a_id uuid [not null]
+    user_b_id uuid [not null]
+    last_suggested_at timestamptz [not null]
+
+    Indexes {
+      (user_a_id, user_b_id) [pk]
+    }
+  }
+
+  Table user_reports {
+    id uuid [pk]
+    reporter_id uuid [not null]
+    reported_user_id uuid [not null]
+    reason varchar(1000) [not null]
+    status report_status [not null, default: 'open']
+    handled_by_id uuid
+    handled_at timestamptz
+    created_at timestamptz [not null]
+  }
+
+  Table audit_logs {
+    id uuid [pk]
+    actor_id uuid
+    action varchar(100) [not null]
+    subject_type varchar(50) [not null]
+    subject_id uuid
+    metadata_json jsonb
+    created_at timestamptz [not null]
+
+    Note: 'Security and admin audit only. Do not store exact location, refresh token or sensitive AI payload.'
+  }
+
+  Ref: user_accounts.id < oauth_identities.user_account_id
+  Ref: user_accounts.id < user_sessions.user_account_id
+  Ref: user_sessions.id < user_sessions.parent_session_id
+  Ref: user_sessions.id < user_sessions.replaced_by_session_id
+  Ref: user_accounts.id < friendships.user_a_id
+  Ref: user_accounts.id < friendships.user_b_id
+  Ref: user_accounts.id < friendships.requested_by_id
+  Ref: user_accounts.id < user_preferences.user_id
+  Ref: user_preferences.id < user_preference_tags.user_preference_id
+  Ref: activity_tags.id < user_preference_tags.activity_tag_id
+  Ref: user_accounts.id < privacy_settings.user_id
+  Ref: user_accounts.id < meetup_sessions.organizer_id
+  Ref: user_accounts.id < meetup_sessions.chosen_by_id
+  Ref: meetup_sessions.id < meetup_participants.meetup_id
+  Ref: user_accounts.id < meetup_participants.user_id
+  Ref: user_accounts.id < meetup_participants.invited_by_id
+  Ref: meetup_participants.id < meetup_participant_preferences.meetup_participant_id
+  Ref: activity_tags.id < meetup_participant_preferences.activity_tag_id
+  Ref: meetup_sessions.id < recommendation_runs.meetup_id
+  Ref: user_accounts.id < recommendation_runs.requested_by_id
+  Ref: recommendation_runs.id < recommendation_places.recommendation_run_id
+  Ref: place_snapshots.id < recommendation_places.place_snapshot_id
+  Ref: recommendation_places.id < recommendation_place_etas.recommendation_place_id
+  Ref: meetup_participants.id < recommendation_place_etas.meetup_participant_id
+  Ref: recommendation_places.id < meetup_sessions.chosen_recommendation_place_id
+  Ref: meetup_sessions.id < votes.meetup_id
+  Ref: recommendation_places.id < votes.recommendation_place_id
+Ref: meetup_participants.id < votes.meetup_participant_id
+  Ref: user_accounts.id < favorite_places.user_id
+  Ref: place_snapshots.id < favorite_places.place_snapshot_id
+  Ref: meetup_sessions.id < meetup_chat_messages.meetup_id
+Ref: meetup_participants.id < meetup_chat_messages.sender_participant_id
+  Ref: meetup_chat_messages.id < chat_message_attachments.chat_message_id
+  Ref: user_accounts.id < user_devices.user_id
+  Ref: user_accounts.id < notification_campaigns.created_by_user_id
+  Ref: user_accounts.id < notification_deliveries.recipient_user_id
+  Ref: user_devices.id < notification_deliveries.device_id
+  Ref: notification_campaigns.id < notification_deliveries.notification_campaign_id
+  Ref: meetup_sessions.id < notification_deliveries.meetup_id
+  Ref: recommendation_runs.id < ai_explanation_cache.recommendation_run_id
+  Ref: user_accounts.id < nearby_preferences.user_id
+  Ref: user_accounts.id < nearby_suggestion_cooldowns.user_a_id
+  Ref: user_accounts.id < nearby_suggestion_cooldowns.user_b_id
+  Ref: user_accounts.id < user_reports.reporter_id
+  Ref: user_accounts.id < user_reports.reported_user_id
+  Ref: user_accounts.id < user_reports.handled_by_id
+  Ref: user_accounts.id < audit_logs.actor_id
+
+  // Redis keys. They are deliberately not relational tables and have TTL.
+  // location:{userId} -> latitude, longitude, accuracy, updatedAt; TTL 5 minutes
+  // presence:{userId} -> online state, socketId, updatedAt; TTL short
+  // active-meetup:{userId} -> meetupId; TTL follows session
+  // nearby-cooldown:{userA}:{userB} -> timestamp; TTL 2 hours
