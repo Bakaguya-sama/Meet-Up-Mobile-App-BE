@@ -86,47 +86,66 @@ Có thể triển khai context theo từng sprint. Chưa có nghiệp vụ thì 
 
 ## 4. Cấu trúc thư mục chuẩn
 
-Mỗi bounded context là một module cấp cao trong `src/modules`. Cấu trúc đích:
+Project dùng cấu trúc **bounded-context-first kết hợp hạ tầng dùng chung**, đúng với sơ đồ tham chiếu. Nghiệp vụ nằm trong `src/bounded-contexts`; các thư mục `infrastructure`, `presentation` và `shared-kernel` ở gốc chứa thành phần dùng chung hoặc điểm vào của hệ thống.
 
 ```text
 src/
 ├── main.ts
 ├── app.module.ts
-├── config/
-│   ├── app.config.ts
-│   ├── database.config.ts
-│   └── validation.ts
-├── shared/
-│   ├── domain/
-│   │   ├── aggregate-root.ts
-│   │   ├── domain-event.ts
-│   │   └── domain-error.ts
-│   ├── application/
-│   │   ├── clock.port.ts
-│   │   └── id-generator.port.ts
-│   └── infrastructure/
-│       ├── persistence/
-│       └── observability/
-└── modules/
-    ├── auth/
-    ├── friends/
-    ├── meetups/
-    ├── recommendations/
-    ├── locations/
-    ├── chat/
-    ├── notifications/
-    ├── nearby/
-    └── admin/
+├── bounded-contexts/
+│   ├── auth/
+│   ├── friends/
+│   ├── meetups/
+│   ├── recommendations/
+│   ├── locations/
+│   ├── chat/
+│   ├── notifications/
+│   ├── nearby/
+│   └── admin/
+├── infrastructure/
+│   ├── audit/
+│   ├── cache/
+│   ├── config/
+│   ├── database/
+│   ├── email/
+│   ├── http/
+│   ├── jwt/
+│   ├── realtime/
+│   ├── redis/
+│   │   ├── redis.module.ts
+│   │   └── redis.service.ts
+│   └── throttler/
+├── presentation/
+│   └── http/
+│       ├── controllers/
+│       ├── filters/
+│       ├── guards/
+│       ├── interceptors/
+│       ├── requests/
+│       └── responses/
+└── shared-kernel/
+    ├── domain/
+    │   ├── aggregate-root.ts
+    │   ├── domain-event.ts
+    │   └── domain-error.ts
+    └── application/
+        ├── clock.port.ts
+        └── id-generator.port.ts
 ```
 
-Không đặt business helper vào `shared`. Chỉ đưa một thành phần vào `shared` khi ít nhất hai context thật sự dùng cùng một **khái niệm ổn định**, không chỉ vì đoạn code trông giống nhau.
+Phân biệt hai loại infrastructure:
 
-### 4.1 Cấu trúc bên trong một context
+- `bounded-contexts/<context>/infrastructure`: implementation riêng của context, ví dụ TypeORM repository và mapper của Meetups.
+- `infrastructure/` ở gốc: năng lực kỹ thuật dùng chung, ví dụ database connection, Redis client, JWT, HTTP client, email và realtime transport.
+
+Không đặt business helper vào `shared-kernel`. Chỉ đưa một thành phần vào đây khi ít nhất hai context thật sự dùng cùng một **khái niệm ổn định**, không chỉ vì đoạn code trông giống nhau. `shared-kernel` không chứa TypeORM, Redis, HTTP, SDK hoặc business rule riêng của một context.
+
+### 4.1 Cấu trúc của một bounded context
 
 Ví dụ đầy đủ cho `meetups`:
 
 ```text
-src/modules/meetups/
+src/bounded-contexts/meetups/
 ├── domain/
 │   ├── aggregates/
 │   │   └── meetup.aggregate.ts
@@ -172,77 +191,118 @@ src/modules/meetups/
 │   │       ├── mappers/
 │   │       │   └── meetup.typeorm-mapper.ts
 │   │       └── typeorm-meetup-repository.ts
-│   ├── messaging/
-│   │   └── outbox-event.publisher.ts
 │   └── adapters/
 │       ├── friends-friendship-checker.adapter.ts
 │       └── redis-location-reader.adapter.ts
-├── presentation/
-│   ├── http/
-│   │   ├── meetup.controller.ts
-│   │   ├── requests/
-│   │   │   └── create-meetup.request.ts
-│   │   └── responses/
-│   │       └── meetup.response.ts
-│   └── websocket/
-│       └── meetup.gateway.ts
 └── meetups.module.ts
+```
+
+Controller, request và response không nằm trong bounded context mà nằm ở presentation dùng chung:
+
+```text
+src/presentation/http/
+├── controllers/
+│   └── meetups/
+│       └── meetup.controller.ts
+├── requests/
+│   └── meetups/
+│       └── create-meetup.request.ts
+└── responses/
+    └── meetups/
+        └── meetup.response.ts
+```
+
+Hạ tầng kỹ thuật dùng chung mà adapter của context có thể sử dụng:
+
+```text
+src/infrastructure/
+├── database/
+│   └── typeorm/
+│       ├── typeorm.module.ts
+│       ├── typeorm.config.ts
+│       ├── typeorm-unit-of-work.ts
+│       └── migrations/
+├── redis/
+│   ├── redis.module.ts
+│   └── redis.service.ts
+├── realtime/
+└── http/
 ```
 
 Với context nhỏ, có thể bỏ thư mục con chưa dùng, nhưng không đổi hướng dependency.
 
 ### 4.2 Giải thích các thư mục và file
 
+#### Các thư mục cấp cao
+
+| Thư mục | Trách nhiệm |
+|---|---|
+| `bounded-contexts/` | Chứa nghiệp vụ theo từng context. Mỗi context sở hữu `domain`, `application`, infrastructure adapter riêng và NestJS module để wiring. |
+| `infrastructure/audit/` | Writer/transport kỹ thuật cho audit log. Luật hành động nào cần audit vẫn do bounded context quyết định. |
+| `infrastructure/cache/` | Abstraction, key convention và cấu hình cache dùng chung. Không chứa luật latest location hoặc nearby cooldown. |
+| `infrastructure/config/` | Đọc, validate và cung cấp environment configuration. |
+| `infrastructure/database/` | TypeORM connection, data source, transaction/unit of work và migration dùng chung. Không chứa repository nghiệp vụ của context. |
+| `infrastructure/email/` | Email client/template transport dùng chung; context quyết định khi nào gửi. |
+| `infrastructure/http/` | HTTP client outbound, timeout/retry/interceptor chung cho Google/AI hoặc dịch vụ ngoài. Không phải HTTP controller. |
+| `infrastructure/jwt/` | Ký/xác minh JWT và NestJS strategy/guard kỹ thuật; Auth sở hữu luật session/token. |
+| `infrastructure/realtime/` | Socket.IO server, connection/room transport và publisher chung; context sở hữu authorization/event policy. |
+| `infrastructure/redis/` | Khởi tạo Redis client và thao tác kỹ thuật cấp thấp. Adapter của context sử dụng service này. |
+| `infrastructure/throttler/` | Rate-limit configuration, storage và guard dùng chung. |
+| `presentation/http/` | HTTP controller, request validation, response serialization, filter/guard/interceptor của giao thức vào. |
+| `shared-kernel/` | Primitive và abstraction cực kỳ ổn định được nhiều context cùng chia sẻ; không chứa helper nghiệp vụ tùy tiện. |
+
 #### Domain
 
 | File/thư mục | Trách nhiệm |
 |---|---|
-| `domain/aggregates/meetup.aggregate.ts` | Aggregate root của meetup; bảo vệ invariant, chuyển trạng thái và ghi nhận domain event. |
-| `domain/entities/participant.entity.ts` | Entity con thuộc aggregate `Meetup`, quản lý trạng thái tham gia và preference theo meetup. Không được lưu độc lập ngoài aggregate nếu nghiệp vụ cần nhất quán chung. |
-| `domain/value-objects/meetup-id.vo.ts` | Bao bọc, kiểm tra và so sánh định danh meetup. |
-| `domain/value-objects/meetup-status.vo.ts` | Biểu diễn trạng thái hợp lệ; state transition vẫn do aggregate quyết định. |
-| `domain/value-objects/schedule.vo.ts` | Kiểm tra thời gian meetup và các luật thời gian thuần domain. |
-| `domain/events/*.event.ts` | Mô tả sự kiện đã xảy ra trong domain, ví dụ `MeetupFinalized`; không chứa code phát Socket/FCM. |
-| `domain/services/vote-winner.domain-service.ts` | Chứa luật chọn kết quả vote khi luật cần phối hợp nhiều giá trị và không thuộc tự nhiên về một entity. |
-| `domain/errors/*.error.ts` | Lỗi nghiệp vụ có mã ổn định; không mang `HttpException` hoặc status code của NestJS. |
+| `bounded-contexts/meetups/domain/aggregates/meetup.aggregate.ts` | Aggregate root của meetup; bảo vệ invariant, chuyển trạng thái và ghi nhận domain event. |
+| `bounded-contexts/meetups/domain/entities/participant.entity.ts` | Entity con thuộc aggregate `Meetup`, quản lý trạng thái tham gia và preference theo meetup. Không được lưu độc lập ngoài aggregate nếu nghiệp vụ cần nhất quán chung. |
+| `bounded-contexts/meetups/domain/value-objects/meetup-id.vo.ts` | Bao bọc, kiểm tra và so sánh định danh meetup. |
+| `bounded-contexts/meetups/domain/value-objects/meetup-status.vo.ts` | Biểu diễn trạng thái hợp lệ; state transition vẫn do aggregate quyết định. |
+| `bounded-contexts/meetups/domain/value-objects/schedule.vo.ts` | Kiểm tra thời gian meetup và các luật thời gian thuần domain. |
+| `bounded-contexts/meetups/domain/events/*.event.ts` | Mô tả sự kiện đã xảy ra trong domain, ví dụ `MeetupFinalized`; không chứa code phát Socket/FCM. |
+| `bounded-contexts/meetups/domain/services/vote-winner.domain-service.ts` | Chứa luật chọn kết quả vote khi luật cần phối hợp nhiều giá trị và không thuộc tự nhiên về một entity. |
+| `bounded-contexts/meetups/domain/errors/*.error.ts` | Lỗi nghiệp vụ có mã ổn định; không mang `HttpException` hoặc status code của NestJS. |
 
 #### Application
 
 | File/thư mục | Trách nhiệm |
 |---|---|
-| `application/ports/persistence/meetup-store.port.ts` | Contract đọc/lưu aggregate dành cho use case; chi tiết ở bảng persistence bên dưới. |
-| `application/ports/friendship-checker.port.ts` | Contract để Meetups hỏi Friends về quan hệ đã accepted mà không truy cập dữ liệu Friends trực tiếp. |
-| `application/ports/location-reader.port.ts` | Contract đọc latest location hợp lệ từ Locations. |
-| `application/ports/event-publisher.port.ts` | Contract ghi/phát event theo cơ chế được infrastructure hiện thực, thường kết hợp outbox. |
-| `application/use-cases/<name>/<name>.input.ts` | Input thuần TypeScript của một use case; đã tách khỏi HTTP request DTO. |
-| `application/use-cases/<name>/<name>.output.ts` | Kết quả public của use case khi cần trả dữ liệu. Không trả domain hoặc TypeORM entity trực tiếp. |
-| `application/use-cases/<name>/<name>.use-case.ts` | Điều phối một mục tiêu nghiệp vụ: gọi port, tải aggregate, gọi domain method và commit transaction. |
-| `application/use-cases/<name>/<name>.use-case.spec.ts` | Unit test use case với fake/in-memory port, không cần database thật. |
-| `application/queries/<name>/` | Luồng chỉ đọc, trả read model tối ưu và không thay đổi aggregate/phát domain event. |
-| `application/dto/*.output.ts` | Read model/output dùng chung cho application query; không có decorator TypeORM. |
+| `bounded-contexts/meetups/application/ports/persistence/meetup-store.port.ts` | Contract đọc/lưu aggregate dành cho use case; chi tiết ở bảng persistence bên dưới. |
+| `bounded-contexts/meetups/application/ports/friendship-checker.port.ts` | Contract để Meetups hỏi Friends về quan hệ đã accepted mà không truy cập dữ liệu Friends trực tiếp. |
+| `bounded-contexts/meetups/application/ports/location-reader.port.ts` | Contract đọc latest location hợp lệ từ Locations. |
+| `bounded-contexts/meetups/application/ports/event-publisher.port.ts` | Contract ghi/phát event theo cơ chế được infrastructure hiện thực, thường kết hợp outbox. |
+| `bounded-contexts/meetups/application/use-cases/<name>/<name>.input.ts` | Input thuần TypeScript của một use case; đã tách khỏi HTTP request DTO. |
+| `bounded-contexts/meetups/application/use-cases/<name>/<name>.output.ts` | Kết quả public của use case khi cần trả dữ liệu. Không trả domain hoặc TypeORM entity trực tiếp. |
+| `bounded-contexts/meetups/application/use-cases/<name>/<name>.use-case.ts` | Điều phối một mục tiêu nghiệp vụ: gọi port, tải aggregate, gọi domain method và commit transaction. |
+| `bounded-contexts/meetups/application/use-cases/<name>/<name>.use-case.spec.ts` | Unit test use case với fake/in-memory port, không cần database thật. |
+| `bounded-contexts/meetups/application/queries/<name>/` | Luồng chỉ đọc, trả read model tối ưu và không thay đổi aggregate/phát domain event. |
+| `bounded-contexts/meetups/application/dto/*.output.ts` | Read model/output dùng chung cho application query; không có decorator TypeORM. |
 
-#### Infrastructure và presentation
+#### Infrastructure của context, infrastructure dùng chung và presentation
 
 | File/thư mục | Trách nhiệm |
 |---|---|
-| `infrastructure/messaging/outbox-event.publisher.ts` | Đọc event đã commit trong outbox và chuyển đến Socket.IO, FCM hoặc consumer phù hợp; có retry/idempotency. |
-| `infrastructure/adapters/friends-friendship-checker.adapter.ts` | Hiện thực port của Meetups bằng public API/contract của Friends và chuyển kiểu dữ liệu giữa hai context. |
-| `infrastructure/adapters/redis-location-reader.adapter.ts` | Hiện thực `LocationReaderPort`, đọc Redis/location contract và không làm rò rỉ Redis type vào application. |
-| `presentation/http/meetup.controller.ts` | Nhận HTTP request, lấy actor đã xác thực, map request thành input và gọi use case/query. |
-| `presentation/http/requests/*.request.ts` | Validation và API decorators cho dữ liệu client gửi lên. |
-| `presentation/http/responses/*.response.ts` | Cấu trúc dữ liệu public trả về client và serialization rule. |
-| `presentation/websocket/meetup.gateway.ts` | Xử lý giao thức Socket.IO, authentication/room; không chứa luật meetup. |
-| `meetups.module.ts` | Composition root của context: đăng ký controller, use case, token và implementation cụ thể. |
+| `bounded-contexts/meetups/infrastructure/adapters/friends-friendship-checker.adapter.ts` | Adapter riêng của Meetups, hiện thực port bằng public contract của Friends và chuyển kiểu dữ liệu giữa hai context. |
+| `bounded-contexts/meetups/infrastructure/adapters/redis-location-reader.adapter.ts` | Adapter riêng của Meetups, dùng Redis service dùng chung nhưng không làm rò rỉ Redis type vào application. |
+| `bounded-contexts/meetups/meetups.module.ts` | Composition root của context: đăng ký use case, token và implementation cụ thể. |
+| `infrastructure/database/typeorm/typeorm.module.ts` | Khởi tạo và export kết nối TypeORM dùng chung cho các context. Không chứa repository nghiệp vụ. |
+| `infrastructure/database/typeorm/typeorm-unit-of-work.ts` | Hiện thực transaction boundary chung bằng `DataSource`/`QueryRunner`. |
+| `infrastructure/redis/redis.service.ts` | Cung cấp Redis client và thao tác kỹ thuật cơ bản; luật TTL/location vẫn do context sở hữu. |
+| `infrastructure/realtime/` | Cấu hình Socket.IO, room transport và publisher dùng chung; không quyết định ai được nhận event. |
+| `presentation/http/controllers/meetups/meetup.controller.ts` | Nhận HTTP request, lấy actor đã xác thực, map request thành input và gọi use case/query. |
+| `presentation/http/requests/meetups/*.request.ts` | Validation và API decorators cho dữ liệu meetup client gửi lên. |
+| `presentation/http/responses/meetups/*.response.ts` | Cấu trúc dữ liệu meetup public trả về client và serialization rule. |
 
 #### TypeORM persistence
 
 | File | Trách nhiệm | Không được làm |
 |---|---|---|
-| `application/ports/persistence/meetup-store.port.ts` | Khai báo contract `MeetupStorePort` mà use case cần: tìm và lưu aggregate `Meetup`. Đây là TypeScript interface, không biết TypeORM hoặc PostgreSQL. | Không có decorator `@Entity()`, SQL, `DataSource`, `EntityManager` hoặc `Repository<T>` của TypeORM. |
-| `infrastructure/persistence/typeorm/entities/meetup.typeorm-entity.ts` | Khai báo bảng/cột/index/quan hệ của `meetup_sessions` bằng các decorator TypeORM. | Không chứa invariant hoặc method nghiệp vụ như `finalize()`/`cancel()`. |
-| `infrastructure/persistence/typeorm/entities/participant.typeorm-entity.ts` | Ánh xạ bảng `meetup_participants` và quan hệ persistence với meetup. | Không được dùng làm response DTO hoặc domain entity. |
-| `infrastructure/persistence/typeorm/mappers/meetup.typeorm-mapper.ts` | Chuyển `Meetup` aggregate ↔ các TypeORM entity qua `toDomain()` và `toPersistence()`. | Không query database, không quyết định business rule. |
-| `infrastructure/persistence/typeorm/typeorm-meetup-repository.ts` | Hiện thực `MeetupStorePort`; dùng `DataSource`, `EntityManager` hoặc TypeORM `Repository<T>` để query/save và gọi mapper. | Không trả TypeORM entity/QueryBuilder ra application; không chứa luật nghiệp vụ. |
+| `bounded-contexts/meetups/application/ports/persistence/meetup-store.port.ts` | Khai báo contract `MeetupStorePort` mà use case cần: tìm và lưu aggregate `Meetup`. Đây là TypeScript interface, không biết TypeORM hoặc PostgreSQL. | Không có decorator `@Entity()`, SQL, `DataSource`, `EntityManager` hoặc `Repository<T>` của TypeORM. |
+| `bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/meetup.typeorm-entity.ts` | Khai báo bảng/cột/index/quan hệ của `meetup_sessions` bằng các decorator TypeORM. | Không chứa invariant hoặc method nghiệp vụ như `finalize()`/`cancel()`. |
+| `bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/participant.typeorm-entity.ts` | Ánh xạ bảng `meetup_participants` và quan hệ persistence với meetup. | Không được dùng làm response DTO hoặc domain entity. |
+| `bounded-contexts/meetups/infrastructure/persistence/typeorm/mappers/meetup.typeorm-mapper.ts` | Chuyển `Meetup` aggregate ↔ các TypeORM entity qua `toDomain()` và `toPersistence()`. | Không query database, không quyết định business rule. |
+| `bounded-contexts/meetups/infrastructure/persistence/typeorm/typeorm-meetup-repository.ts` | Hiện thực `MeetupStorePort`; dùng TypeORM qua database infrastructure dùng chung để query/save và gọi mapper. | Không trả TypeORM entity/QueryBuilder ra application; không chứa luật nghiệp vụ. |
 
 Luồng phụ thuộc đúng:
 
@@ -289,7 +349,7 @@ Domain chứa luật nghiệp vụ thuần TypeScript:
 - domain event;
 - domain không định nghĩa cách lưu dữ liệu; persistence port được đặt ở application vì use case là nơi cần tải và lưu aggregate.
 
-Domain **được phép** import từ chính domain context và `shared/domain`. Domain **không được phép** import `@nestjs/*`, TypeORM, HTTP DTO, Redis/Google/FCM SDK, controller, config môi trường hoặc context khác.
+Domain **được phép** import từ domain cùng context và `shared-kernel/domain`. Domain **không được phép** import `@nestjs/*`, TypeORM, HTTP DTO, Redis/Google/FCM SDK, controller, infrastructure dùng chung hoặc context khác.
 
 ### 5.2 Application
 
@@ -307,14 +367,13 @@ Application không chứa công thức xếp hạng, luật chuyển trạng th�
 
 ### 5.3 Infrastructure
 
-Infrastructure chứa chi tiết kỹ thuật:
+Infrastructure cục bộ trong bounded context chứa adapter hiện thực port của context:
 
 - TypeORM repository và mapper TypeORM entity ↔ domain;
-- Redis cache/lock/location store;
-- Google Places/Routes, FCM, AI, object storage;
-- outbox publisher, scheduler và logging adapter.
+- adapter gọi context khác hoặc dịch vụ kỹ thuật dùng chung;
+- mapping giữa contract bên ngoài với kiểu của application/domain.
 
-Infrastructure có thể phụ thuộc application/domain để hiện thực port, nhưng không được đẩy kiểu dữ liệu của SDK vào lớp trong.
+`src/infrastructure` ở gốc cung cấp công cụ kỹ thuật dùng chung như TypeORM connection, Redis, JWT, HTTP client, email, realtime, throttling và audit transport. Nó không chứa business rule của Meetups/Auth/Friends. Infrastructure cục bộ có thể phụ thuộc application/domain của chính context và public API của infrastructure dùng chung, nhưng không được đẩy kiểu SDK vào lớp trong.
 
 ### 5.4 Presentation
 
@@ -331,10 +390,11 @@ Controller phải mỏng: không query TypeORM, không tự chuyển trạng th�
 
 | Nơi đang viết code | Được phụ thuộc | Không được phụ thuộc |
 |---|---|---|
-| `domain` | domain cùng context, `shared/domain` | NestJS, application, infrastructure, presentation, context khác |
-| `application` | domain cùng context, application port, shared abstraction | controller, TypeORM/Redis/SDK cụ thể |
-| `infrastructure` | domain, application port, thư viện kỹ thuật | presentation |
-| `presentation` | application contract, auth/validation dùng chung | TypeORM entity, persistence implementation, SDK ngoài |
+| `bounded-contexts/<ctx>/domain` | domain cùng context, `shared-kernel/domain` | NestJS, application, infrastructure, presentation, context khác |
+| `bounded-contexts/<ctx>/application` | domain cùng context, application port, `shared-kernel` | controller, TypeORM/Redis/SDK cụ thể, implementation context khác |
+| `bounded-contexts/<ctx>/infrastructure` | domain/application port cùng context, public service của root infrastructure | presentation và business internals của context khác |
+| `infrastructure` ở gốc | thư viện kỹ thuật và `shared-kernel` khi thật sự cần | domain/application của một context cụ thể |
+| `presentation` | public application contract/use case, auth/validation dùng chung | TypeORM entity, persistence implementation, SDK ngoài |
 
 ## 6. Mô hình domain của MeetUp
 
@@ -423,14 +483,14 @@ HTTP/Socket request
 Ví dụ chốt địa điểm:
 
 ```ts
-// application/use-cases/finalize-meetup/finalize-meetup.input.ts
+// bounded-contexts/meetups/application/use-cases/finalize-meetup/finalize-meetup.input.ts
 export type FinalizeMeetupInput = Readonly<{
   meetupId: string;
   actorId: string;
   recommendationPlaceId: string;
 }>;
 
-// application/use-cases/finalize-meetup/finalize-meetup.use-case.ts
+// bounded-contexts/meetups/application/use-cases/finalize-meetup/finalize-meetup.use-case.ts
 export class FinalizeMeetupUseCase {
   constructor(
     private readonly meetupStore: MeetupStorePort,
@@ -496,10 +556,10 @@ Quy tắc:
 Hai file sau không trùng chức năng:
 
 ```text
-application/ports/persistence/meetup-store.port.ts
+bounded-contexts/meetups/application/ports/persistence/meetup-store.port.ts
   -> định nghĩa application cần đọc/lưu Meetup như thế nào
 
-infrastructure/persistence/typeorm/typeorm-meetup-repository.ts
+bounded-contexts/meetups/infrastructure/persistence/typeorm/typeorm-meetup-repository.ts
   -> chứa code thực tế để đọc/lưu bằng PostgreSQL và TypeORM
 ```
 
@@ -648,12 +708,13 @@ Các luật này là một phần của domain/policy, không chỉ là middlewa
 
 ## 15. Quy ước NestJS module và Dependency Injection
 
-- Mỗi context có đúng một composition root chính: `<context>.module.ts`.
+- Mỗi context có đúng một composition root chính: `bounded-contexts/<context>/<context>.module.ts`.
 - Chỉ module file biết implementation cụ thể của port.
 - Export ít nhất có thể; ưu tiên export application facade thay vì persistence port/store.
 - Dùng `Symbol` làm DI token cho interface.
 - Tránh `forwardRef()`. Nếu hai module phụ thuộc vòng, xem lại bounded context hoặc chuyển một chiều sang event/port.
-- Global module chỉ dành cho config/observability thực sự xuyên suốt, không dành cho business service.
+- Các module trong `src/infrastructure` chỉ cung cấp năng lực kỹ thuật dùng chung; không export business service.
+- Context module được phép import controller từ `presentation` và provider từ root `infrastructure` chỉ để wiring. Đây là ngoại lệ của composition root, không phải quyền để đặt business logic trong module.
 
 Ví dụ binding:
 
@@ -696,9 +757,9 @@ Không tạo toàn bộ cây thư mục trống trong một PR. Chuyển dần t
 ### Giai đoạn 1 — Nền móng
 
 1. Thêm config/validation, database và global error mapping.
-2. Tạo `shared/domain` tối thiểu: domain event, domain error; chỉ thêm base aggregate khi có nhu cầu thật.
+2. Tạo `shared-kernel/domain` tối thiểu: domain event, domain error; chỉ thêm base aggregate khi có nhu cầu thật.
 3. Thiết lập alias/import rule và lint rule để cấm dependency ngược/xuyên context.
-4. Cấu hình TypeORM nhưng giữ TypeORM entity, mapper và repository trong infrastructure.
+4. Cấu hình kết nối/transaction TypeORM trong root `infrastructure/database`; giữ entity, mapper và repository nghiệp vụ trong infrastructure của bounded context sở hữu chúng.
 
 ### Giai đoạn 2 — Slice đầu tiên
 
@@ -769,7 +830,7 @@ Thêm `chat`, `nearby`, AI explanation và `admin` theo cùng cấu trúc. Chỉ
 | Controller gọi TypeORM repository | Bỏ qua application/domain và khó test | Controller gọi use case hoặc query |
 | Domain entity có decorator TypeORM/Nest | Domain bị khóa vào framework | Tách TypeORM entity + mapper |
 | Một `BaseStore<T>` cho mọi bảng | Che mất ngôn ngữ và nhu cầu riêng của aggregate | Persistence port có method phù hợp với aggregate/use case |
-| `shared/utils` chứa business logic | Tạo coupling ngầm giữa context | Đưa logic về context sở hữu hoặc định nghĩa port |
+| `shared-kernel/utils` chứa business logic | Tạo coupling ngầm giữa context | Đưa logic về context sở hữu hoặc định nghĩa port |
 | Import persistence port/store của context khác | Phá ranh giới và transaction ownership | Dùng public application API/port hoặc event |
 | Event chứa toàn bộ entity | Rò rỉ schema/dữ liệu nhạy cảm, khó version | Payload tối thiểu và rõ version |
 | Mọi read đều phải dựng aggregate | Chậm và phức tạp không cần thiết | Dùng query/read model riêng |
