@@ -6,7 +6,7 @@ NestJS 11 modular monolith for the MeetUp mobile application. Business code is o
 
 - Node.js 22 or newer LTS
 - Docker with Compose (for local Redis)
-- A personal Neon PostgreSQL branch with PostGIS support
+- A PostgreSQL database with PostGIS support (Neon or the optional local Docker profile below)
 
 ## Local setup
 
@@ -18,19 +18,35 @@ npm run migration:run
 npm run start:dev
 ```
 
-Fill `DATABASE_URL` with the pooled Neon connection and `DATABASE_DIRECT_URL` with the direct connection before running the app or migrations. Secrets and `.env` files must not be committed.
+Configure `DATABASE_URL` and `DATABASE_DIRECT_URL` in your own `.env` before running migrations. For Neon, use the pooled connection for the API and the direct connection for migrations. For local Docker, follow the optional setup below. Copy `.env.example` only when `.env` does not exist. Secrets and `.env` files must not be committed.
+
+Set `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` to different random values of at least 32 characters; example placeholders are rejected.
 
 The REST API is served below `/api/v1`; Swagger is available at `/docs` by default. Set `SWAGGER_ENABLED=false` to disable it.
 
-## Offline PostgreSQL
+## Authentication
 
-Neon is the default development database. For offline work or isolated integration tests, start the optional PostGIS profile:
+| Method | Path | Request |
+|---|---|---|
+| POST | `/api/v1/auth/register` | `email`, `password`, `displayName`, optional `deviceName` |
+| POST | `/api/v1/auth/login` | `email`, `password`, optional `deviceName` |
+| GET | `/api/v1/auth/me` | `Authorization: Bearer <accessToken>` |
+| POST | `/api/v1/auth/refresh` | `refreshToken` |
+| POST | `/api/v1/auth/logout` | `refreshToken` |
+
+Register/login return the user profile and an access/refresh token pair. Passwords require 8–128 characters and are hashed with Argon2id. Locked accounts cannot sign in or access protected endpoints.
+
+On refresh, replace both stored tokens and serialize refresh requests on the client. Reusing an old refresh token revokes that session family; the user must sign in again. Logout revokes the current device's session family.
+
+## Optional local PostgreSQL
+
+To use Docker PostgreSQL/PostGIS instead of Neon, start the existing offline profile:
 
 ```bash
-docker compose --profile offline up -d postgres redis
+docker compose --profile offline up -d --wait postgres redis
 ```
 
-Use `postgresql://meetup:meetup@localhost:5432/meetup` for both database URLs in that mode.
+Set both database URLs in your own `.env` to `postgresql://meetup:meetup@localhost:5432/meetup`. This is a local choice; the shared Compose configuration does not need to change. Data persists in the `postgres_data` volume.
 
 ## Useful commands
 
