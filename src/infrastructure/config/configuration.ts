@@ -18,5 +18,10 @@ export const configuration = () => ({
     refreshTtlSeconds: Number(process.env.JWT_REFRESH_TTL_SECONDS ?? 2592000),
     issuer: process.env.JWT_ISSUER ?? 'meetup-api',
     audience: process.env.JWT_AUDIENCE ?? 'meetup-mobile',
+    google: {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.GOOGLE_CALLBACK_URL,
+    },
   },
 });

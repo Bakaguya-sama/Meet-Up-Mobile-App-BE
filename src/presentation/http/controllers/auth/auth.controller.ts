@@ -22,8 +22,10 @@ import {
   LogoutUseCase,
   RefreshTokenUseCase,
   RegisterUseCase,
+  GoogleLoginUseCase,
 } from '../../../../bounded-contexts/auth/application/use-cases/auth.use-cases';
 import { AccessTokenGuard } from '../../guards/access-token.guard';
+import { GoogleOauthGuard } from '../../guards/google-oauth.guard';
 import {
   LoginRequest,
   RefreshTokenRequest,
@@ -44,6 +46,7 @@ export class AuthController {
     private readonly login: LoginUseCase,
     private readonly refresh: RefreshTokenUseCase,
     private readonly logout: LogoutUseCase,
+    private readonly googleLogin: GoogleLoginUseCase,
   ) {}
 
   @Post('register')
@@ -59,6 +62,23 @@ export class AuthController {
   @ApiOkResponse({ type: AuthResponse })
   loginAccount(@Body() input: LoginRequest) {
     return this.login.execute(input);
+  }
+
+  @Get('google')
+  @UseGuards(GoogleOauthGuard)
+  async googleAuth() {
+    // Guards redirects
+  }
+
+  @Get('google/callback')
+  @UseGuards(GoogleOauthGuard)
+  @ApiOkResponse({ type: AuthResponse })
+  async googleAuthCallback(@Req() req: Request & { user: any }) {
+    return this.googleLogin.execute({
+      email: req.user.email,
+      displayName: req.user.displayName,
+      avatarUrl: req.user.avatarUrl,
+    });
   }
 
   @Post('refresh')

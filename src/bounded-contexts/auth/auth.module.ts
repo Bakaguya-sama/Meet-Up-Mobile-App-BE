@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from '../../presentation/http/controllers/auth/auth.controller';
 import { AccessTokenGuard } from '../../presentation/http/guards/access-token.guard';
 import { AccessTokenStrategy } from '../../infrastructure/jwt/access-token.strategy';
+import { GoogleStrategy } from '../../infrastructure/oauth2/google.strategy';
 import { JwtTokens } from '../../infrastructure/jwt/jwt-tokens';
 import {
   AUTH_TOKENS,
@@ -21,6 +22,7 @@ import {
   AuthenticateAccessUseCase,
   IssueSession,
   LoginUseCase,
+  GoogleLoginUseCase,
   LogoutUseCase,
   RefreshTokenUseCase,
   RegisterUseCase,
@@ -66,6 +68,15 @@ import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm-auth
       inject: [AUTH_UNIT_OF_WORK, PASSWORD_HASHER, IssueSession],
     },
     {
+      provide: GoogleLoginUseCase,
+      useFactory: (
+        uow: AuthUnitOfWork,
+        tokens: AuthTokens,
+        sessions: IssueSession,
+      ) => new GoogleLoginUseCase(uow, tokens, sessions),
+      inject: [AUTH_UNIT_OF_WORK, AUTH_TOKENS, IssueSession],
+    },
+    {
       provide: RefreshTokenUseCase,
       useFactory: (
         uow: AuthUnitOfWork,
@@ -86,6 +97,7 @@ import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm-auth
       inject: [AUTH_UNIT_OF_WORK],
     },
     AccessTokenStrategy,
+    GoogleStrategy,
     AccessTokenGuard,
   ],
   exports: [AccessTokenGuard, AuthenticateAccessUseCase, PassportModule],

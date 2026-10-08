@@ -24,6 +24,20 @@ export interface AuthOutput extends TokenPair {
   user: ReturnType<UserAccount['publicProfile']>;
 }
 
+export interface GoogleLoginInput {
+  email: string;
+  displayName: string;
+  avatarUrl?: string;
+  deviceName?: string;
+}
+
+export interface GoogleLoginInput {
+  email: string;
+  displayName: string;
+  avatarUrl?: string;
+  deviceName?: string;
+}
+
 export class IssueSession {
   constructor(private readonly tokens: AuthTokens) {}
 
@@ -129,6 +143,48 @@ export class LoginUseCase {
       ) {
         throw new AuthError('INVALID_CREDENTIALS', 'Invalid email or password');
       }
+      return this.sessions.execute(store, current, input.deviceName);
+    });
+  }
+}
+
+export class GoogleLoginUseCase {
+  constructor(
+    private readonly uow: AuthUnitOfWork,
+    private readonly tokens: AuthTokens,
+    private readonly sessions: IssueSession,
+  ) {}
+
+  async execute(input: GoogleLoginInput): Promise<AuthOutput> {
+    return this.uow.run(async (store) => {
+      const email = input.email.trim().toLowerCase();
+      let account = await store.findAccountByEmail(email);
+      const now = new Date();
+
+      if (!account) {
+        account = new UserAccount({
+          id: this.tokens.newId(),
+          email,
+          passwordHash: null,
+          displayName: input.displayName.trim(),
+          avatarUrl: input.avatarUrl || null,
+          isLocked: false,
+          lockedReason: null,
+          lastLoginAt: null,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        });
+        await store.saveAccount(account);
+      } else if (account.snapshot().deletedAt) {
+        throw new AuthError('INVALID_CREDENTIALS', 'Account is deleted');
+      }
+
+      const current = await store.lockAccount(account.snapshot().id);
+      if (!current) {
+        throw new AuthError('INVALID_CREDENTIALS', 'Account is deleted');
+      }
+
       return this.sessions.execute(store, current, input.deviceName);
     });
   }
