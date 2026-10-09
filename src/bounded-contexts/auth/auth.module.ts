@@ -20,6 +20,10 @@ import { LoginWithGoogleUseCase } from './application/use-cases/login-with-googl
 import { LogoutAccountUseCase } from './application/use-cases/logout-account.use-case';
 import { RefreshTokenUseCase } from './application/use-cases/refresh-token.use-case';
 import { RegisterAccountUseCase } from './application/use-cases/register-account.use-case';
+import { UpdateProfileUseCase } from './application/use-cases/update-profile.use-case';
+import { SaveUserPreferenceUseCase } from './application/use-cases/save-user-preference.use-case';
+import { GetUserPreferenceUseCase } from './application/use-cases/get-user-preference.use-case';
+import { GetActivityTagsUseCase } from './application/use-cases/get-activity-tags.use-case';
 import { IssueSession } from './application/services/issue-session.service';
 import { Argon2PasswordHasher } from './infrastructure/adapters/argon2-password-hasher';
 import { authEntities } from './infrastructure/persistence/typeorm/entities/auth.entities';
@@ -90,10 +94,39 @@ import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm/type
       useFactory: (uow: AuthUnitOfWork) => new AuthenticateAccessUseCase(uow),
       inject: [AUTH_UNIT_OF_WORK],
     },
+    {
+      provide: SaveUserPreferenceUseCase,
+      useFactory: (uow: AuthUnitOfWork) => new SaveUserPreferenceUseCase(uow),
+      inject: [AUTH_UNIT_OF_WORK],
+    },
+    {
+      provide: GetUserPreferenceUseCase,
+      useFactory: (uow: AuthUnitOfWork) => new GetUserPreferenceUseCase(uow),
+      inject: [AUTH_UNIT_OF_WORK],
+    },
+    {
+      provide: GetActivityTagsUseCase,
+      useFactory: (uow: AuthUnitOfWork) => new GetActivityTagsUseCase(uow),
+      inject: [AUTH_UNIT_OF_WORK],
+    },
+    {
+      provide: UpdateProfileUseCase,
+      useFactory: (uow: AuthUnitOfWork, savePrefs: SaveUserPreferenceUseCase) =>
+        new UpdateProfileUseCase(uow, savePrefs),
+      inject: [AUTH_UNIT_OF_WORK, SaveUserPreferenceUseCase],
+    },
     AccessTokenStrategy,
     GoogleStrategy,
     AccessTokenGuard,
   ],
-  exports: [AccessTokenGuard, AuthenticateAccessUseCase, PassportModule],
+  exports: [
+    AccessTokenGuard,
+    AuthenticateAccessUseCase,
+    PassportModule,
+    UpdateProfileUseCase,
+    SaveUserPreferenceUseCase,
+    GetUserPreferenceUseCase,
+    GetActivityTagsUseCase,
+  ],
 })
 export class AuthModule {}

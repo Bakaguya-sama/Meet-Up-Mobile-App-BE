@@ -32,6 +32,33 @@ export class UserAccount {
     this.state.updatedAt = now;
   }
 
+  updateProfile(
+    input: { displayName?: string; avatarUrl?: string | null },
+    now: Date,
+  ): void {
+    this.assertCanAuthenticate();
+    if (input.displayName !== undefined) {
+      const trimmed = input.displayName.trim();
+      if (!trimmed || trimmed.length > 100) {
+        throw new AuthError(
+          'INVALID_INPUT',
+          'Display name must be between 1 and 100 characters',
+        );
+      }
+      this.state.displayName = trimmed;
+    }
+    if (input.avatarUrl !== undefined) {
+      if (input.avatarUrl && input.avatarUrl.length > 1000) {
+        throw new AuthError(
+          'INVALID_INPUT',
+          'Avatar URL cannot exceed 1000 characters',
+        );
+      }
+      this.state.avatarUrl = input.avatarUrl;
+    }
+    this.state.updatedAt = now;
+  }
+
   snapshot(): AccountState {
     return { ...this.state };
   }

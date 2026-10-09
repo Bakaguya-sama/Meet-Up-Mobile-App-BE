@@ -1,4 +1,4 @@
-﻿import { Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { DataSource, QueryFailedError } from 'typeorm';
 import type {
   AuthTransaction,
@@ -6,6 +6,7 @@ import type {
 } from '../../../application/ports/auth-unit-of-work.port';
 import { AuthError } from '../../../domain/errors/auth.error';
 import { TypeOrmUserAccountRepository } from './typeorm-user-account-repository';
+import { TypeOrmUserPreferenceRepository } from './typeorm-user-preference-repository';
 import { TypeOrmUserSessionRepository } from './typeorm-user-session-repository';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class TypeOrmAuthUnitOfWork implements AuthUnitOfWork {
         work({
           accounts: new TypeOrmUserAccountRepository(manager),
           sessions: new TypeOrmUserSessionRepository(manager),
+          preferences: new TypeOrmUserPreferenceRepository(manager),
         }),
       );
     } catch (error) {

@@ -31,6 +31,10 @@ The REST API is served below `/api/v1`; Swagger is available at `/docs` by defau
 | POST | `/api/v1/auth/register` | `email`, `password`, `displayName`, optional `deviceName` |
 | POST | `/api/v1/auth/login` | `email`, `password`, optional `deviceName` |
 | GET | `/api/v1/auth/me` | `Authorization: Bearer <accessToken>` |
+| PATCH | `/api/v1/auth/profile` | Optional `displayName`, `avatarUrl`, `preferences` (`Bearer`) |
+| GET | `/api/v1/auth/preferences` | `Authorization: Bearer <accessToken>` |
+| PUT | `/api/v1/auth/preferences` | `tags: [{ activityTagId/tagCode, level }]` (`Bearer`) |
+| GET | `/api/v1/auth/activity-tags` | Public list of available activity tags |
 | POST | `/api/v1/auth/refresh` | `refreshToken` |
 | POST | `/api/v1/auth/logout` | `refreshToken` |
 

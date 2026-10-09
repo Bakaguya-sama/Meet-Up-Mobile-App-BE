@@ -23,6 +23,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
         INVALID_CREDENTIALS: HttpStatus.UNAUTHORIZED,
         INVALID_TOKEN: HttpStatus.UNAUTHORIZED,
         ACCOUNT_LOCKED: HttpStatus.FORBIDDEN,
+        ACCOUNT_NOT_FOUND: HttpStatus.NOT_FOUND,
+        ACTIVITY_TAG_NOT_FOUND: HttpStatus.NOT_FOUND,
+        INVALID_INPUT: HttpStatus.BAD_REQUEST,
+        INVALID_PREFERENCE_LEVEL: HttpStatus.BAD_REQUEST,
       };
       const status = statuses[exception.code] ?? HttpStatus.CONFLICT;
       response.status(status).json({
