@@ -6,8 +6,8 @@ import type {
   AuthTokens,
   TokenClaims,
   TokenPair,
-} from '../../bounded-contexts/auth/application/ports/auth.ports';
-import { AuthError } from '../../bounded-contexts/auth/domain/auth.error';
+} from '../../application/ports/auth-tokens.port';
+import { AuthError } from '../../domain/errors/auth.error';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

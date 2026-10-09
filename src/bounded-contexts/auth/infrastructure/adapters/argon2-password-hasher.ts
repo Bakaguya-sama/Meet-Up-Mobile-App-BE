@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { argon2id, hash, verify } from 'argon2';
-import type { PasswordHasher } from '../../application/ports/auth.ports';
+import type { PasswordHasher } from '../../application/ports/password-hasher.port';
 
 @Injectable()
 export class Argon2PasswordHasher implements PasswordHasher {

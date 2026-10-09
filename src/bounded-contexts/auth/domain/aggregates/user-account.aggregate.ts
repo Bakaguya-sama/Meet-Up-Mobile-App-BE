@@ -1,4 +1,4 @@
-import { AuthError } from './auth.error';
+import { AuthError } from '../errors/auth.error';
 
 export interface AccountState {
   id: string;

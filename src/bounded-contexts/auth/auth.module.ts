@@ -3,33 +3,27 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuthController } from '../../presentation/http/controllers/auth/auth.controller';
+import { AuthController } from './presentation/http/auth.controller';
 import { AccessTokenGuard } from '../../presentation/http/guards/access-token.guard';
-import { AccessTokenStrategy } from '../../infrastructure/jwt/access-token.strategy';
-import { GoogleStrategy } from '../../infrastructure/oauth2/google.strategy';
-import { JwtTokens } from '../../infrastructure/jwt/jwt-tokens';
-import {
-  AUTH_TOKENS,
-  AUTH_UNIT_OF_WORK,
-  PASSWORD_HASHER,
-} from './application/ports/auth.ports';
-import type {
-  AuthTokens,
-  AuthUnitOfWork,
-  PasswordHasher,
-} from './application/ports/auth.ports';
-import {
-  AuthenticateAccessUseCase,
-  IssueSession,
-  LoginUseCase,
-  GoogleLoginUseCase,
-  LogoutUseCase,
-  RefreshTokenUseCase,
-  RegisterUseCase,
-} from './application/use-cases/auth.use-cases';
+import { AccessTokenStrategy } from './infrastructure/adapters/access-token.strategy';
+import { GoogleStrategy } from './infrastructure/adapters/google.strategy';
+import { JwtTokens } from './infrastructure/adapters/jwt-auth-tokens.adapter';
+import { AUTH_TOKENS } from './application/ports/auth-tokens.port';
+import type { AuthTokens } from './application/ports/auth-tokens.port';
+import { AUTH_UNIT_OF_WORK } from './application/ports/auth-unit-of-work.port';
+import type { AuthUnitOfWork } from './application/ports/auth-unit-of-work.port';
+import { PASSWORD_HASHER } from './application/ports/password-hasher.port';
+import type { PasswordHasher } from './application/ports/password-hasher.port';
+import { AuthenticateAccessUseCase } from './application/use-cases/authenticate-access.use-case';
+import { LoginAccountUseCase } from './application/use-cases/login-account.use-case';
+import { LoginWithGoogleUseCase } from './application/use-cases/login-with-google.use-case';
+import { LogoutAccountUseCase } from './application/use-cases/logout-account.use-case';
+import { RefreshTokenUseCase } from './application/use-cases/refresh-token.use-case';
+import { RegisterAccountUseCase } from './application/use-cases/register-account.use-case';
+import { IssueSession } from './application/services/issue-session.service';
 import { Argon2PasswordHasher } from './infrastructure/adapters/argon2-password-hasher';
-import { authEntities } from './infrastructure/persistence/auth.typeorm-entity';
-import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm-auth-unit-of-work';
+import { authEntities } from './infrastructure/persistence/typeorm/entities/auth.entities';
+import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm/typeorm-auth-unit-of-work';
 
 @Module({
   imports: [
@@ -49,31 +43,31 @@ import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm-auth
       inject: [AUTH_TOKENS],
     },
     {
-      provide: RegisterUseCase,
+      provide: RegisterAccountUseCase,
       useFactory: (
         uow: AuthUnitOfWork,
         passwords: PasswordHasher,
         tokens: AuthTokens,
         sessions: IssueSession,
-      ) => new RegisterUseCase(uow, passwords, tokens, sessions),
+      ) => new RegisterAccountUseCase(uow, passwords, tokens, sessions),
       inject: [AUTH_UNIT_OF_WORK, PASSWORD_HASHER, AUTH_TOKENS, IssueSession],
     },
     {
-      provide: LoginUseCase,
+      provide: LoginAccountUseCase,
       useFactory: (
         uow: AuthUnitOfWork,
         passwords: PasswordHasher,
         sessions: IssueSession,
-      ) => new LoginUseCase(uow, passwords, sessions),
+      ) => new LoginAccountUseCase(uow, passwords, sessions),
       inject: [AUTH_UNIT_OF_WORK, PASSWORD_HASHER, IssueSession],
     },
     {
-      provide: GoogleLoginUseCase,
+      provide: LoginWithGoogleUseCase,
       useFactory: (
         uow: AuthUnitOfWork,
         tokens: AuthTokens,
         sessions: IssueSession,
-      ) => new GoogleLoginUseCase(uow, tokens, sessions),
+      ) => new LoginWithGoogleUseCase(uow, tokens, sessions),
       inject: [AUTH_UNIT_OF_WORK, AUTH_TOKENS, IssueSession],
     },
     {
@@ -86,9 +80,9 @@ import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm-auth
       inject: [AUTH_UNIT_OF_WORK, AUTH_TOKENS, IssueSession],
     },
     {
-      provide: LogoutUseCase,
+      provide: LogoutAccountUseCase,
       useFactory: (uow: AuthUnitOfWork, tokens: AuthTokens) =>
-        new LogoutUseCase(uow, tokens),
+        new LogoutAccountUseCase(uow, tokens),
       inject: [AUTH_UNIT_OF_WORK, AUTH_TOKENS],
     },
     {

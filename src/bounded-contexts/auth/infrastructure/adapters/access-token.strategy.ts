@@ -2,8 +2,8 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { AuthenticateAccessUseCase } from '../../bounded-contexts/auth/application/use-cases/auth.use-cases';
-import { isTokenClaims } from './jwt-tokens';
+import { AuthenticateAccessUseCase } from '../../application/use-cases/authenticate-access.use-case';
+import { isTokenClaims } from './jwt-auth-tokens.adapter';
 
 @Injectable()
 export class AccessTokenStrategy extends PassportStrategy(Strategy, 'jwt') {

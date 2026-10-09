@@ -1,4 +1,4 @@
-import { DomainError } from '../../../shared-kernel/domain/domain-error';
+import { DomainError } from '../../../../shared-kernel/domain/domain-error';
 
 export type AuthErrorCode =
   | 'INVALID_CREDENTIALS'

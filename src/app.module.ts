@@ -8,7 +8,9 @@ import { RedisModule } from './infrastructure/redis/redis.module';
 import { AuthModule } from './bounded-contexts/auth/auth.module';
 
 const runtimeModules =
-  process.env.NODE_ENV === 'test' ? [] : [DatabaseModule, RedisModule, AuthModule];
+  process.env.NODE_ENV === 'test'
+    ? []
+    : [DatabaseModule, RedisModule, AuthModule];
 
 @Module({
   imports: [
