@@ -86,7 +86,7 @@ Có thể triển khai context theo từng sprint. Chưa có nghiệp vụ thì 
 
 ## 4. Cấu trúc thư mục chuẩn
 
-Project dùng cấu trúc **bounded-context-first kết hợp hạ tầng dùng chung**, đúng với sơ đồ tham chiếu. Nghiệp vụ nằm trong `src/bounded-contexts`; các thư mục `infrastructure`, `presentation` và `shared-kernel` ở gốc chứa thành phần dùng chung hoặc điểm vào của hệ thống.
+Project dùng cấu trúc **bounded-context-first kết hợp hạ tầng dùng chung**. Nghiệp vụ và presentation chuyên biệt nằm trong `src/bounded-contexts`; các thư mục `infrastructure`, `presentation` và `shared-kernel` ở gốc chỉ chứa thành phần dùng chung hoặc điểm vào toàn hệ thống.
 
 ```text
 src/
@@ -118,11 +118,11 @@ src/
 ├── presentation/
 │   └── http/
 │       ├── controllers/
+│       │   └── health.controller.ts
 │       ├── filters/
 │       ├── guards/
 │       ├── interceptors/
-│       ├── requests/
-│       └── responses/
+│       └── pipes/
 └── shared-kernel/
     ├── domain/
     │   ├── aggregate-root.ts
@@ -137,6 +137,8 @@ Phân biệt hai loại infrastructure:
 
 - `bounded-contexts/<context>/infrastructure`: implementation riêng của context, ví dụ TypeORM repository và mapper của Meetups.
 - `infrastructure/` ở gốc: năng lực kỹ thuật dùng chung, ví dụ database connection, Redis client, JWT, HTTP client, email và realtime transport.
+
+Tương tự, `bounded-contexts/<context>/presentation` chứa controller/gateway riêng của context; controller dùng DTO từ application. `presentation/` ở gốc chỉ chứa endpoint và HTTP concern dùng chung như health check, global filter, guard, interceptor và pipe.
 
 Không đặt business helper vào `shared-kernel`. Chỉ đưa một thành phần vào đây khi ít nhất hai context thật sự dùng cùng một **khái niệm ổn định**, không chỉ vì đoạn code trông giống nhau. `shared-kernel` không chứa TypeORM, Redis, HTTP, SDK hoặc business rule riêng của một context.
 
@@ -172,16 +174,16 @@ src/bounded-contexts/meetups/
 │   │   ├── location-reader.port.ts
 │   │   └── event-publisher.port.ts
 │   ├── use-cases/
-│   │   ├── create-meetup/
-│   │   │   ├── create-meetup.input.ts
-│   │   │   ├── create-meetup.output.ts
-│   │   │   ├── create-meetup.use-case.ts
-│   │   │   └── create-meetup.use-case.spec.ts
-│   │   └── finalize-meetup/
+│   │   ├── create-meetup.use-case.ts
+│   │   ├── accept-invitation.use-case.ts
+│   │   ├── cast-vote.use-case.ts
+│   │   └── finalize-meetup.use-case.ts
 │   ├── queries/
-│   │   └── get-meetup-detail/
+│   │   ├── get-meetup-detail.query.ts
+│   │   └── list-meetup-history.query.ts
 │   └── dto/
-│       └── meetup-detail.output.ts
+│       ├── create-meetup.dto.ts
+│       └── meetup-detail.dto.ts
 ├── infrastructure/
 │   ├── persistence/
 │   │   └── typeorm/
@@ -194,23 +196,15 @@ src/bounded-contexts/meetups/
 │   └── adapters/
 │       ├── friends-friendship-checker.adapter.ts
 │       └── redis-location-reader.adapter.ts
+├── presentation/
+│   ├── http/
+│   │   └── meetup.controller.ts
+│   └── websocket/
+│       └── meetup.gateway.ts
 └── meetups.module.ts
 ```
 
-Controller, request và response không nằm trong bounded context mà nằm ở presentation dùng chung:
-
-```text
-src/presentation/http/
-├── controllers/
-│   └── meetups/
-│       └── meetup.controller.ts
-├── requests/
-│   └── meetups/
-│       └── create-meetup.request.ts
-└── responses/
-    └── meetups/
-        └── meetup.response.ts
-```
+Input và output nội bộ chỉ dùng cho một use case được khai báo ngay trong file `*.use-case.ts`. Không tách mặc định thành `*.input.ts`, `*.output.ts` hoặc một thư mục cho từng use case. Contract dữ liệu mà controller cần nhận/trả được đặt trong `application/dto` và dùng trực tiếp, nên `presentation/http` không có thêm thư mục `requests` hoặc `responses`.
 
 Hạ tầng kỹ thuật dùng chung mà adapter của context có thể sử dụng:
 
@@ -237,7 +231,7 @@ Với context nhỏ, có thể bỏ thư mục con chưa dùng, nhưng không đ
 
 | Thư mục | Trách nhiệm |
 |---|---|
-| `bounded-contexts/` | Chứa nghiệp vụ theo từng context. Mỗi context sở hữu `domain`, `application`, infrastructure adapter riêng và NestJS module để wiring. |
+| `bounded-contexts/` | Chứa nghiệp vụ theo từng context. Mỗi context sở hữu `domain`, `application`, `infrastructure`, `presentation` và NestJS module để wiring. |
 | `infrastructure/audit/` | Writer/transport kỹ thuật cho audit log. Luật hành động nào cần audit vẫn do bounded context quyết định. |
 | `infrastructure/cache/` | Abstraction, key convention và cấu hình cache dùng chung. Không chứa luật latest location hoặc nearby cooldown. |
 | `infrastructure/config/` | Đọc, validate và cung cấp environment configuration. |
@@ -248,7 +242,7 @@ Với context nhỏ, có thể bỏ thư mục con chưa dùng, nhưng không đ
 | `infrastructure/realtime/` | Socket.IO server, connection/room transport và publisher chung; context sở hữu authorization/event policy. |
 | `infrastructure/redis/` | Khởi tạo Redis client và thao tác kỹ thuật cấp thấp. Adapter của context sử dụng service này. |
 | `infrastructure/throttler/` | Rate-limit configuration, storage và guard dùng chung. |
-| `presentation/http/` | HTTP controller, request validation, response serialization, filter/guard/interceptor của giao thức vào. |
+| `presentation/http/` ở gốc | Chỉ chứa HTTP concern dùng chung và endpoint cấp hệ thống như health check. Controller nghiệp vụ nằm trong presentation của context sở hữu nó. |
 | `shared-kernel/` | Primitive và abstraction cực kỳ ổn định được nhiều context cùng chia sẻ; không chứa helper nghiệp vụ tùy tiện. |
 
 #### Domain
@@ -272,12 +266,10 @@ Với context nhỏ, có thể bỏ thư mục con chưa dùng, nhưng không đ
 | `bounded-contexts/meetups/application/ports/friendship-checker.port.ts` | Contract để Meetups hỏi Friends về quan hệ đã accepted mà không truy cập dữ liệu Friends trực tiếp. |
 | `bounded-contexts/meetups/application/ports/location-reader.port.ts` | Contract đọc latest location hợp lệ từ Locations. |
 | `bounded-contexts/meetups/application/ports/event-publisher.port.ts` | Contract ghi/phát event theo cơ chế được infrastructure hiện thực, thường kết hợp outbox. |
-| `bounded-contexts/meetups/application/use-cases/<name>/<name>.input.ts` | Input thuần TypeScript của một use case; đã tách khỏi HTTP request DTO. |
-| `bounded-contexts/meetups/application/use-cases/<name>/<name>.output.ts` | Kết quả public của use case khi cần trả dữ liệu. Không trả domain hoặc TypeORM entity trực tiếp. |
-| `bounded-contexts/meetups/application/use-cases/<name>/<name>.use-case.ts` | Điều phối một mục tiêu nghiệp vụ: gọi port, tải aggregate, gọi domain method và commit transaction. |
-| `bounded-contexts/meetups/application/use-cases/<name>/<name>.use-case.spec.ts` | Unit test use case với fake/in-memory port, không cần database thật. |
-| `bounded-contexts/meetups/application/queries/<name>/` | Luồng chỉ đọc, trả read model tối ưu và không thay đổi aggregate/phát domain event. |
-| `bounded-contexts/meetups/application/dto/*.output.ts` | Read model/output dùng chung cho application query; không có decorator TypeORM. |
+| `bounded-contexts/meetups/application/use-cases/create-meetup.use-case.ts` | Chứa `CreateMeetupUseCase` và các type input/output chỉ dùng riêng cho use case này. Điều phối port, aggregate và transaction. |
+| `bounded-contexts/meetups/application/use-cases/finalize-meetup.use-case.ts` | Chứa toàn bộ application flow chốt meetup; không tạo thêm thư mục `finalize-meetup/`. |
+| `bounded-contexts/meetups/application/queries/get-meetup-detail.query.ts` | Luồng chỉ đọc, trả read model tối ưu và không thay đổi aggregate/phát domain event. |
+| `bounded-contexts/meetups/application/dto/*.dto.ts` | Contract dữ liệu dùng giữa presentation và application, gồm DTO đầu vào/đầu ra và read model. Không trả domain hoặc TypeORM entity trực tiếp. |
 
 #### Infrastructure của context, infrastructure dùng chung và presentation
 
@@ -285,14 +277,14 @@ Với context nhỏ, có thể bỏ thư mục con chưa dùng, nhưng không đ
 |---|---|
 | `bounded-contexts/meetups/infrastructure/adapters/friends-friendship-checker.adapter.ts` | Adapter riêng của Meetups, hiện thực port bằng public contract của Friends và chuyển kiểu dữ liệu giữa hai context. |
 | `bounded-contexts/meetups/infrastructure/adapters/redis-location-reader.adapter.ts` | Adapter riêng của Meetups, dùng Redis service dùng chung nhưng không làm rò rỉ Redis type vào application. |
-| `bounded-contexts/meetups/meetups.module.ts` | Composition root của context: đăng ký use case, token và implementation cụ thể. |
+| `bounded-contexts/meetups/presentation/http/meetup.controller.ts` | Controller riêng của Meetups; nhận DTO từ `application/dto`, lấy actor và gọi use case/query. Controller trả DTO/read model của application, không tạo response model trùng lặp. |
+| `bounded-contexts/meetups/presentation/websocket/meetup.gateway.ts` | Gateway riêng của Meetups; xử lý protocol/room nhưng không chứa business rule. |
+| `bounded-contexts/meetups/meetups.module.ts` | Composition root của context: đăng ký presentation, use case, token và implementation cụ thể. |
 | `infrastructure/database/typeorm/typeorm.module.ts` | Khởi tạo và export kết nối TypeORM dùng chung cho các context. Không chứa repository nghiệp vụ. |
 | `infrastructure/database/typeorm/typeorm-unit-of-work.ts` | Hiện thực transaction boundary chung bằng `DataSource`/`QueryRunner`. |
 | `infrastructure/redis/redis.service.ts` | Cung cấp Redis client và thao tác kỹ thuật cơ bản; luật TTL/location vẫn do context sở hữu. |
 | `infrastructure/realtime/` | Cấu hình Socket.IO, room transport và publisher dùng chung; không quyết định ai được nhận event. |
-| `presentation/http/controllers/meetups/meetup.controller.ts` | Nhận HTTP request, lấy actor đã xác thực, map request thành input và gọi use case/query. |
-| `presentation/http/requests/meetups/*.request.ts` | Validation và API decorators cho dữ liệu meetup client gửi lên. |
-| `presentation/http/responses/meetups/*.response.ts` | Cấu trúc dữ liệu meetup public trả về client và serialization rule. |
+| `presentation/http/controllers/health.controller.ts` | Endpoint cấp hệ thống, không thuộc một bounded context cụ thể. |
 
 #### TypeORM persistence
 
@@ -325,15 +317,14 @@ FinalizeMeetupUseCase
 | Value Object | `<name>.vo.ts` | `schedule.vo.ts` |
 | Domain event | `<past-tense>.event.ts` | `meetup-finalized.event.ts` |
 | Use case | `<verb>-<noun>.use-case.ts` | `finalize-meetup.use-case.ts` |
-| Input/output của use case | `.input.ts` / `.output.ts` | `finalize-meetup.input.ts` |
 | Query | `<verb>-<noun>.query.ts` | `get-meetup-detail.query.ts` |
+| Application/API DTO | `<name>.dto.ts` | `create-meetup.dto.ts`, `meetup-detail.dto.ts` |
 | Port | `<capability>.port.ts` | `place-search.port.ts` |
 | Persistence port | `<aggregate>-store.port.ts` | `meetup-store.port.ts` |
 | TypeORM repository | `typeorm-<aggregate>-repository.ts` | `typeorm-meetup-repository.ts` |
 | TypeORM entity | `<name>.typeorm-entity.ts` | `meetup.typeorm-entity.ts` |
 | TypeORM mapper | `<aggregate>.typeorm-mapper.ts` | `meetup.typeorm-mapper.ts` |
 | Adapter | `<technology>-<port>.adapter.ts` | `google-place-search.adapter.ts` |
-| HTTP input/output | `.request.ts` / `.response.ts` | `create-meetup.request.ts` |
 
 Tên file dùng `kebab-case`; class/type dùng `PascalCase`; biến và method dùng `camelCase`. Domain event dùng thì quá khứ vì nó mô tả việc đã xảy ra.
 
@@ -377,14 +368,14 @@ Infrastructure cục bộ trong bounded context chứa adapter hiện thực por
 
 ### 5.4 Presentation
 
-Presentation chuyển giao thức thành input cho application:
+Presentation của từng bounded context chuyển giao thức thành input cho application của chính context đó:
 
 - controller HTTP, gateway WebSocket;
 - request validation, authentication guard;
 - mapping lỗi sang HTTP/Socket response;
 - OpenAPI decorator và response serialization.
 
-Controller phải mỏng: không query TypeORM, không tự chuyển trạng thái, không chứa transaction và không gọi trực tiếp context ngoài.
+`src/presentation` ở gốc chỉ chứa presentation concern toàn hệ thống. Controller nghiệp vụ phải nằm trong `bounded-contexts/<context>/presentation`. Mọi controller đều phải mỏng: không query TypeORM, không tự chuyển trạng thái, không chứa transaction và không gọi trực tiếp context ngoài.
 
 ### 5.5 Dependency matrix
 
@@ -393,8 +384,9 @@ Controller phải mỏng: không query TypeORM, không tự chuyển trạng th�
 | `bounded-contexts/<ctx>/domain` | domain cùng context, `shared-kernel/domain` | NestJS, application, infrastructure, presentation, context khác |
 | `bounded-contexts/<ctx>/application` | domain cùng context, application port, `shared-kernel` | controller, TypeORM/Redis/SDK cụ thể, implementation context khác |
 | `bounded-contexts/<ctx>/infrastructure` | domain/application port cùng context, public service của root infrastructure | presentation và business internals của context khác |
+| `bounded-contexts/<ctx>/presentation` | application/use case/query cùng context, HTTP/realtime concern dùng chung | domain mutation trực tiếp, TypeORM repository/entity, SDK ngoài |
 | `infrastructure` ở gốc | thư viện kỹ thuật và `shared-kernel` khi thật sự cần | domain/application của một context cụ thể |
-| `presentation` | public application contract/use case, auth/validation dùng chung | TypeORM entity, persistence implementation, SDK ngoài |
+| `presentation` ở gốc | endpoint và presentation concern toàn hệ thống | business use case riêng của một context, TypeORM entity/repository |
 
 ## 6. Mô hình domain của MeetUp
 
@@ -483,14 +475,13 @@ HTTP/Socket request
 Ví dụ chốt địa điểm:
 
 ```ts
-// bounded-contexts/meetups/application/use-cases/finalize-meetup/finalize-meetup.input.ts
+// bounded-contexts/meetups/application/use-cases/finalize-meetup.use-case.ts
 export type FinalizeMeetupInput = Readonly<{
   meetupId: string;
   actorId: string;
   recommendationPlaceId: string;
 }>;
 
-// bounded-contexts/meetups/application/use-cases/finalize-meetup/finalize-meetup.use-case.ts
 export class FinalizeMeetupUseCase {
   constructor(
     private readonly meetupStore: MeetupStorePort,
@@ -636,9 +627,12 @@ Project dùng cách tổ chức trực tiếp theo use case để tên code gầ
 
 - **Use case** thực hiện một mục tiêu của actor và có thể thay đổi trạng thái, tên là động từ: `CreateMeetup`, `AcceptInvitation`, `CastVote`, `FinalizeMeetup`.
 - **Query** chỉ đọc, không phát domain event: `GetMeetupDetail`, `ListMeetupHistory`.
-- Request DTO thuộc presentation, có validation/decorator HTTP.
-- Input/output của use case và query thuộc application, không có decorator giao thức.
-- Response DTO/read model không trả domain entity trực tiếp.
+- Mỗi use case là một file trực tiếp trong `application/use-cases`, ví dụ `create-meetup.use-case.ts`; không tạo thư mục con cùng tên use case.
+- Input/output chỉ dùng cho một use case được khai báo trong chính file use case; không tạo `*.input.ts` hoặc `*.output.ts` mặc định.
+- DTO dùng giữa controller và use case/query nằm trong `bounded-contexts/<context>/application/dto`.
+- Controller dùng trực tiếp các DTO này; không tạo thêm `*.request.ts` hoặc `*.response.ts` có cấu trúc giống hệt.
+- DTO phải độc lập với TypeORM entity và không trả domain entity trực tiếp.
+- Validation có thể đặt trên DTO nếu nhóm dùng một cơ chế validation thống nhất, nhưng DTO không được chứa business rule; invariant vẫn thuộc domain.
 
 Nếu sau này project thật sự cần command bus, pipeline behavior hoặc CQRS framework, một use case có thể được đổi thành `Command + Handler`. Không thực hiện việc tách này trước khi có nhu cầu cụ thể.
 
@@ -714,7 +708,7 @@ Các luật này là một phần của domain/policy, không chỉ là middlewa
 - Dùng `Symbol` làm DI token cho interface.
 - Tránh `forwardRef()`. Nếu hai module phụ thuộc vòng, xem lại bounded context hoặc chuyển một chiều sang event/port.
 - Các module trong `src/infrastructure` chỉ cung cấp năng lực kỹ thuật dùng chung; không export business service.
-- Context module được phép import controller từ `presentation` và provider từ root `infrastructure` chỉ để wiring. Đây là ngoại lệ của composition root, không phải quyền để đặt business logic trong module.
+- Context module được phép import controller/gateway từ `presentation` của chính context và provider từ root `infrastructure` chỉ để wiring. Đây là ngoại lệ của composition root, không phải quyền để đặt business logic trong module.
 
 Ví dụ binding:
 
