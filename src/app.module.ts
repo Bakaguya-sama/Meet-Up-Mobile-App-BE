@@ -5,9 +5,10 @@ import { configuration } from './infrastructure/config/configuration';
 import { validateEnvironment } from './infrastructure/config/environment.validation';
 import { DatabaseModule } from './infrastructure/database/typeorm/database.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
+import { AuthModule } from './bounded-contexts/auth/auth.module';
 
-const infrastructureModules =
-  process.env.NODE_ENV === 'test' ? [] : [DatabaseModule, RedisModule];
+const runtimeModules =
+  process.env.NODE_ENV === 'test' ? [] : [DatabaseModule, RedisModule, AuthModule];
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ const infrastructureModules =
       load: [configuration],
       validate: validateEnvironment,
     }),
-    ...infrastructureModules,
+    ...runtimeModules,
   ],
   controllers: [HealthController],
 })
