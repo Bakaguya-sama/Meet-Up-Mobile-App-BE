@@ -112,8 +112,10 @@
 
     Indexes {
       (user_a_id, user_b_id) [unique]
+      (user_a_id, status)
       (user_b_id, status)
     }
+    Note: 'CHECK user_a_id < user_b_id; requested_by_id must belong to the pair. Pending has no responded_at; terminal states require responded_at. BE-03 does not reopen rejected requests.'
   }
 
   Table user_preferences {
