@@ -28,6 +28,8 @@ import { IssueSession } from './application/services/issue-session.service';
 import { Argon2PasswordHasher } from './infrastructure/adapters/argon2-password-hasher';
 import { authEntities } from './infrastructure/persistence/typeorm/entities/auth.entities';
 import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm/typeorm-auth-unit-of-work';
+import { UserDirectory } from './application/public/user-directory';
+import { TypeOrmUserDirectory } from './infrastructure/persistence/typeorm/typeorm-user-directory';
 
 @Module({
   imports: [
@@ -38,6 +40,7 @@ import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm/type
   ],
   controllers: [AuthController],
   providers: [
+    { provide: UserDirectory, useClass: TypeOrmUserDirectory },
     { provide: AUTH_UNIT_OF_WORK, useClass: TypeOrmAuthUnitOfWork },
     { provide: PASSWORD_HASHER, useClass: Argon2PasswordHasher },
     { provide: AUTH_TOKENS, useClass: JwtTokens },
@@ -120,6 +123,7 @@ import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm/type
     AccessTokenGuard,
   ],
   exports: [
+    UserDirectory,
     AccessTokenGuard,
     AuthenticateAccessUseCase,
     PassportModule,

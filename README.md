@@ -42,6 +42,10 @@ Register/login return the user profile and an access/refresh token pair. Passwor
 
 On refresh, replace both stored tokens and serialize refresh requests on the client. Reusing an old refresh token revokes that session family; the user must sign in again. Logout revokes the current device's session family.
 
+## Friends (BE-03)
+
+Authenticated APIs support user search, sending/accepting/rejecting friend requests, pending request lists and accepted friends. Apply the new migration with `npm run migration:run` before starting the API. See [BE-03 API and test guide](docs/10_be03_friends_api.md) and the **Friends** group in Swagger for the full contract.
+
 ## Optional local PostgreSQL
 
 To use Docker PostgreSQL/PostGIS instead of Neon, start the existing offline profile:
