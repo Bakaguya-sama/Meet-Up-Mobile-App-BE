@@ -158,9 +158,8 @@ import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.ada
     },
     {
       provide: UpdateProfileUseCase,
-      useFactory: (uow: AuthUnitOfWork, savePrefs: SaveUserPreferenceUseCase) =>
-        new UpdateProfileUseCase(uow, savePrefs),
-      inject: [AUTH_UNIT_OF_WORK, SaveUserPreferenceUseCase],
+      useFactory: (uow: AuthUnitOfWork) => new UpdateProfileUseCase(uow),
+      inject: [AUTH_UNIT_OF_WORK],
     },
     AccessTokenStrategy,
     GoogleStrategy,

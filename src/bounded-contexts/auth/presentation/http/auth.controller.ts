@@ -100,6 +100,8 @@ export class AuthController {
   ) {
     return this.googleLogin.execute({
       email: req.user.email,
+      providerAccountId: req.user.providerAccountId,
+      emailVerified: req.user.emailVerified,
       displayName: req.user.displayName,
       avatarUrl: req.user.avatarUrl,
     });

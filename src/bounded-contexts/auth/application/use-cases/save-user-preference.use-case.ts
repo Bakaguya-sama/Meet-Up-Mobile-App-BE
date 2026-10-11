@@ -5,7 +5,10 @@ import {
   PreferenceLevel,
   type PreferenceLevelValue,
 } from '../../domain/value-objects/preference-level.vo';
-import type { AuthUnitOfWork } from '../ports/auth-unit-of-work.port';
+import type {
+  AuthTransaction,
+  AuthUnitOfWork,
+} from '../ports/auth-unit-of-work.port';
 import type { PreferenceTagItemRequest } from '../dto/auth-request.dto';
 import type { UserPreferenceDto } from '../dto/auth-response.dto';
 
@@ -18,14 +21,23 @@ export class SaveUserPreferenceUseCase {
   constructor(private readonly uow: AuthUnitOfWork) {}
 
   async execute(input: SaveUserPreferenceInput): Promise<UserPreferenceDto> {
-    return this.uow.run(async (store) => {
-      const account = await store.accounts.findAccountById(input.userId);
-      if (!account) {
-        throw new AuthError('ACCOUNT_NOT_FOUND', 'User account not found');
-      }
-      account.assertCanAuthenticate();
+    return this.uow.run((store) =>
+      saveUserPreferenceInTransaction(store, input),
+    );
+  }
+}
 
-      const activeTags = await store.preferences.findActiveActivityTags();
+export async function saveUserPreferenceInTransaction(
+  store: AuthTransaction,
+  input: SaveUserPreferenceInput,
+): Promise<UserPreferenceDto> {
+  const account = await store.accounts.findAccountById(input.userId);
+  if (!account) {
+    throw new AuthError('ACCOUNT_NOT_FOUND', 'User account not found');
+  }
+  account.assertCanAuthenticate();
+
+  const activeTags = await store.preferences.findActiveActivityTags();
       const tagsById = new Map(activeTags.map((t) => [t.id, t]));
       const tagsByCode = new Map(
         activeTags.map((t) => [t.code.toLowerCase(), t]),
@@ -81,17 +93,15 @@ export class SaveUserPreferenceUseCase {
         preference.getTags().map((t) => [t.activityTagId, t.level]),
       );
 
-      return {
-        id: preference.getId(),
-        userId: preference.getUserId(),
-        updatedAt: preference.getUpdatedAt(),
-        tags: activeTags.map((t) => ({
-          activityTagId: t.id,
-          tagCode: t.code,
-          displayName: t.displayName,
-          level: userTagMap.get(t.id) ?? 'normal',
-        })),
-      };
-    });
-  }
+  return {
+    id: preference.getId(),
+    userId: preference.getUserId(),
+    updatedAt: preference.getUpdatedAt(),
+    tags: activeTags.map((t) => ({
+      activityTagId: t.id,
+      tagCode: t.code,
+      displayName: t.displayName,
+      level: userTagMap.get(t.id) ?? 'normal',
+    })),
+  };
 }

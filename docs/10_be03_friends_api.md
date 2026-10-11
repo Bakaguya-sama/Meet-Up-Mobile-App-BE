@@ -14,6 +14,7 @@ Base URL: `/api/v1/friends`. Tất cả endpoint yêu cầu `Authorization: Bear
 | POST | `/requests` | `{ "recipientId": "<uuid>" }` | 201, friendship |
 | POST | `/requests/:requestId/accept` | Không cần body | 200, friendship `accepted` |
 | POST | `/requests/:requestId/reject` | Không cần body | 200, friendship `rejected` |
+| DELETE | `/:friendshipId` | Không cần body | 204, friendship bị hủy |
 
 Pagination: `offset=0`, `limit=20` mặc định; `offset` từ 0–100000, `limit` từ 1–50, chỉ nhận số nguyên. `direction` mặc định `received`. Kết quả trang có `{ items, total, offset, limit }`.
 
@@ -26,7 +27,7 @@ Friendship gồm `id`, `userAId`, `userBId`, `requestedById`, `status`, `request
 - Không tự kết bạn, kể cả UUID khác cách viết hoa/thường.
 - Mỗi cặp UUID được sắp thứ tự và chỉ có một dòng. Gửi trùng cùng chiều hoặc ngược chiều trả 409, không tự động chấp nhận.
 - Chỉ người nhận được accept/reject và chỉ khi `pending`. Hai phía đọc cùng một quan hệ nên trạng thái cập nhật nhất quán.
-- BE-03 giữ lời mời `rejected` ở trạng thái đóng; gửi lại cùng cặp trả 409. Mở lại, hủy lời mời, hủy kết bạn và API chặn/mở chặn chưa thuộc task này. `blocked` được giữ trong enum theo schema và không được phản hồi.
+- BE-03 giữ lời mời `rejected` ở trạng thái đóng; gửi lại cùng cặp trả 409. Cả hai phía có thể hủy friendship đã `accepted`; thao tác chuyển quan hệ sang `rejected` và loại hai phía khỏi selected audience của nhau. Mở lại, hủy lời mời và API chặn/mở chặn chưa thuộc task này. `blocked` được giữ trong enum theo schema và không được phản hồi.
 - Không tạo lời mời đến tài khoản thiếu, bị khóa hoặc đã xóa. Trạng thái tài khoản được kiểm tra qua Auth trước khi ghi.
 
 | HTTP | Code | Ý nghĩa |

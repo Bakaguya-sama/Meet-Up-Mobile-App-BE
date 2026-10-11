@@ -21,6 +21,7 @@ npm run start:dev
 Configure `DATABASE_URL` and `DATABASE_DIRECT_URL` in your own `.env` before running migrations. For Neon, use the pooled connection for the API and the direct connection for migrations. For local Docker, follow the optional setup below. Copy `.env.example` only when `.env` does not exist. Secrets and `.env` files must not be committed.
 
 Set `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` to different random values of at least 32 characters; example placeholders are rejected.
+Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_CALLBACK_URL` to the OAuth client values before starting a non-test environment; startup validates these values before Passport is initialized.
 
 The REST API is served below `/api/v1`; Swagger is available at `/docs` by default. Set `SWAGGER_ENABLED=false` to disable it.
 
@@ -37,6 +38,7 @@ The REST API is served below `/api/v1`; Swagger is available at `/docs` by defau
 | GET | `/api/v1/auth/activity-tags` | Public list of available activity tags |
 | GET | `/api/v1/auth/privacy` | Current location privacy settings (`Bearer`) |
 | PUT | `/api/v1/auth/privacy` | Sharing mode, expiry, approximate location and selected users (`Bearer`) |
+| DELETE | `/api/v1/auth/privacy/selected-friends/:friendId` | Remove one user from your selected audience (`Bearer`) |
 | POST | `/api/v1/auth/refresh` | `refreshToken` |
 | POST | `/api/v1/auth/logout` | `refreshToken` |
 

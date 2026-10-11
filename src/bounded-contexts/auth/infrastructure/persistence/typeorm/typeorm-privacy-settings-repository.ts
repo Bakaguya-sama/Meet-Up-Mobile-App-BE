@@ -48,4 +48,34 @@ export class TypeOrmPrivacySettingsRepository implements PrivacySettingsStorePor
       )
       .execute();
   }
+
+  async updateLocked(
+    userId: string,
+    change: (settings: PrivacySettings) => void,
+  ): Promise<void> {
+    await this.database.transaction(async (manager) => {
+      const row = await manager.findOne(PrivacySettingsEntity, {
+        where: { userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!row) return;
+
+      const settings = PrivacySettings.restore({
+        id: row.id,
+        userId: row.userId,
+        sharingMode: row.sharingMode,
+        sharingExpiresAt: row.sharingExpiresAt,
+        useApproximateLocation: row.useApproximateLocation,
+        nearbyFeatureEnabled: row.nearbyFeatureEnabled,
+        selectedFriendIds: row.selectedFriendIds,
+        updatedAt: row.updatedAt,
+      });
+      change(settings);
+      const state = settings.snapshot();
+      await manager.save(PrivacySettingsEntity, {
+        ...state,
+        isLocationSharingEnabled: state.sharingMode !== 'off',
+      });
+    });
+  }
 }

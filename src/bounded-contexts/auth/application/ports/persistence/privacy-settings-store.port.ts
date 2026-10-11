@@ -6,4 +6,9 @@ export interface PrivacySettingsStorePort {
   findByUserId(userId: string): Promise<PrivacySettings | null>;
   /** Atomic full replacement, preserving an existing row's identity. */
   save(settings: PrivacySettings): Promise<void>;
+  /** Runs one aggregate mutation while holding the owner's settings row lock. */
+  updateLocked(
+    userId: string,
+    change: (settings: PrivacySettings) => void,
+  ): Promise<void>;
 }

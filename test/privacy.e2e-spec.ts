@@ -41,6 +41,11 @@ describe('Location privacy HTTP contract', () => {
         settings.set(value.snapshot().userId, value);
         return Promise.resolve();
       },
+      updateLocked: (userId, change) => {
+        const current = settings.get(userId);
+        if (current) change(current);
+        return Promise.resolve();
+      },
     };
     const users: UserDirectory = {
       search: () => Promise.resolve({ items: [], total: 0 }),

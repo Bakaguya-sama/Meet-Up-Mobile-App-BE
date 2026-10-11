@@ -4,8 +4,8 @@ import type { PrivacySettingsStorePort } from '../ports/persistence/privacy-sett
  * Removes one user from one owner's `selected_friend_ids`.
  *
  * Safe to call even when the target is already absent — the operation is
- * idempotent. When removing the last selected friend the mode is atomically
- * downgraded to `friends` by the aggregate.
+ * idempotent. The persistence port locks the owner row so concurrent removals
+ * cannot overwrite each other.
  */
 export class RemoveSelectedFriendUseCase {
   constructor(private readonly store: PrivacySettingsStorePort) {}
@@ -14,10 +14,8 @@ export class RemoveSelectedFriendUseCase {
     ownerId: string;
     selectedFriendId: string;
   }): Promise<void> {
-    const settings = await this.store.findByUserId(input.ownerId);
-    if (!settings) return;
-
-    settings.removeSelectedFriend(input.selectedFriendId, new Date());
-    await this.store.save(settings);
+    await this.store.updateLocked(input.ownerId, (settings) => {
+      settings.removeSelectedFriend(input.selectedFriendId, new Date());
+    });
   }
 }

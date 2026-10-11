@@ -28,6 +28,10 @@ describe('Privacy settings use cases', () => {
         saved = settings;
         return Promise.resolve();
       }),
+      updateLocked: jest.fn((_: string, change: (settings: PrivacySettings) => void) => {
+        if (saved) change(saved);
+        return Promise.resolve();
+      }),
     };
     users = {
       search: jest.fn(),
