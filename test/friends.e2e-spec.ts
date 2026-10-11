@@ -60,7 +60,7 @@ describe('Friends HTTP contract', () => {
         {
           provide: UnfriendUseCase,
           useValue: new UnfriendUseCase(store, {
-            purge: () => Promise.resolve(),
+            removeFromOwnerSelection: () => Promise.resolve(),
           }),
         },
         {

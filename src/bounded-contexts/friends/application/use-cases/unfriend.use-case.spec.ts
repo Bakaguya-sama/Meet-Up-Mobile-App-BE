@@ -35,15 +35,18 @@ describe('UnfriendUseCase', () => {
       findForUsers: jest.fn(),
       list: jest.fn(),
     };
-    purge = { purge: jest.fn().mockResolvedValue(undefined) };
+    purge = { removeFromOwnerSelection: jest.fn().mockResolvedValue(undefined) };
     useCase = new UnfriendUseCase(store, purge);
   });
   afterEach(() => jest.useRealTimers());
 
-  it('marks the friendship rejected and purges both parties', async () => {
+  it('marks the friendship rejected and purges only the former pair', async () => {
     await useCase.execute({ actorId: userA, requestId });
     expect(friendship.snapshot().status).toBe('rejected');
-    expect(purge.purge.mock.calls).toEqual([[userA], [userB]]);
+    expect(purge.removeFromOwnerSelection.mock.calls).toEqual([
+      [userA, userB],
+      [userB, userA],
+    ]);
   });
 
   it('both parties can initiate the unfriend', async () => {
@@ -52,7 +55,7 @@ describe('UnfriendUseCase', () => {
   });
 
   it('still removes the friendship even if the privacy purge fails', async () => {
-    purge.purge.mockRejectedValue(new Error('purge failed'));
+    purge.removeFromOwnerSelection.mockRejectedValue(new Error('purge failed'));
     await expect(
       useCase.execute({ actorId: userA, requestId }),
     ).resolves.toBeUndefined();

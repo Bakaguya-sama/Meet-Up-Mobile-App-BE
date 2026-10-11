@@ -2,7 +2,7 @@ import type { PrivacySelectedFriendPurge } from '../../../auth/application/publi
 import type { FriendshipStorePort } from '../ports/persistence/friendship-store.port';
 
 /**
- * Removes a friendship AND purges both parties from each other's
+ * Removes a friendship AND purges the pair from each other's
  * `selected_friend_ids`. Called from the Friends HTTP layer (unfriend).
  *
  * The friendship is updated first so the removal is always committed.
@@ -25,10 +25,10 @@ export class UnfriendUseCase {
       },
     );
 
-    // Best-effort: purge both parties from each other's selected audience.
+    // Best-effort: only purge the pair that was just disconnected.
     await Promise.allSettled([
-      this.privacyPurge.purge(state.userAId),
-      this.privacyPurge.purge(state.userBId),
+      this.privacyPurge.removeFromOwnerSelection(state.userAId, state.userBId),
+      this.privacyPurge.removeFromOwnerSelection(state.userBId, state.userAId),
     ]);
   }
 }

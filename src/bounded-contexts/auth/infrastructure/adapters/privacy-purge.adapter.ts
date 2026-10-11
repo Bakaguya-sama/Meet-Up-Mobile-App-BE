@@ -9,7 +9,10 @@ export class PrivacyPurgeAdapter extends PrivacySelectedFriendPurge {
     super();
   }
 
-  purge(removedId: string): Promise<void> {
-    return this.remove.execute(removedId);
+  removeFromOwnerSelection(
+    ownerId: string,
+    selectedFriendId: string,
+  ): Promise<void> {
+    return this.remove.execute({ ownerId, selectedFriendId });
   }
 }

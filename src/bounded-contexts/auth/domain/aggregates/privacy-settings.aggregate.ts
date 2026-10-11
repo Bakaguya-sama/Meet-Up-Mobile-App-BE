@@ -76,6 +76,29 @@ export class PrivacySettings {
     );
   }
 
+  /**
+   * Removes one viewer from this owner's selected audience. This transition
+   * belongs to the aggregate so every caller observes the same invariant.
+   */
+  removeSelectedFriend(friendId: string, now: Date): void {
+    const normalizedId = friendId.toLowerCase();
+    const selectedFriendIds = this.state.selectedFriendIds.filter(
+      (id) => id !== normalizedId,
+    );
+
+    if (selectedFriendIds.length === this.state.selectedFriendIds.length)
+      return;
+
+    this.state.selectedFriendIds = selectedFriendIds;
+    if (
+      this.state.sharingMode === 'selected_friends' &&
+      selectedFriendIds.length === 0
+    ) {
+      this.state.sharingMode = 'friends';
+    }
+    this.state.updatedAt = now;
+  }
+
   snapshot(): PrivacySettingsState {
     return {
       ...this.state,

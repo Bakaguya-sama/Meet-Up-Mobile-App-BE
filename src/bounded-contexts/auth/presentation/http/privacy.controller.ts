@@ -86,8 +86,12 @@ export class PrivacyController {
   @ApiNoContentResponse({ description: 'Friend removed (or was not in list)' })
   @ApiBadRequestResponse({ description: 'friendId is not a valid UUID' })
   async deleteSelectedFriend(
+    @Req() req: Request & { user: { id: string } },
     @Param('friendId', new ParseUUIDPipe()) friendId: string,
   ) {
-    await this.removeSelectedFriend.execute(friendId);
+    await this.removeSelectedFriend.execute({
+      ownerId: req.user.id,
+      selectedFriendId: friendId,
+    });
   }
 }

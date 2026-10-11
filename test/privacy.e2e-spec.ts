@@ -41,32 +41,6 @@ describe('Location privacy HTTP contract', () => {
         settings.set(value.snapshot().userId, value);
         return Promise.resolve();
       },
-      removeFromSelected: (removedId) => {
-        // Simulate the SQL: strip removedId from every row; downgrade if empty.
-        for (const [userId, ps] of settings.entries()) {
-          const snap = ps.snapshot();
-          if (!snap.selectedFriendIds.includes(removedId.toLowerCase())) {
-            continue;
-          }
-          const next = snap.selectedFriendIds.filter(
-            (id) => id !== removedId.toLowerCase(),
-          );
-          const newMode =
-            snap.sharingMode === 'selected_friends' && next.length === 0
-              ? 'friends'
-              : snap.sharingMode;
-          settings.set(
-            userId,
-            PrivacySettings.restore({
-              ...snap,
-              selectedFriendIds: next,
-              sharingMode: newMode,
-              updatedAt: new Date(),
-            }),
-          );
-        }
-        return Promise.resolve();
-      },
     };
     const users: UserDirectory = {
       search: () => Promise.resolve({ items: [], total: 0 }),
@@ -376,6 +350,34 @@ describe('Location privacy HTTP contract', () => {
       .delete(`/api/v1/auth/privacy/selected-friends/${viewer}`)
       .set(auth(owner))
       .expect(204);
+  });
+
+  it("cannot remove a selected viewer from another owner's settings", async () => {
+    for (const actor of [owner, outsider]) {
+      await request(app.getHttpServer())
+        .put('/api/v1/auth/privacy')
+        .set(auth(actor))
+        .send({
+          ...enabled,
+          sharingMode: 'selected_friends',
+          selectedFriendIds: [viewer],
+        })
+        .expect(200);
+    }
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/auth/privacy/selected-friends/${viewer}`)
+      .set(auth(outsider))
+      .expect(204);
+
+    const ownerSettings = await request(app.getHttpServer())
+      .get('/api/v1/auth/privacy')
+      .set(auth(owner))
+      .expect(200);
+    expect(ownerSettings.body).toMatchObject({
+      sharingMode: 'selected_friends',
+      selectedFriendIds: [viewer],
+    });
   });
 
   it('rejects invalid UUID in DELETE selected-friends', async () => {

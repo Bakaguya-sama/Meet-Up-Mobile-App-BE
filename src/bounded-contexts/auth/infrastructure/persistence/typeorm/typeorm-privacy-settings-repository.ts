@@ -48,28 +48,4 @@ export class TypeOrmPrivacySettingsRepository implements PrivacySettingsStorePor
       )
       .execute();
   }
-
-  async removeFromSelected(removedId: string): Promise<void> {
-    // Remove the UUID from the array, then if mode is selected_friends and
-    // the list is now empty, downgrade to 'friends' + clear the computed flag.
-    await this.database.query(
-      `UPDATE privacy_settings
-       SET selected_friend_ids = array_remove(selected_friend_ids, $1::uuid),
-           sharing_mode = CASE
-             WHEN sharing_mode = 'selected_friends'
-               AND cardinality(array_remove(selected_friend_ids, $1::uuid)) = 0
-             THEN 'friends'
-             ELSE sharing_mode
-           END,
-           is_location_sharing_enabled = CASE
-             WHEN sharing_mode = 'selected_friends'
-               AND cardinality(array_remove(selected_friend_ids, $1::uuid)) = 0
-             THEN (sharing_mode <> 'off')
-             ELSE is_location_sharing_enabled
-           END,
-           updated_at = NOW()
-       WHERE $1::uuid = ANY(selected_friend_ids)`,
-      [removedId],
-    );
-  }
 }
