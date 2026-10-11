@@ -35,6 +35,8 @@ The REST API is served below `/api/v1`; Swagger is available at `/docs` by defau
 | GET | `/api/v1/auth/preferences` | `Authorization: Bearer <accessToken>` |
 | PUT | `/api/v1/auth/preferences` | `tags: [{ activityTagId/tagCode, level }]` (`Bearer`) |
 | GET | `/api/v1/auth/activity-tags` | Public list of available activity tags |
+| GET | `/api/v1/auth/privacy` | Current location privacy settings (`Bearer`) |
+| PUT | `/api/v1/auth/privacy` | Sharing mode, expiry, approximate location and selected users (`Bearer`) |
 | POST | `/api/v1/auth/refresh` | `refreshToken` |
 | POST | `/api/v1/auth/logout` | `refreshToken` |
 
@@ -45,6 +47,10 @@ On refresh, replace both stored tokens and serialize refresh requests on the cli
 ## Friends (BE-03)
 
 Authenticated APIs support user search, sending/accepting/rejecting friend requests, pending request lists and accepted friends. Apply the new migration with `npm run migration:run` before starting the API. See [BE-03 API and test guide](docs/10_be03_friends_api.md) and the **Friends** group in Swagger for the full contract.
+
+## Location privacy
+
+Location privacy APIs and the per-request access service are documented in [Location privacy](docs/11_location_privacy_api.md). Apply the privacy migration before using them. Meetup-scoped access is denied until a server-side membership provider is connected.
 
 ## Optional local PostgreSQL
 

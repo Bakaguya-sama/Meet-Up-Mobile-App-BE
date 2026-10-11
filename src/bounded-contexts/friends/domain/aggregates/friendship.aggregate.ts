@@ -68,6 +68,23 @@ export class Friendship {
     this.state.updatedAt = now;
   }
 
+  /** Either participant can remove an accepted friendship. */
+  unfriend(actorId: string, now: Date) {
+    const actor = actorId.toLowerCase();
+    if (actor !== this.state.userAId && actor !== this.state.userBId) {
+      throw new FriendshipError('FRIENDSHIP_NOT_FOUND', 'Friendship not found');
+    }
+    if (this.state.status !== 'accepted') {
+      throw new FriendshipError(
+        'FRIENDSHIP_NOT_ACCEPTED',
+        'Only accepted friendships can be removed',
+      );
+    }
+    this.state.status = 'rejected';
+    this.state.respondedAt = now;
+    this.state.updatedAt = now;
+  }
+
   snapshot(): FriendshipState {
     return {
       ...this.state,

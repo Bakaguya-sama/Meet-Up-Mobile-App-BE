@@ -30,6 +30,16 @@ import { authEntities } from './infrastructure/persistence/typeorm/entities/auth
 import { TypeOrmAuthUnitOfWork } from './infrastructure/persistence/typeorm/typeorm-auth-unit-of-work';
 import { UserDirectory } from './application/public/user-directory';
 import { TypeOrmUserDirectory } from './infrastructure/persistence/typeorm/typeorm-user-directory';
+import { PRIVACY_SETTINGS_STORE } from './application/ports/persistence/privacy-settings-store.port';
+import type { PrivacySettingsStorePort } from './application/ports/persistence/privacy-settings-store.port';
+import { LocationPrivacyReader } from './application/public/location-privacy-reader';
+import { GetPrivacySettingsUseCase } from './application/use-cases/get-privacy-settings.use-case';
+import { SavePrivacySettingsUseCase } from './application/use-cases/save-privacy-settings.use-case';
+import { RemoveSelectedFriendUseCase } from './application/use-cases/remove-selected-friend.use-case';
+import { TypeOrmPrivacySettingsRepository } from './infrastructure/persistence/typeorm/typeorm-privacy-settings-repository';
+import { PrivacyController } from './presentation/http/privacy.controller';
+import { PrivacySelectedFriendPurge } from './application/public/privacy-selected-friend-purge';
+import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.adapter';
 
 @Module({
   imports: [
@@ -38,8 +48,42 @@ import { TypeOrmUserDirectory } from './infrastructure/persistence/typeorm/typeo
     PassportModule.register({ defaultStrategy: 'jwt' }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, PrivacyController],
   providers: [
+    {
+      provide: PRIVACY_SETTINGS_STORE,
+      useClass: TypeOrmPrivacySettingsRepository,
+    },
+    {
+      provide: GetPrivacySettingsUseCase,
+      useFactory: (store: PrivacySettingsStorePort, users: UserDirectory) =>
+        new GetPrivacySettingsUseCase(store, users),
+      inject: [PRIVACY_SETTINGS_STORE, UserDirectory],
+    },
+    { provide: LocationPrivacyReader, useExisting: GetPrivacySettingsUseCase },
+    {
+      provide: SavePrivacySettingsUseCase,
+      useFactory: (
+        store: PrivacySettingsStorePort,
+        users: UserDirectory,
+        getSettings: GetPrivacySettingsUseCase,
+      ) => new SavePrivacySettingsUseCase(store, users, getSettings),
+      inject: [
+        PRIVACY_SETTINGS_STORE,
+        UserDirectory,
+        GetPrivacySettingsUseCase,
+      ],
+    },
+    {
+      provide: RemoveSelectedFriendUseCase,
+      useFactory: (store: PrivacySettingsStorePort) =>
+        new RemoveSelectedFriendUseCase(store),
+      inject: [PRIVACY_SETTINGS_STORE],
+    },
+    {
+      provide: PrivacySelectedFriendPurge,
+      useClass: PrivacyPurgeAdapter,
+    },
     { provide: UserDirectory, useClass: TypeOrmUserDirectory },
     { provide: AUTH_UNIT_OF_WORK, useClass: TypeOrmAuthUnitOfWork },
     { provide: PASSWORD_HASHER, useClass: Argon2PasswordHasher },
@@ -123,6 +167,7 @@ import { TypeOrmUserDirectory } from './infrastructure/persistence/typeorm/typeo
     AccessTokenGuard,
   ],
   exports: [
+    LocationPrivacyReader,
     UserDirectory,
     AccessTokenGuard,
     AuthenticateAccessUseCase,
@@ -131,6 +176,7 @@ import { TypeOrmUserDirectory } from './infrastructure/persistence/typeorm/typeo
     SaveUserPreferenceUseCase,
     GetUserPreferenceUseCase,
     GetActivityTagsUseCase,
+    PrivacySelectedFriendPurge,
   ],
 })
 export class AuthModule {}

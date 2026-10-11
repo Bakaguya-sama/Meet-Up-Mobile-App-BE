@@ -7,11 +7,12 @@ import { DatabaseModule } from './infrastructure/database/typeorm/database.modul
 import { RedisModule } from './infrastructure/redis/redis.module';
 import { AuthModule } from './bounded-contexts/auth/auth.module';
 import { FriendsModule } from './bounded-contexts/friends/friends.module';
+import { LocationsModule } from './bounded-contexts/locations/locations.module';
 
 const runtimeModules =
   process.env.NODE_ENV === 'test'
     ? []
-    : [DatabaseModule, RedisModule, AuthModule, FriendsModule];
+    : [DatabaseModule, RedisModule, AuthModule, FriendsModule, LocationsModule];
 
 @Module({
   imports: [

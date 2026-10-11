@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
@@ -18,6 +19,7 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -37,6 +39,7 @@ import { SearchUsersQuery } from '../../application/queries/search-users.query';
 import { ListFriendshipsQuery } from '../../application/queries/list-friendships.query';
 import { SendFriendRequestUseCase } from '../../application/use-cases/send-friend-request.use-case';
 import { RespondFriendRequestUseCase } from '../../application/use-cases/respond-friend-request.use-case';
+import { UnfriendUseCase } from '../../application/use-cases/unfriend.use-case';
 import {
   ApiFriendPage,
   friendshipPageSchema,
@@ -64,6 +67,7 @@ export class FriendsController {
     private readonly listFriendships: ListFriendshipsQuery,
     private readonly sendRequest: SendFriendRequestUseCase,
     private readonly respondRequest: RespondFriendRequestUseCase,
+    private readonly unfriendUseCase: UnfriendUseCase,
   ) {}
 
   @Get('search')
@@ -176,6 +180,29 @@ export class FriendsController {
       actorId: req.user.id,
       requestId,
       decision: 'rejected',
+    });
+  }
+
+  @Delete(':friendshipId')
+  @HttpCode(204)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary:
+      "Remove an accepted friendship. Both parties' selected-friend " +
+      'privacy lists are purged automatically.',
+  })
+  @ApiNoContentResponse({ description: 'Friendship removed' })
+  @ApiNotFoundResponse({
+    description: 'Friendship does not exist or is not accepted',
+  })
+  @ApiForbiddenResponse({ description: 'Actor is not part of this friendship' })
+  async unfriend(
+    @Req() req: AuthenticatedRequest,
+    @Param('friendshipId', new ParseUUIDPipe()) friendshipId: string,
+  ) {
+    await this.unfriendUseCase.execute({
+      actorId: req.user.id,
+      requestId: friendshipId,
     });
   }
 }

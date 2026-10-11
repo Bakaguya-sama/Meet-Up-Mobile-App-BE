@@ -13,6 +13,7 @@ import { FriendsController } from '../src/bounded-contexts/friends/presentation/
 import { AccessTokenGuard } from '../src/presentation/http/guards/access-token.guard';
 import { SendFriendRequestUseCase } from '../src/bounded-contexts/friends/application/use-cases/send-friend-request.use-case';
 import { RespondFriendRequestUseCase } from '../src/bounded-contexts/friends/application/use-cases/respond-friend-request.use-case';
+import { UnfriendUseCase } from '../src/bounded-contexts/friends/application/use-cases/unfriend.use-case';
 import { SearchUsersQuery } from '../src/bounded-contexts/friends/application/queries/search-users.query';
 import { ListFriendshipsQuery } from '../src/bounded-contexts/friends/application/queries/list-friendships.query';
 import type { FriendUserDirectoryPort } from '../src/bounded-contexts/friends/application/ports/user-directory.port';
@@ -55,6 +56,12 @@ describe('Friends HTTP contract', () => {
         {
           provide: RespondFriendRequestUseCase,
           useValue: new RespondFriendRequestUseCase(store),
+        },
+        {
+          provide: UnfriendUseCase,
+          useValue: new UnfriendUseCase(store, {
+            purge: () => Promise.resolve(),
+          }),
         },
         {
           provide: SearchUsersQuery,
@@ -254,5 +261,45 @@ describe('Friends HTTP contract', () => {
       .set(auth(alice))
       .send({ recipientId: 'dddddddd-0000-4000-8000-000000000004' })
       .expect(404);
+  });
+
+  it('removes an accepted friendship and returns 204', async () => {
+    const id = await send();
+    await request(app.getHttpServer())
+      .post(`/api/v1/friends/requests/${id}/accept`)
+      .set(auth(bob))
+      .expect(200);
+
+    // Either party can unfriend
+    await request(app.getHttpServer())
+      .delete(`/api/v1/friends/${id}`)
+      .set(auth(alice))
+      .expect(204);
+
+    // Friendship no longer appears in the list
+    const friends = await request(app.getHttpServer())
+      .get('/api/v1/friends')
+      .set(auth(alice))
+      .expect(200);
+    expect(friends.body).toMatchObject({ total: 0, items: [] });
+  });
+
+  it('rejects unfriend on a pending or non-existent friendship', async () => {
+    const id = await send();
+    // Pending — not accepted
+    await request(app.getHttpServer())
+      .delete(`/api/v1/friends/${id}`)
+      .set(auth(alice))
+      .expect(409);
+    // Non-existent
+    await request(app.getHttpServer())
+      .delete(`/api/v1/friends/${carol}`)
+      .set(auth(alice))
+      .expect(404);
+    // Invalid UUID
+    await request(app.getHttpServer())
+      .delete('/api/v1/friends/not-a-uuid')
+      .set(auth(alice))
+      .expect(400);
   });
 });

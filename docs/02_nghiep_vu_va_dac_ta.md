@@ -47,11 +47,11 @@ Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ET
 
 ### 3.2 Chia sẻ vị trí
 
-1. Người dùng bật hoặc tắt chia sẻ vị trí trong hồ sơ.
+1. Người dùng chọn chế độ `off`, `friends`, `selected_friends` hoặc `meetup_only` trong hồ sơ; có thể đặt thời hạn và bật vị trí gần đúng. Mặc định là `off`.
 2. Ứng dụng xin quyền hệ điều hành trước khi bắt đầu.
 3. Khi có GPS mới, app gửi tọa độ, độ chính xác và thời điểm gửi.
-4. Backend xác thực, kiểm tra cờ chia sẻ rồi lưu vị trí mới nhất vào Redis với TTL 5 phút.
-5. Backend chỉ phát vị trí cho bạn bè đã kết bạn. Trong meetup, vị trí chỉ dùng cho thành viên `accepted` đã bật chia sẻ vị trí trong hồ sơ.
+4. Backend xác thực, kiểm tra chế độ và thời hạn chia sẻ ở mỗi lần nhận/phát vị trí. Phần realtime lưu vị trí mới nhất vào Redis với TTL 5 phút; TTL không thay thế thời hạn đồng ý chia sẻ.
+5. Chế độ `friends` yêu cầu bạn bè đã chấp nhận; `selected_friends` còn yêu cầu người xem thuộc danh sách được chọn, kể cả khi xem qua meetup. Chế độ `meetup_only` chỉ cho thành viên `accepted` của meetup còn hoạt động; mọi truy cập theo meetup đều phải kiểm tra thành viên ở backend. Vị trí gần đúng được làm tròn phía backend trước khi trả/phát.
 6. Khi hết TTL, rời/hủy/kết thúc meetup hoặc tắt cờ chia sẻ trong hồ sơ, vị trí không còn được phát và bị xóa khỏi cache.
 
 ## 4. Quy tắc nghiệp vụ
@@ -62,7 +62,7 @@ Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ET
 | BR-02 | Quan hệ bạn bè phải được chấp nhận trước khi gửi lời mời meetup hoặc xem vị trí theo quan hệ bạn bè. |
 | BR-03 | Quyền xem vị trí được backend kiểm tra cho từng lần phát dữ liệu. Không tin cậy cờ quyền do mobile tự gửi. |
 | BR-04 | Vị trí chỉ còn hiệu lực 5 phút. UI hiển thị thời điểm cập nhật; quá 5 phút là vị trí cũ. |
-| BR-05 | Thành viên `accepted` có cờ chia sẻ vị trí trong hồ sơ đang bật được dùng vị trí cho meetup. Khi rời/hủy/kết thúc meetup, backend ngừng phát vị trí vào room của meetup đó. |
+| BR-05 | Vị trí trong meetup yêu cầu thành viên `accepted`, meetup còn hoạt động và chế độ/thời hạn chia sẻ của chủ vị trí cho phép người xem. `selected_friends` vẫn giới hạn người xem trong meetup. Khi rời/hủy/kết thúc meetup, backend ngừng phát vị trí vào room đó. |
 | BR-06 | Meetup cần ít nhất 2 thành viên chấp nhận và ít nhất 2 vị trí còn hiệu lực mới cho phép tìm địa điểm theo nhóm. |
 | BR-07 | Người tạo chỉ chỉnh sửa thành viên/bộ lọc trước khi chốt. Sau khi chốt chỉ được hủy meetup. |
 | BR-08 | Mỗi thành viên có tối đa một vote cho một meetup; vote mới thay vote cũ trước hạn vote. |
@@ -119,7 +119,7 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 **Tác nhân:** Người dùng.  
 **Điều kiện trước:** Đã đăng nhập; có quyền hệ điều hành nếu muốn bật chia sẻ.  
-**Luồng chính:** Bật/tắt chia sẻ vị trí trong hồ sơ; app lấy GPS theo tần suất phù hợp; backend kiểm tra quyền, lưu TTL và phát tới đúng bạn bè/room meetup.  
+**Luồng chính:** Chọn một trong bốn chế độ chia sẻ, thời hạn tùy chọn và độ chính xác; app lấy GPS theo tần suất phù hợp; backend kiểm tra quyền từng yêu cầu, lưu TTL và phát tới đúng bạn bè/room meetup. Chi tiết API và ranh giới tích hợp tại `11_location_privacy_api.md`.
 **Ngoại lệ:** Từ chối quyền GPS, GPS tắt, accuracy kém, mạng mất, hết thời hạn.  
 **Kết quả:** Người được phép thấy ghim vị trí và thời điểm cập nhật; người không được phép không thấy dữ liệu.
 

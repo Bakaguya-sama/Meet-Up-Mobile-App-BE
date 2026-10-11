@@ -31,6 +31,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         FRIEND_USER_NOT_FOUND: HttpStatus.NOT_FOUND,
         FRIENDSHIP_NOT_FOUND: HttpStatus.NOT_FOUND,
         FRIENDSHIP_RESPONSE_FORBIDDEN: HttpStatus.FORBIDDEN,
+        FRIENDSHIP_NOT_PENDING: HttpStatus.CONFLICT,
+        FRIENDSHIP_NOT_ACCEPTED: HttpStatus.CONFLICT,
+        LOCATION_ACCESS_DENIED: HttpStatus.FORBIDDEN,
       };
       const status = statuses[exception.code] ?? HttpStatus.CONFLICT;
       response.status(status).json({

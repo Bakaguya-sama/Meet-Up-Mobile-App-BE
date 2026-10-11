@@ -86,4 +86,36 @@ describe('Friendship', () => {
       ).toBe('FRIENDSHIP_NOT_PENDING');
     },
   );
+
+  describe('unfriend()', () => {
+    function acceptedFriendship() {
+      const f = Friendship.request('request', alice, bob, createdAt);
+      f.respond(bob, 'accepted', respondedAt);
+      return f;
+    }
+
+    it('either party can remove an accepted friendship', () => {
+      const f1 = acceptedFriendship();
+      f1.unfriend(alice, respondedAt);
+      expect(f1.snapshot().status).toBe('rejected');
+
+      const f2 = acceptedFriendship();
+      f2.unfriend(bob.toUpperCase(), respondedAt);
+      expect(f2.snapshot().status).toBe('rejected');
+    });
+
+    it('rejects unfriend when friendship is not accepted', () => {
+      const pending = Friendship.request('request', alice, bob, createdAt);
+      expect(failureCode(() => pending.unfriend(bob, respondedAt))).toBe(
+        'FRIENDSHIP_NOT_ACCEPTED',
+      );
+    });
+
+    it('rejects outsider unfriend attempt', () => {
+      const f = acceptedFriendship();
+      expect(failureCode(() => f.unfriend('outsider', respondedAt))).toBe(
+        'FRIENDSHIP_NOT_FOUND',
+      );
+    });
+  });
 });

@@ -17,6 +17,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `09_cong_nghe_su_dung.md` | Stack kỹ thuật, chiến lược Neon/Redis, Docker Compose, biến môi trường và cách triển khai theo từng môi trường. |
 | `MeetUp_Product_Backlog_Function_Points.xlsx` | Chia việc theo Function Points, backlog và tiến độ. |
 | `10_be03_friends_api.md` | API kết bạn BE-03, quy tắc concurrency, migration và kiểm thử. |
+| `11_location_privacy_api.md` | Cài đặt quyền riêng tư vị trí, kiểm quyền mỗi yêu cầu và contract cho realtime. |
 
 ## Cách dùng nhanh
 
