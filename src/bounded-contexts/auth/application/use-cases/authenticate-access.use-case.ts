@@ -1,11 +1,12 @@
 import { AuthError } from '../../domain/errors/auth.error';
 import type { AuthUnitOfWork } from '../ports/auth-unit-of-work.port';
 import type { TokenClaims } from '../ports/auth-tokens.port';
+import type { AuthenticatedUser } from '../../../../shared-kernel/application/authenticated-user';
 
 export class AuthenticateAccessUseCase {
   constructor(private readonly uow: AuthUnitOfWork) {}
 
-  execute(claims: TokenClaims) {
+  execute(claims: TokenClaims): Promise<AuthenticatedUser> {
     return this.uow.run(async (store) => {
       const account = await store.accounts.findAccountById(claims.sub);
       const session = await store.sessions.findSession(claims.sid);
@@ -18,7 +19,13 @@ export class AuthenticateAccessUseCase {
         throw new AuthError('INVALID_TOKEN', 'Session is no longer active');
       }
       account.assertCanAuthenticate();
-      return { ...account.publicProfile(), sessionId: claims.sid };
+      return {
+        ...account.publicProfile(),
+        sessionId: claims.sid,
+        // Roles are transport authorization metadata. Account roles are not
+        // modelled yet, so every authenticated account has the base role.
+        roles: ['user'],
+      };
     });
   }
 }

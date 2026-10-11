@@ -1,15 +1,20 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { AuthenticateAccessUseCase } from '../../application/use-cases/authenticate-access.use-case';
-import { isTokenClaims } from './jwt-auth-tokens.adapter';
+import {
+  ACCESS_TOKEN_VALIDATOR,
+  type AccessTokenValidator,
+} from '../../shared-kernel/application/access-token-validator.port';
+import type { AccessTokenClaims } from '../../shared-kernel/application/token-claims';
+import { isTokenClaims } from './jwt-tokens.service';
 
 @Injectable()
 export class AccessTokenStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
     config: ConfigService,
-    private readonly authenticateAccess: AuthenticateAccessUseCase,
+    @Inject(ACCESS_TOKEN_VALIDATOR)
+    private readonly accessTokenValidator: AccessTokenValidator,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -21,9 +26,10 @@ export class AccessTokenStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  validate(payload: unknown) {
-    if (!isTokenClaims(payload, 'access'))
+  async validate(payload: unknown) {
+    if (!isTokenClaims(payload, 'access')) {
       throw new UnauthorizedException('Invalid access token');
-    return this.authenticateAccess.execute(payload);
+    }
+    return this.accessTokenValidator.execute(payload as AccessTokenClaims);
   }
 }

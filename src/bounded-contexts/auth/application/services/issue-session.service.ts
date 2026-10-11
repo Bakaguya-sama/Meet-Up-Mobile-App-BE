@@ -1,5 +1,6 @@
 import { UserAccount } from '../../domain/aggregates/user-account.aggregate';
 import { UserSession } from '../../domain/aggregates/user-session.aggregate';
+import { AuthError } from '../../domain/errors/auth.error';
 import type { AuthTransaction } from '../ports/auth-unit-of-work.port';
 import type { AuthTokens } from '../ports/auth-tokens.port';
 import type { AuthResultDto } from '../dto/auth-response.dto';
@@ -18,6 +19,9 @@ export class IssueSession {
     const id = this.tokens.newId();
     const pair = await this.tokens.issue(account.snapshot().id, id);
     const claims = await this.tokens.verifyRefresh(pair.refreshToken);
+    if (!claims) {
+      throw new AuthError('INVALID_TOKEN', 'Issued refresh token is invalid');
+    }
     const previous = parent?.snapshot();
     const session = new UserSession({
       id,

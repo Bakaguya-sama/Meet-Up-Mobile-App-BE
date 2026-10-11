@@ -10,6 +10,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { configureApp } from '../src/configure-app';
 import { AccessTokenGuard } from '../src/presentation/http/guards/access-token.guard';
+import { RolesGuard } from '../src/presentation/http/guards/roles.guard';
 import { PrivacyController } from '../src/bounded-contexts/auth/presentation/http/privacy.controller';
 import { GetPrivacySettingsUseCase } from '../src/bounded-contexts/auth/application/use-cases/get-privacy-settings.use-case';
 import { SavePrivacySettingsUseCase } from '../src/bounded-contexts/auth/application/use-cases/save-privacy-settings.use-case';
@@ -91,6 +92,8 @@ describe('Location privacy HTTP contract', () => {
           return true;
         },
       })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
       .compile();
     app = fixture.createNestApplication();
     configureApp(app);

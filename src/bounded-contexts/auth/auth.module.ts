@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './presentation/http/auth.controller';
 import { AccessTokenGuard } from '../../presentation/http/guards/access-token.guard';
-import { AccessTokenStrategy } from './infrastructure/adapters/access-token.strategy';
+import { RolesGuard } from '../../presentation/http/guards/roles.guard';
+import { AccessTokenStrategy } from '../../infrastructure/jwt/access-token.strategy';
+import { JwtTokens } from '../../infrastructure/jwt/jwt-tokens.service';
+import { JwtInfrastructureModule } from '../../infrastructure/jwt/jwt-infrastructure.module';
+import { ACCESS_TOKEN_VALIDATOR } from '../../shared-kernel/application/access-token-validator.port';
 import { GoogleStrategy } from './infrastructure/adapters/google.strategy';
-import { JwtTokens } from './infrastructure/adapters/jwt-auth-tokens.adapter';
 import { AUTH_TOKENS } from './application/ports/auth-tokens.port';
 import type { AuthTokens } from './application/ports/auth-tokens.port';
 import { AUTH_UNIT_OF_WORK } from './application/ports/auth-unit-of-work.port';
@@ -44,8 +45,7 @@ import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.ada
 @Module({
   imports: [
     TypeOrmModule.forFeature(authEntities),
-    JwtModule.register({}),
-    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtInfrastructureModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
   ],
   controllers: [AuthController, PrivacyController],
@@ -141,6 +141,7 @@ import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.ada
       useFactory: (uow: AuthUnitOfWork) => new AuthenticateAccessUseCase(uow),
       inject: [AUTH_UNIT_OF_WORK],
     },
+    { provide: ACCESS_TOKEN_VALIDATOR, useExisting: AuthenticateAccessUseCase },
     {
       provide: SaveUserPreferenceUseCase,
       useFactory: (uow: AuthUnitOfWork) => new SaveUserPreferenceUseCase(uow),
@@ -164,13 +165,13 @@ import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.ada
     AccessTokenStrategy,
     GoogleStrategy,
     AccessTokenGuard,
+    RolesGuard,
   ],
   exports: [
     LocationPrivacyReader,
     UserDirectory,
     AccessTokenGuard,
-    AuthenticateAccessUseCase,
-    PassportModule,
+    RolesGuard,
     UpdateProfileUseCase,
     SaveUserPreferenceUseCase,
     GetUserPreferenceUseCase,

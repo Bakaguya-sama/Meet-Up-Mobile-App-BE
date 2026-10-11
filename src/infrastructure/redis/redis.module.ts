@@ -14,8 +14,12 @@ import { RedisService } from './redis.service';
         new Redis(config.getOrThrow<string>('redis.url'), {
           lazyConnect: true,
           connectTimeout: 5_000,
+          commandTimeout: 5_000,
           maxRetriesPerRequest: 1,
+          enableOfflineQueue: false,
           enableReadyCheck: true,
+          retryStrategy: (attempt) =>
+            attempt <= 3 ? Math.min(attempt * 200, 1_000) : null,
         }),
     },
     RedisService,

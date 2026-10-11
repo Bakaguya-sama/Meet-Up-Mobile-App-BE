@@ -1,11 +1,8 @@
 ﻿export const AUTH_TOKENS = Symbol('AUTH_TOKENS');
 
-export interface TokenClaims {
-  sub: string;
-  sid: string;
-  type: 'access' | 'refresh';
-  exp: number;
-}
+import type { SessionTokenClaims } from '../../../../shared-kernel/application/token-claims';
+
+export type TokenClaims = SessionTokenClaims;
 
 export interface TokenPair {
   accessToken: string;
@@ -18,6 +15,6 @@ export interface TokenPair {
 export interface AuthTokens {
   newId(): string;
   issue(userId: string, sessionId: string): Promise<TokenPair>;
-  verifyRefresh(token: string): Promise<TokenClaims>;
+  verifyRefresh(token: string): Promise<TokenClaims | null>;
   hashRefresh(token: string): string;
 }

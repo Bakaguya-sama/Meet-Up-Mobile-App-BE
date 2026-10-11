@@ -8,7 +8,6 @@ import {
   Param,
   ParseUUIDPipe,
   Put,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -24,8 +23,10 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import type { Request } from 'express';
 import { AccessTokenGuard } from '../../../../presentation/http/guards/access-token.guard';
+import { RolesGuard } from '../../../../presentation/http/guards/roles.guard';
+import { CurrentUser } from '../../../../presentation/http/decorators/current-user.decorator';
+import { Roles } from '../../../../presentation/http/decorators/roles.decorator';
 import { SavePrivacySettingsRequest } from '../../application/dto/privacy-settings.dto';
 import { GetPrivacySettingsUseCase } from '../../application/use-cases/get-privacy-settings.use-case';
 import { SavePrivacySettingsUseCase } from '../../application/use-cases/save-privacy-settings.use-case';
@@ -40,7 +41,8 @@ import {
 @ApiUnauthorizedResponse({ description: 'Invalid or missing access token' })
 @ApiForbiddenResponse({ description: 'Account is locked' })
 @ApiNotFoundResponse({ description: 'Account is unavailable' })
-@UseGuards(AccessTokenGuard)
+@UseGuards(AccessTokenGuard, RolesGuard)
+@Roles('user')
 @Controller('auth/privacy')
 export class PrivacyController {
   constructor(
@@ -55,8 +57,8 @@ export class PrivacyController {
     summary: 'Read your location privacy settings (defaults to off)',
   })
   @ApiOkResponse({ schema: privacySettingsSchema })
-  get(@Req() req: Request & { user: { id: string } }) {
-    return this.getSettings.execute(req.user.id);
+  get(@CurrentUser('id') userId: string) {
+    return this.getSettings.execute(userId);
   }
 
   @Put()
@@ -68,10 +70,10 @@ export class PrivacyController {
     description: 'Invalid mode, expiry, selection or input fields',
   })
   save(
-    @Req() req: Request & { user: { id: string } },
+    @CurrentUser('id') userId: string,
     @Body() input: SavePrivacySettingsRequest,
   ) {
-    return this.saveSettings.execute(req.user.id, input);
+    return this.saveSettings.execute(userId, input);
   }
 
   @Delete('selected-friends/:friendId')
@@ -86,11 +88,11 @@ export class PrivacyController {
   @ApiNoContentResponse({ description: 'Friend removed (or was not in list)' })
   @ApiBadRequestResponse({ description: 'friendId is not a valid UUID' })
   async deleteSelectedFriend(
-    @Req() req: Request & { user: { id: string } },
+    @CurrentUser('id') userId: string,
     @Param('friendId', new ParseUUIDPipe()) friendId: string,
   ) {
     await this.removeSelectedFriend.execute({
-      ownerId: req.user.id,
+      ownerId: userId,
       selectedFriendId: friendId,
     });
   }

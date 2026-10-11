@@ -14,7 +14,9 @@ export class RedisService
   constructor(@Inject(REDIS_CLIENT) private readonly client: Redis) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.client.connect();
+    if (this.client.status === 'wait') {
+      await this.client.connect();
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {
