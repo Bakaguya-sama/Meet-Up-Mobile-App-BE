@@ -112,8 +112,10 @@
 
     Indexes {
       (user_a_id, user_b_id) [unique]
+      (user_a_id, status)
       (user_b_id, status)
     }
+    Note: 'CHECK user_a_id < user_b_id; requested_by_id must belong to the pair. Pending has no responded_at; terminal states require responded_at. BE-03 does not reopen rejected requests.'
   }
 
   Table user_preferences {
@@ -145,9 +147,12 @@
   Table privacy_settings {
     id uuid [pk]
     user_id uuid [not null, unique]
-    is_location_sharing_enabled boolean [not null, default: false]
+    sharing_mode varchar(30) [not null, default: 'off', note: 'off, friends, selected_friends, meetup_only']
+    is_location_sharing_enabled boolean [not null, default: false, note: 'Configured flag = sharing_mode != off. Effective access also checks expiry.']
+    sharing_expires_at timestamptz [note: 'Null = no time limit; required null when off.']
     use_approximate_location boolean [not null, default: false]
     nearby_feature_enabled boolean [not null, default: false]
+    selected_friend_ids uuid[] [not null, note: 'Empty unless selected_friends; 1..100 unique other account IDs. Accepted friendship rechecked on every access.']
     updated_at timestamptz [not null]
   }
 

@@ -7,6 +7,33 @@ const environmentSchema = Joi.object({
   PORT: Joi.number().port().default(3000),
   API_PREFIX: Joi.string().default('api/v1'),
   SWAGGER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
+  JWT_ACCESS_SECRET: Joi.string()
+    .min(32)
+    .invalid('replace-with-a-long-random-secret')
+    .when('NODE_ENV', {
+      is: 'test',
+      then: Joi.optional(),
+      otherwise: Joi.required(),
+    }),
+  JWT_REFRESH_SECRET: Joi.string()
+    .min(32)
+    .invalid(
+      Joi.ref('JWT_ACCESS_SECRET'),
+      'replace-with-a-different-long-random-secret',
+    )
+    .when('NODE_ENV', {
+      is: 'test',
+      then: Joi.optional(),
+      otherwise: Joi.required(),
+    }),
+  JWT_ACCESS_TTL_SECONDS: Joi.number().integer().min(60).max(3600).default(900),
+  JWT_REFRESH_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(3600)
+    .max(7776000)
+    .default(2592000),
+  JWT_ISSUER: Joi.string().default('meetup-api'),
+  JWT_AUDIENCE: Joi.string().default('meetup-mobile'),
   DATABASE_URL: Joi.when('NODE_ENV', {
     is: 'test',
     then: Joi.string().allow('').optional(),
