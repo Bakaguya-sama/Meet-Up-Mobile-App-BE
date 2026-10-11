@@ -34,6 +34,21 @@ const environmentSchema = Joi.object({
     .default(2592000),
   JWT_ISSUER: Joi.string().default('meetup-api'),
   JWT_AUDIENCE: Joi.string().default('meetup-mobile'),
+  GOOGLE_CLIENT_ID: Joi.when('NODE_ENV', {
+    is: 'test',
+    then: Joi.string().allow('').optional(),
+    otherwise: Joi.string().min(1).required(),
+  }),
+  GOOGLE_CLIENT_SECRET: Joi.when('NODE_ENV', {
+    is: 'test',
+    then: Joi.string().allow('').optional(),
+    otherwise: Joi.string().min(1).required(),
+  }),
+  GOOGLE_CALLBACK_URL: Joi.when('NODE_ENV', {
+    is: 'test',
+    then: Joi.string().allow('').optional(),
+    otherwise: Joi.string().uri().required(),
+  }),
   DATABASE_URL: Joi.when('NODE_ENV', {
     is: 'test',
     then: Joi.string().allow('').optional(),

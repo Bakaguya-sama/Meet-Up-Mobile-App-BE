@@ -11,6 +11,7 @@ import type { App } from 'supertest/types';
 import { configureApp } from '../src/configure-app';
 import { FriendsController } from '../src/bounded-contexts/friends/presentation/http/friends.controller';
 import { AccessTokenGuard } from '../src/presentation/http/guards/access-token.guard';
+import { RolesGuard } from '../src/presentation/http/guards/roles.guard';
 import { SendFriendRequestUseCase } from '../src/bounded-contexts/friends/application/use-cases/send-friend-request.use-case';
 import { RespondFriendRequestUseCase } from '../src/bounded-contexts/friends/application/use-cases/respond-friend-request.use-case';
 import { UnfriendUseCase } from '../src/bounded-contexts/friends/application/use-cases/unfriend.use-case';
@@ -60,7 +61,7 @@ describe('Friends HTTP contract', () => {
         {
           provide: UnfriendUseCase,
           useValue: new UnfriendUseCase(store, {
-            purge: () => Promise.resolve(),
+            removeFromOwnerSelection: () => Promise.resolve(),
           }),
         },
         {
@@ -86,6 +87,8 @@ describe('Friends HTTP contract', () => {
           return true;
         },
       })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
       .compile();
     app = fixture.createNestApplication();
     configureApp(app);

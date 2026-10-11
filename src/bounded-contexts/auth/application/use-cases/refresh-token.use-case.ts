@@ -13,6 +13,9 @@ export class RefreshTokenUseCase {
 
   async execute(refreshToken: string): Promise<AuthResultDto> {
     const claims = await this.tokens.verifyRefresh(refreshToken);
+    if (!claims) {
+      throw new AuthError('INVALID_TOKEN', 'Invalid refresh token');
+    }
     const result = await this.uow.run(async (store) => {
       const account = await store.accounts.lockAccount(claims.sub);
       const session = await store.sessions.findSession(claims.sid);

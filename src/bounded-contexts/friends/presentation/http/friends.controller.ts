@@ -9,7 +9,6 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -27,8 +26,10 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import type { Request } from 'express';
 import { AccessTokenGuard } from '../../../../presentation/http/guards/access-token.guard';
+import { RolesGuard } from '../../../../presentation/http/guards/roles.guard';
+import { CurrentUser } from '../../../../presentation/http/decorators/current-user.decorator';
+import { Roles } from '../../../../presentation/http/decorators/roles.decorator';
 import {
   FriendPageRequest,
   ListFriendRequestsRequest,
@@ -48,8 +49,6 @@ import {
   sendFriendRequestSchema,
 } from './friends.openapi';
 
-type AuthenticatedRequest = Request & { user: { id: string } };
-
 @ApiTags('Friends')
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({
@@ -59,7 +58,8 @@ type AuthenticatedRequest = Request & { user: { id: string } };
   description: 'Account locked or actor is not the recipient',
 })
 @ApiBadRequestResponse({ description: 'Invalid input or self-friendship' })
-@UseGuards(AccessTokenGuard)
+@UseGuards(AccessTokenGuard, RolesGuard)
+@Roles('user')
 @Controller('friends')
 export class FriendsController {
   constructor(
@@ -80,11 +80,11 @@ export class FriendsController {
   })
   @ApiOkResponse({ schema: searchPageSchema })
   search(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') actorId: string,
     @Query() query: SearchFriendsRequest,
   ) {
     return this.searchUsers.execute({
-      actorId: req.user.id,
+      actorId,
       query: query.q,
       offset: query.offset,
       limit: query.limit,
@@ -96,9 +96,9 @@ export class FriendsController {
   @ApiOperation({ summary: 'List accepted friendships' })
   @ApiFriendPage()
   @ApiOkResponse({ schema: friendshipPageSchema })
-  list(@Req() req: AuthenticatedRequest, @Query() query: FriendPageRequest) {
+  list(@CurrentUser('id') actorId: string, @Query() query: FriendPageRequest) {
     return this.listFriendships.execute({
-      actorId: req.user.id,
+      actorId,
       kind: 'accepted',
       ...query,
     });
@@ -116,11 +116,11 @@ export class FriendsController {
   })
   @ApiOkResponse({ schema: friendshipPageSchema })
   requests(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') actorId: string,
     @Query() query: ListFriendRequestsRequest,
   ) {
     return this.listFriendships.execute({
-      actorId: req.user.id,
+      actorId,
       kind: query.direction,
       offset: query.offset,
       limit: query.limit,
@@ -136,9 +136,9 @@ export class FriendsController {
   @ApiConflictResponse({
     description: 'This pair already has a friendship or request',
   })
-  send(@Req() req: AuthenticatedRequest, @Body() input: SendFriendRequest) {
+  send(@CurrentUser('id') actorId: string, @Body() input: SendFriendRequest) {
     return this.sendRequest.execute({
-      actorId: req.user.id,
+      actorId,
       recipientId: input.recipientId,
     });
   }
@@ -153,11 +153,11 @@ export class FriendsController {
   })
   @ApiConflictResponse({ description: 'Request is no longer pending' })
   accept(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') actorId: string,
     @Param('requestId', new ParseUUIDPipe()) requestId: string,
   ) {
     return this.respondRequest.execute({
-      actorId: req.user.id,
+      actorId,
       requestId,
       decision: 'accepted',
     });
@@ -173,11 +173,11 @@ export class FriendsController {
   })
   @ApiConflictResponse({ description: 'Request is no longer pending' })
   reject(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') actorId: string,
     @Param('requestId', new ParseUUIDPipe()) requestId: string,
   ) {
     return this.respondRequest.execute({
-      actorId: req.user.id,
+      actorId,
       requestId,
       decision: 'rejected',
     });
@@ -197,11 +197,11 @@ export class FriendsController {
   })
   @ApiForbiddenResponse({ description: 'Actor is not part of this friendship' })
   async unfriend(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser('id') actorId: string,
     @Param('friendshipId', new ParseUUIDPipe()) friendshipId: string,
   ) {
     await this.unfriendUseCase.execute({
-      actorId: req.user.id,
+      actorId,
       requestId: friendshipId,
     });
   }

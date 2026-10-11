@@ -286,6 +286,14 @@ Với context nhỏ, có thể bỏ thư mục con chưa dùng, nhưng không đ
 | `infrastructure/realtime/` | Cấu hình Socket.IO, room transport và publisher dùng chung; không quyết định ai được nhận event. |
 | `presentation/http/controllers/health.controller.ts` | Endpoint cấp hệ thống, không thuộc một bounded context cụ thể. |
 
+JWT dùng `infrastructure/jwt/` cho việc ký, xác minh và Passport strategy. Sau khi token hợp lệ về mặt kỹ thuật, strategy gọi `AccessTokenValidator` là port dùng chung; Auth hiện thực port này để kiểm tra session và trạng thái tài khoản. Vì vậy JWT infrastructure không phụ thuộc vào use case hoặc persistence của Auth.
+
+Các concern HTTP dùng chung nằm tại `presentation/http`:
+
+- `@Public()` đánh dấu endpoint không cần access token.
+- `@CurrentUser()` lấy danh tính đã được strategy xác thực; controller không đọc trực tiếp `Request.user`.
+- `@Roles(...)` khai báo role cần thiết và phải đi cùng `RolesGuard`. Role là authorization ở transport, không thay thế authorization nghiệp vụ trong use case/aggregate.
+
 #### TypeORM persistence
 
 | File | Trách nhiệm | Không được làm |

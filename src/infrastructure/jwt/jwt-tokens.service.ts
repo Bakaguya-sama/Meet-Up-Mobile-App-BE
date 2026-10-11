@@ -2,21 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { createHash, randomUUID } from 'node:crypto';
-import type {
-  AuthTokens,
-  TokenClaims,
-  TokenPair,
-} from '../../application/ports/auth-tokens.port';
-import { AuthError } from '../../domain/errors/auth.error';
+import type { SessionTokenClaims } from '../../shared-kernel/application/token-claims';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isTokenClaims(
   value: unknown,
   type: 'access' | 'refresh',
-): value is TokenClaims {
+): value is SessionTokenClaims {
   if (!value || typeof value !== 'object') return false;
-  const claims = value as Partial<TokenClaims>;
+  const claims = value as Partial<SessionTokenClaims>;
   return (
     claims.type === type &&
     typeof claims.sub === 'string' &&
@@ -30,7 +25,7 @@ export function isTokenClaims(
 }
 
 @Injectable()
-export class JwtTokens implements AuthTokens {
+export class JwtTokens {
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
@@ -40,7 +35,7 @@ export class JwtTokens implements AuthTokens {
     return randomUUID();
   }
 
-  async issue(userId: string, sessionId: string): Promise<TokenPair> {
+  async issue(userId: string, sessionId: string) {
     const expiresIn = this.config.getOrThrow<number>('auth.accessTtlSeconds');
     const refreshExpiresIn = this.config.getOrThrow<number>(
       'auth.refreshTtlSeconds',
@@ -71,13 +66,13 @@ export class JwtTokens implements AuthTokens {
     return {
       accessToken,
       refreshToken,
-      tokenType: 'Bearer',
+      tokenType: 'Bearer' as const,
       expiresIn,
       refreshExpiresIn,
     };
   }
 
-  async verifyRefresh(token: string): Promise<TokenClaims> {
+  async verifyRefresh(token: string): Promise<SessionTokenClaims | null> {
     try {
       const claims: unknown = await this.jwt.verifyAsync(token, {
         secret: this.config.getOrThrow<string>('auth.refreshSecret'),
@@ -85,10 +80,9 @@ export class JwtTokens implements AuthTokens {
         issuer: this.config.getOrThrow<string>('auth.issuer'),
         audience: this.config.getOrThrow<string>('auth.audience'),
       });
-      if (!isTokenClaims(claims, 'refresh')) throw new Error('Invalid claims');
-      return claims;
+      return isTokenClaims(claims, 'refresh') ? claims : null;
     } catch {
-      throw new AuthError('INVALID_TOKEN', 'Invalid or expired refresh token');
+      return null;
     }
   }
 

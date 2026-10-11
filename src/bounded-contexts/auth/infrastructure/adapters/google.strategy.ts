@@ -32,8 +32,15 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
         .join(' ') ||
       profile.displayName ||
       email;
+    const profileJson = profile._json as {
+      email_verified?: boolean;
+      verified_email?: boolean;
+    };
     done(null, {
       email,
+      providerAccountId: profile.id,
+      emailVerified:
+        profileJson.email_verified === true || profileJson.verified_email === true,
       displayName,
       avatarUrl: profile.photos?.[0]?.value,
     });

@@ -95,4 +95,35 @@ describe('PrivacySettings', () => {
       ),
     ).toThrow('Selected friends are required only for selected_friends mode');
   });
+
+  it('removes a selected viewer and applies the empty-audience policy', () => {
+    const settings = PrivacySettings.configure(
+      {
+        ...base,
+        sharingMode: 'selected_friends',
+        selectedFriendIds: ['VIEWER'],
+      },
+      now,
+    );
+    const updatedAt = new Date(now.getTime() + 1000);
+
+    settings.removeSelectedFriend('viewer', updatedAt);
+
+    expect(settings.snapshot()).toMatchObject({
+      sharingMode: 'friends',
+      selectedFriendIds: [],
+      updatedAt,
+    });
+  });
+
+  it('does not change settings when the viewer is already absent', () => {
+    const settings = PrivacySettings.configure(
+      { ...base, sharingMode: 'friends' },
+      now,
+    );
+
+    settings.removeSelectedFriend('viewer', new Date(now.getTime() + 1000));
+
+    expect(settings.snapshot().updatedAt).toEqual(now);
+  });
 });

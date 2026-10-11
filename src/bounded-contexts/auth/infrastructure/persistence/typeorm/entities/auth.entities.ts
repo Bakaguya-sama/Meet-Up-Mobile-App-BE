@@ -4,6 +4,7 @@ import { UserPreferenceEntity } from './user-preference.typeorm-entity';
 import { UserPreferenceTagEntity } from './user-preference-tag.typeorm-entity';
 import { UserSessionEntity } from './user-session.typeorm-entity';
 import { PrivacySettingsEntity } from './privacy-settings.typeorm-entity';
+import { OAuthIdentityEntity } from './oauth-identity.typeorm-entity';
 
 export const authEntities = [
   PrivacySettingsEntity,
@@ -12,4 +13,5 @@ export const authEntities = [
   ActivityTagEntity,
   UserPreferenceEntity,
   UserPreferenceTagEntity,
+  OAuthIdentityEntity,
 ];

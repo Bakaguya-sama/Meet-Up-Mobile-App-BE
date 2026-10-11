@@ -10,6 +10,9 @@ export class LogoutAccountUseCase {
 
   async execute(refreshToken: string): Promise<void> {
     const claims = await this.tokens.verifyRefresh(refreshToken);
+    if (!claims) {
+      throw new AuthError('INVALID_TOKEN', 'Invalid refresh token');
+    }
     await this.uow.run(async (store) => {
       await store.accounts.lockAccount(claims.sub);
       const session = await store.sessions.findSession(claims.sid);

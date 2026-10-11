@@ -1,5 +1,6 @@
 import { GetPrivacySettingsUseCase } from './get-privacy-settings.use-case';
 import { SavePrivacySettingsUseCase } from './save-privacy-settings.use-case';
+import { RemoveSelectedFriendUseCase } from './remove-selected-friend.use-case';
 import type { PrivacySettingsStorePort } from '../ports/persistence/privacy-settings-store.port';
 import type { UserDirectory } from '../public/user-directory';
 import { PrivacySettings } from '../../domain/aggregates/privacy-settings.aggregate';
@@ -10,6 +11,7 @@ describe('Privacy settings use cases', () => {
   let users: jest.Mocked<UserDirectory>;
   let get: GetPrivacySettingsUseCase;
   let save: SavePrivacySettingsUseCase;
+  let removeSelected: RemoveSelectedFriendUseCase;
   const input: SavePrivacySettingsRequest = {
     sharingMode: 'friends',
     sharingExpiresAt: null,
@@ -26,6 +28,10 @@ describe('Privacy settings use cases', () => {
         saved = settings;
         return Promise.resolve();
       }),
+      updateLocked: jest.fn((_: string, change: (settings: PrivacySettings) => void) => {
+        if (saved) change(saved);
+        return Promise.resolve();
+      }),
     };
     users = {
       search: jest.fn(),
@@ -37,6 +43,7 @@ describe('Privacy settings use cases', () => {
     };
     get = new GetPrivacySettingsUseCase(store, users);
     save = new SavePrivacySettingsUseCase(store, users, get);
+    removeSelected = new RemoveSelectedFriendUseCase(store);
   });
 
   it('returns disabled defaults without writing a row', async () => {
@@ -85,5 +92,24 @@ describe('Privacy settings use cases', () => {
       code: 'ACCOUNT_NOT_FOUND',
     });
     expect(store.save.mock.calls).toHaveLength(0);
+  });
+
+  it('removes a selected viewer only from the specified owner', async () => {
+    await save.execute('owner', {
+      ...input,
+      sharingMode: 'selected_friends',
+      selectedFriendIds: ['viewer'],
+    });
+
+    await removeSelected.execute({
+      ownerId: 'owner',
+      selectedFriendId: 'viewer',
+    });
+
+    expect(await get.execute('owner')).toMatchObject({
+      sharingMode: 'friends',
+      selectedFriendIds: [],
+    });
+    expect(store.findByUserId).toHaveBeenLastCalledWith('owner');
   });
 });

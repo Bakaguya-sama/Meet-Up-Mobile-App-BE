@@ -5,7 +5,6 @@ import {
   Param,
   ParseUUIDPipe,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -18,14 +17,17 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import type { Request } from 'express';
 import { AccessTokenGuard } from '../../../../presentation/http/guards/access-token.guard';
+import { RolesGuard } from '../../../../presentation/http/guards/roles.guard';
+import { CurrentUser } from '../../../../presentation/http/decorators/current-user.decorator';
+import { Roles } from '../../../../presentation/http/decorators/roles.decorator';
 import { LocationAccessService } from '../../application/services/location-access.service';
 import { LocationPermissionRequest } from '../../application/dto/location-permission.dto';
 
 @ApiTags('Location privacy')
 @ApiBearerAuth()
-@UseGuards(AccessTokenGuard)
+@UseGuards(AccessTokenGuard, RolesGuard)
+@Roles('user')
 @Controller('locations/permissions')
 export class LocationPermissionController {
   constructor(private readonly access: LocationAccessService) {}
@@ -64,13 +66,13 @@ export class LocationPermissionController {
   @ApiForbiddenResponse({ description: 'Account locked' })
   @ApiBadRequestResponse({ description: 'Invalid UUID, scope or query fields' })
   check(
-    @Req() req: Request & { user: { id: string } },
+    @CurrentUser('id') viewerId: string,
     @Param('ownerId', new ParseUUIDPipe()) ownerId: string,
     @Query() input: LocationPermissionRequest,
   ) {
     return this.access.checkRead({
       ownerId,
-      viewerId: req.user.id,
+      viewerId,
       scope: input.scope,
       meetupId: input.meetupId,
     });

@@ -2,7 +2,7 @@ import { AuthError } from '../../domain/errors/auth.error';
 import type { AuthUnitOfWork } from '../ports/auth-unit-of-work.port';
 import type { PreferenceTagItemRequest } from '../dto/auth-request.dto';
 import type { UserProfileDto } from '../dto/auth-response.dto';
-import { SaveUserPreferenceUseCase } from './save-user-preference.use-case';
+import { saveUserPreferenceInTransaction } from './save-user-preference.use-case';
 
 export interface UpdateProfileInput {
   userId: string;
@@ -12,13 +12,10 @@ export interface UpdateProfileInput {
 }
 
 export class UpdateProfileUseCase {
-  constructor(
-    private readonly uow: AuthUnitOfWork,
-    private readonly savePreferences?: SaveUserPreferenceUseCase,
-  ) {}
+  constructor(private readonly uow: AuthUnitOfWork) {}
 
   async execute(input: UpdateProfileInput): Promise<UserProfileDto> {
-    const profile = await this.uow.run(async (store) => {
+    return this.uow.run(async (store) => {
       const account = await store.accounts.findAccountById(input.userId);
       if (!account) {
         throw new AuthError('ACCOUNT_NOT_FOUND', 'User account not found');
@@ -36,20 +33,18 @@ export class UpdateProfileUseCase {
         await store.accounts.saveAccount(account);
       }
 
-      return account.publicProfile();
+      const profile = account.publicProfile();
+      if (input.preferences) {
+        const prefResult = await saveUserPreferenceInTransaction(store, {
+          userId: input.userId,
+          tags: input.preferences,
+        });
+        return {
+          ...profile,
+          preferences: prefResult,
+        };
+      }
+      return profile;
     });
-
-    if (input.preferences && this.savePreferences) {
-      const prefResult = await this.savePreferences.execute({
-        userId: input.userId,
-        tags: input.preferences,
-      });
-      return {
-        ...profile,
-        preferences: prefResult,
-      };
-    }
-
-    return profile;
   }
 }

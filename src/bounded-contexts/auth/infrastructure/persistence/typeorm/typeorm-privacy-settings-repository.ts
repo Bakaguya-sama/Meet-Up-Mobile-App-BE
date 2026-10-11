@@ -49,27 +49,33 @@ export class TypeOrmPrivacySettingsRepository implements PrivacySettingsStorePor
       .execute();
   }
 
-  async removeFromSelected(removedId: string): Promise<void> {
-    // Remove the UUID from the array, then if mode is selected_friends and
-    // the list is now empty, downgrade to 'friends' + clear the computed flag.
-    await this.database.query(
-      `UPDATE privacy_settings
-       SET selected_friend_ids = array_remove(selected_friend_ids, $1::uuid),
-           sharing_mode = CASE
-             WHEN sharing_mode = 'selected_friends'
-               AND cardinality(array_remove(selected_friend_ids, $1::uuid)) = 0
-             THEN 'friends'
-             ELSE sharing_mode
-           END,
-           is_location_sharing_enabled = CASE
-             WHEN sharing_mode = 'selected_friends'
-               AND cardinality(array_remove(selected_friend_ids, $1::uuid)) = 0
-             THEN (sharing_mode <> 'off')
-             ELSE is_location_sharing_enabled
-           END,
-           updated_at = NOW()
-       WHERE $1::uuid = ANY(selected_friend_ids)`,
-      [removedId],
-    );
+  async updateLocked(
+    userId: string,
+    change: (settings: PrivacySettings) => void,
+  ): Promise<void> {
+    await this.database.transaction(async (manager) => {
+      const row = await manager.findOne(PrivacySettingsEntity, {
+        where: { userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!row) return;
+
+      const settings = PrivacySettings.restore({
+        id: row.id,
+        userId: row.userId,
+        sharingMode: row.sharingMode,
+        sharingExpiresAt: row.sharingExpiresAt,
+        useApproximateLocation: row.useApproximateLocation,
+        nearbyFeatureEnabled: row.nearbyFeatureEnabled,
+        selectedFriendIds: row.selectedFriendIds,
+        updatedAt: row.updatedAt,
+      });
+      change(settings);
+      const state = settings.snapshot();
+      await manager.save(PrivacySettingsEntity, {
+        ...state,
+        isLocationSharingEnabled: state.sharingMode !== 'off',
+      });
+    });
   }
 }

@@ -10,6 +10,7 @@ Tất cả endpoint yêu cầu Bearer access token và trả `Cache-Control: no-
 |---|---|---|
 | GET | `/api/v1/auth/privacy` | Cài đặt của chính actor; chưa có bản ghi thì mặc định tắt |
 | PUT | `/api/v1/auth/privacy` | Thay thế toàn bộ cài đặt của chính actor |
+| DELETE | `/api/v1/auth/privacy/selected-friends/:friendId` | Bỏ một người khỏi `selectedFriendIds` của chính actor |
 | GET | `/api/v1/locations/permissions/:ownerId` | Actor hiện tại có được xem vị trí của owner trong scope yêu cầu không |
 
 Ví dụ PUT:
@@ -25,6 +26,8 @@ Ví dụ PUT:
 ```
 
 `sharingMode`, `sharingExpiresAt`, `useApproximateLocation` là bắt buộc. Hai trường còn lại mặc định `false` và `[]` mỗi lần PUT. Không dùng PUT như PATCH. `sharingExpiresAt` là timestamp ISO 8601 có timezone và ở tương lai, hoặc `null` để chia sẻ không giới hạn thời gian. Tắt chia sẻ yêu cầu thời hạn `null` và danh sách rỗng.
+
+DELETE chỉ thay đổi settings thuộc actor từ JWT, không được tác động danh sách của người dùng khác. Nếu bỏ người cuối cùng khi đang ở `selected_friends`, aggregate chuyển mode sang `friends` theo policy hiện tại; thao tác vẫn idempotent.
 
 GET/PUT trả các trường trên cùng `updatedAt` và `isLocationSharingEnabled` **hiệu lực tại thời điểm đọc**, tính cả thời hạn. Hết hạn không cần cron job để thu hồi quyền. Bật nearby không tự bật chia sẻ.
 
