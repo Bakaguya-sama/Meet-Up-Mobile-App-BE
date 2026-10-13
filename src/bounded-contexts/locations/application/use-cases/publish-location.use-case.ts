@@ -39,7 +39,7 @@ export class PublishLocationUseCase {
 
     validateLocationSample(sample, new Date());
     await this.access.requirePublish(input.ownerId, input.meetupId);
-    await this.locations.save(input.ownerId, sample);
+    await this.locations.save(input.ownerId, sample, input.meetupId);
 
     return { accepted: true, expiresInSeconds: 300 };
   }

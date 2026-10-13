@@ -40,12 +40,16 @@ describe('PublishLocationUseCase', () => {
       expiresInSeconds: 300,
     });
     expect(requirePublish).toHaveBeenCalledWith('owner-id', undefined);
-    expect(save).toHaveBeenCalledWith('owner-id', {
-      latitude: input.latitude,
-      longitude: input.longitude,
-      accuracy: input.accuracy,
-      recordedAt: new Date(input.recordedAt),
-    });
+    expect(save).toHaveBeenCalledWith(
+      'owner-id',
+      {
+        latitude: input.latitude,
+        longitude: input.longitude,
+        accuracy: input.accuracy,
+        recordedAt: new Date(input.recordedAt),
+      },
+      undefined,
+    );
   });
 
   it('rejects stale data before it can be persisted', async () => {

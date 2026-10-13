@@ -9,9 +9,13 @@ const LOCATION_TTL_SECONDS = 300;
 export class RedisLocationAdapter implements LocationPort {
   constructor(private readonly redis: RedisService) {}
 
-  async save(ownerId: string, sample: LocationSample): Promise<void> {
+  async save(
+    ownerId: string,
+    sample: LocationSample,
+    meetupId?: string,
+  ): Promise<void> {
     await this.redis.set(
-      this.key(ownerId),
+      this.key(ownerId, meetupId),
       JSON.stringify({
         latitude: sample.latitude,
         longitude: sample.longitude,
@@ -22,8 +26,11 @@ export class RedisLocationAdapter implements LocationPort {
     );
   }
 
-  async get(ownerId: string): Promise<LocationSample | null> {
-    const value = await this.redis.get(this.key(ownerId));
+  async get(
+    ownerId: string,
+    meetupId?: string,
+  ): Promise<LocationSample | null> {
+    const value = await this.redis.get(this.key(ownerId, meetupId));
     if (!value) return null;
     try {
       const parsed = JSON.parse(value) as Record<string, unknown>;
@@ -33,7 +40,7 @@ export class RedisLocationAdapter implements LocationPort {
         typeof parsed.accuracy !== 'number' ||
         typeof parsed.recordedAt !== 'string'
       ) {
-        await this.remove(ownerId);
+        await this.remove(ownerId, meetupId);
         return null;
       }
       return {
@@ -43,16 +50,19 @@ export class RedisLocationAdapter implements LocationPort {
         recordedAt: new Date(parsed.recordedAt),
       };
     } catch {
-      await this.remove(ownerId);
+      await this.remove(ownerId, meetupId);
       return null;
     }
   }
 
-  async remove(ownerId: string): Promise<void> {
-    await this.redis.del(this.key(ownerId));
+  async remove(ownerId: string, meetupId?: string): Promise<void> {
+    await this.redis.del(this.key(ownerId, meetupId));
   }
 
-  private key(ownerId: string): string {
-    return `location:${ownerId.toLowerCase()}`;
+  private key(ownerId: string, meetupId?: string): string {
+    const normalizedOwnerId = ownerId.toLowerCase();
+    return meetupId
+      ? `meetup-location:${meetupId.toLowerCase()}:${normalizedOwnerId}`
+      : `location:${normalizedOwnerId}`;
   }
 }

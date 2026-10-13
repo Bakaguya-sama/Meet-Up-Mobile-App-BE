@@ -9,7 +9,10 @@ export class GetLatestLocationQuery {
   ) {}
 
   async execute(input: ReadLocationAccess) {
-    const sample = await this.locations.get(input.ownerId);
+    const sample = await this.locations.get(
+      input.ownerId,
+      input.scope === 'meetup' ? input.meetupId : undefined,
+    );
     if (!sample) return null;
     return this.access.projectForViewer(input, sample);
   }
