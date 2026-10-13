@@ -4,6 +4,10 @@ import type { MeetupLocationAccessPort } from '../../application/ports/location-
 /** Safe default until Meetups exposes accepted-membership and active-status contracts. */
 @Injectable()
 export class MeetupLocationAdapter implements MeetupLocationAccessPort {
+  canJoin(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+
   canPublish(): Promise<boolean> {
     return Promise.resolve(false);
   }

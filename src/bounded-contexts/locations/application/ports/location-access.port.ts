@@ -12,6 +12,7 @@ export interface LocationFriendshipsPort {
 
 /** Must be backed by Meetups' public API once that context exists. Never trust client flags. */
 export interface MeetupLocationAccessPort {
+  canJoin(userId: string, meetupId: string): Promise<boolean>;
   canPublish(userId: string, meetupId: string): Promise<boolean>;
   canRead(
     ownerId: string,

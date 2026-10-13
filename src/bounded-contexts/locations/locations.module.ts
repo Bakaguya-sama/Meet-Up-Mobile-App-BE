@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { AuthModule } from '../auth/auth.module';
 import { FriendsModule } from '../friends/friends.module';
 import {
@@ -24,9 +25,10 @@ import {
 import { RedisLocationAdapter } from './infrastructure/adapters/redis-location.adapter';
 import { LocationController } from './presentation/http/location.controller';
 import { LocationPermissionController } from './presentation/http/location-permission.controller';
+import { LocationGateway } from './presentation/websocket/location.gateway';
 
 @Module({
-  imports: [AuthModule, FriendsModule],
+  imports: [AuthModule, FriendsModule, RealtimeModule],
   controllers: [LocationController, LocationPermissionController],
   providers: [
     { provide: LOCATION_PRIVACY, useClass: AuthLocationPrivacyAdapter },
@@ -60,6 +62,7 @@ import { LocationPermissionController } from './presentation/http/location-permi
         new GetLatestLocationQuery(access, locations),
       inject: [LocationAccessService, LOCATION_STORE],
     },
+    LocationGateway,
   ],
   exports: [
     LocationAccessService,
