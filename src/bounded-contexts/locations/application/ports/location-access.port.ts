@@ -1,5 +1,6 @@
 export const LOCATION_PRIVACY = Symbol('LOCATION_PRIVACY');
 export const LOCATION_FRIENDSHIPS = Symbol('LOCATION_FRIENDSHIPS');
+export const MEETUP_LOCATION_ACCESS = Symbol('MEETUP_LOCATION_ACCESS');
 
 export interface LocationPrivacyPort {
   read(userId: string): Promise<LocationPrivacy | null>;

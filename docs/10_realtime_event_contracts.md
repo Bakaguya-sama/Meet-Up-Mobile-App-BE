@@ -48,3 +48,12 @@ Backend không phát URI deep-link. Mobile map `type` sang screen/router của c
 ## Firebase trong giai đoạn này
 
 `FIREBASE_ENABLED=false` là mặc định nên local development và contract test dùng `PushNotificationAdapter`, không cần service-account và không thể gửi push ra ngoài. Khi BE-07 hiện thực device-token store/FCM adapter, bật cờ này và cung cấp đủ `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` từ secret manager.
+
+## BE-05: latest location
+
+- Sample được nhận qua `PublishLocationUseCase`; REST `POST /api/v1/locations` chỉ là kênh kiểm thử trước khi BE-06 gọi cùng use case từ Socket `location:update`.
+- Server kiểm tra latitude/longitude hữu hạn và đúng biên, accuracy không âm/hữu hạn, `recordedAt` không ở tương lai và chưa quá 5 phút.
+- `LocationAccessService.requirePublish()` luôn chạy trước khi ghi, do đó privacy thay đổi có hiệu lực ở lần publish kế tiếp.
+- Chỉ Redis giữ exact latest sample tại `location:{ownerId}`, TTL 300 giây. PostgreSQL, outbox và log không có tọa độ.
+- Mỗi viewer phải lấy sample qua `GetLatestLocationQuery`, vốn gọi `projectForViewer()` riêng cho viewer đó. Khi BE-06 phát Socket, gateway phải lặp theo viewer được authorize; không được broadcast exact sample chung cho room.
+- Chưa có public contract của Meetups nên `MeetupLocationAdapter` từ chối toàn bộ read/publish có `meetupId`. Adapter này sẽ được thay bằng public membership/status adapter của BE-08.
