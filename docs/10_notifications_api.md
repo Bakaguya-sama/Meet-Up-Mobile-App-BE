@@ -1,4 +1,4 @@
-# BE-07 — Thiết bị và FCM
+# BE-07 — Thiết bị & FCM
 
 ## Bảo mật token
 
