@@ -37,6 +37,7 @@ describe('LocationAccessService', () => {
     privacy = { read: jest.fn(() => Promise.resolve({ ...settings })) };
     friendships = { areAccepted: jest.fn().mockResolvedValue(true) };
     meetups = {
+      canJoin: jest.fn().mockResolvedValue(true),
       canPublish: jest.fn().mockResolvedValue(true),
       canRead: jest.fn().mockResolvedValue(true),
     };

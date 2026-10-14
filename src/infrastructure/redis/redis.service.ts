@@ -28,4 +28,35 @@ export class RedisService
   get commandClient(): Redis {
     return this.client;
   }
+
+  async get(key: string): Promise<string | null> {
+    return this.client.get(key);
+  }
+
+  async set(key: string, value: string, ttl?: number): Promise<void> {
+    if (ttl) {
+      await this.client.setex(key, ttl, value);
+    } else {
+      await this.client.set(key, value);
+    }
+  }
+
+  async setIfAbsent(
+    key: string,
+    value: string,
+    ttlMilliseconds: number,
+  ): Promise<boolean> {
+    const result = await this.client.set(
+      key,
+      value,
+      'PX',
+      ttlMilliseconds,
+      'NX',
+    );
+    return result === 'OK';
+  }
+
+  async del(key: string): Promise<void> {
+    await this.client.del(key);
+  }
 }

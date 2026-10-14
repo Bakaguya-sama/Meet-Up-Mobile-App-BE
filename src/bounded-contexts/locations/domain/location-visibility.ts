@@ -71,6 +71,12 @@ export class LocationAccessError extends DomainError {
   }
 }
 
+export class InvalidLocationSampleError extends DomainError {
+  constructor() {
+    super('INVALID_LOCATION_SAMPLE', 'Location sample is invalid or expired');
+  }
+}
+
 export interface LocationSample {
   latitude: number;
   longitude: number;
@@ -78,12 +84,10 @@ export interface LocationSample {
   recordedAt: Date;
 }
 
-/** Whitelists output fields and never returns the original object with precise metadata. */
-export function visibleLocation(
+export function validateLocationSample(
   sample: LocationSample,
-  approximate: boolean,
   now: Date,
-): LocationSample & { isApproximate: boolean } {
+): void {
   const age = now.getTime() - sample.recordedAt.getTime();
   if (
     !Number.isFinite(sample.latitude) ||
@@ -95,8 +99,25 @@ export function visibleLocation(
     !Number.isFinite(age) ||
     age < 0 ||
     age >= 300000
-  )
-    throw new LocationAccessError();
+  ) {
+    throw new InvalidLocationSampleError();
+  }
+}
+
+/** Whitelists output fields and never returns the original object with precise metadata. */
+export function visibleLocation(
+  sample: LocationSample,
+  approximate: boolean,
+  now: Date,
+): LocationSample & { isApproximate: boolean } {
+  try {
+    validateLocationSample(sample, now);
+  } catch (error) {
+    if (error instanceof InvalidLocationSampleError) {
+      throw new LocationAccessError();
+    }
+    throw error;
+  }
   return {
     latitude: approximate
       ? Math.round(sample.latitude * 100) / 100

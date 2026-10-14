@@ -168,6 +168,7 @@ import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.ada
     RolesGuard,
   ],
   exports: [
+    ACCESS_TOKEN_VALIDATOR,
     LocationPrivacyReader,
     UserDirectory,
     AccessTokenGuard,

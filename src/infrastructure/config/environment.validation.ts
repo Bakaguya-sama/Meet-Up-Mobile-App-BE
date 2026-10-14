@@ -63,6 +63,27 @@ const environmentSchema = Joi.object({
   REDIS_URL: Joi.string()
     .uri({ scheme: ['redis', 'rediss'] })
     .default('redis://localhost:6379'),
+  FIREBASE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  FIREBASE_PROJECT_ID: Joi.when('FIREBASE_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  FIREBASE_CLIENT_EMAIL: Joi.when('FIREBASE_ENABLED', {
+    is: true,
+    then: Joi.string().email().required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  FIREBASE_PRIVATE_KEY: Joi.when('FIREBASE_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  DEVICE_TOKEN_ENCRYPTION_KEY: Joi.when('NODE_ENV', {
+    is: 'test',
+    then: Joi.string().allow('').optional(),
+    otherwise: Joi.string().base64().required(),
+  }),
 }).unknown(true);
 
 export function validateEnvironment(

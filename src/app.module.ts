@@ -5,14 +5,24 @@ import { configuration } from './infrastructure/config/configuration';
 import { validateEnvironment } from './infrastructure/config/environment.validation';
 import { DatabaseModule } from './infrastructure/database/typeorm/database.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
+import { OutboxModule } from './infrastructure/outbox/outbox.module';
 import { AuthModule } from './bounded-contexts/auth/auth.module';
 import { FriendsModule } from './bounded-contexts/friends/friends.module';
 import { LocationsModule } from './bounded-contexts/locations/locations.module';
+import { NotificationsModule } from './bounded-contexts/notifications/notifications.module';
 
 const runtimeModules =
   process.env.NODE_ENV === 'test'
     ? []
-    : [DatabaseModule, RedisModule, AuthModule, FriendsModule, LocationsModule];
+    : [
+        DatabaseModule,
+        RedisModule,
+        OutboxModule,
+        AuthModule,
+        FriendsModule,
+        LocationsModule,
+        NotificationsModule,
+      ];
 
 @Module({
   imports: [
