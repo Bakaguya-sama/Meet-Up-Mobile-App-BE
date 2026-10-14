@@ -17,6 +17,9 @@ export const configuration = () => ({
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     privateKey: process.env.FIREBASE_PRIVATE_KEY,
   },
+  deviceTokens: {
+    encryptionKey: process.env.DEVICE_TOKEN_ENCRYPTION_KEY,
+  },
   auth: {
     accessSecret: process.env.JWT_ACCESS_SECRET,
     refreshSecret: process.env.JWT_REFRESH_SECRET,

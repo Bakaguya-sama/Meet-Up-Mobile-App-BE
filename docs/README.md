@@ -18,6 +18,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `MeetUp_Product_Backlog_Function_Points.xlsx` | Chia việc theo Function Points, backlog và tiến độ. |
 | `10_be03_friends_api.md` | API kết bạn BE-03, quy tắc concurrency, migration và kiểm thử. |
 | `11_location_privacy_api.md` | Cài đặt quyền riêng tư vị trí, kiểm quyền mỗi yêu cầu và contract cho realtime. |
+| `12_notifications_api.md` | Đăng ký thiết bị FCM, mã hóa token và contract deep-link notification. |
 | `13_backend2_roadmap.md` | Roadmap triển khai Backend 2: realtime, recommendation, FCM, AI, nearby và quan sát hệ thống. |
 
 ## Cách dùng nhanh

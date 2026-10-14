@@ -79,6 +79,11 @@ const environmentSchema = Joi.object({
     then: Joi.string().min(1).required(),
     otherwise: Joi.string().allow('').optional(),
   }),
+  DEVICE_TOKEN_ENCRYPTION_KEY: Joi.when('NODE_ENV', {
+    is: 'test',
+    then: Joi.string().allow('').optional(),
+    otherwise: Joi.string().base64().required(),
+  }),
 }).unknown(true);
 
 export function validateEnvironment(

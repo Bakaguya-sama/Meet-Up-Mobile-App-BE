@@ -329,14 +329,21 @@
     }
   }
 
-  Table user_devices {
+  Table device_tokens {
     id uuid [pk]
-    user_id uuid [not null]
-    fcm_token varchar(500) [not null, unique]
-    platform varchar(20) [not null, default: 'android']
-    last_seen_at timestamptz [not null]
+    user_account_id uuid [not null]
+    token_ciphertext text [not null] // AES-256-GCM envelope; never store plaintext FCM token.
+    token_fingerprint char(64) [not null, unique] // HMAC-SHA-256 lookup value, not the token.
+    platform varchar(10) [not null] // android or ios
     revoked_at timestamptz
     created_at timestamptz [not null]
+    updated_at timestamptz [not null]
+
+    Indexes {
+      (user_account_id, revoked_at)
+    }
+
+    Note: 'BE-07 active FCM device tokens. Account deletion cascades to this table.'
   }
 
   Table notification_campaigns {
@@ -394,19 +401,19 @@
 
   Table outbox_events {
     id uuid [pk]
-    aggregate_type varchar(50) [not null]
-    aggregate_id uuid [not null]
-    event_type varchar(100) [not null]
-    payload_json jsonb [not null]
+    event_name varchar(100) [not null]
+    destination varchar(20) [not null] // realtime or push
+    recipient_ids uuid[] [not null]
+    payload jsonb [not null]
     occurred_at timestamptz [not null]
-    available_at timestamptz [not null]
-    published_at timestamptz
+    status varchar(20) [not null, default: 'pending'] // pending, delivered, failed
     attempt_count integer [not null, default: 0]
-    last_error varchar(1000)
+    last_error varchar(500)
+    delivered_at timestamptz
+    created_at timestamptz [not null]
 
     Indexes {
-      (published_at, available_at)
-      (aggregate_type, aggregate_id)
+      (status, created_at)
     }
 
     Note: 'Written in the same transaction as a domain change. A worker publishes it to Socket.IO, FCM or other consumers.'
@@ -498,10 +505,10 @@ Ref: meetup_participants.id < votes.meetup_participant_id
   Ref: meetup_sessions.id < meetup_chat_messages.meetup_id
 Ref: meetup_participants.id < meetup_chat_messages.sender_participant_id
   Ref: meetup_chat_messages.id < chat_message_attachments.chat_message_id
-  Ref: user_accounts.id < user_devices.user_id
+  Ref: user_accounts.id < device_tokens.user_account_id
   Ref: user_accounts.id < notification_campaigns.created_by_user_id
   Ref: user_accounts.id < notification_deliveries.recipient_user_id
-  Ref: user_devices.id < notification_deliveries.device_id
+  Ref: device_tokens.id < notification_deliveries.device_id
   Ref: notification_campaigns.id < notification_deliveries.notification_campaign_id
   Ref: meetup_sessions.id < notification_deliveries.meetup_id
   Ref: recommendation_runs.id < ai_explanation_cache.recommendation_run_id

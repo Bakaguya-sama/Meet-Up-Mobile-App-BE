@@ -9,6 +9,7 @@ import { OutboxModule } from './infrastructure/outbox/outbox.module';
 import { AuthModule } from './bounded-contexts/auth/auth.module';
 import { FriendsModule } from './bounded-contexts/friends/friends.module';
 import { LocationsModule } from './bounded-contexts/locations/locations.module';
+import { NotificationsModule } from './bounded-contexts/notifications/notifications.module';
 
 const runtimeModules =
   process.env.NODE_ENV === 'test'
@@ -20,6 +21,7 @@ const runtimeModules =
         AuthModule,
         FriendsModule,
         LocationsModule,
+        NotificationsModule,
       ];
 
 @Module({

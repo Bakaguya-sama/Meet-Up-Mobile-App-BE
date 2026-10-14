@@ -54,6 +54,12 @@ Authenticated APIs support user search, sending/accepting/rejecting friend reque
 
 Location privacy APIs and the per-request access service are documented in [Location privacy](docs/11_location_privacy_api.md). Apply the privacy migration before using them. Meetup-scoped access is denied until a server-side membership provider is connected.
 
+## Push notifications (BE-07)
+
+Register a mobile FCM token using `POST /api/v1/notifications/devices` with `{ token, platform }`; the response contains the opaque device-token id. Rotate it through `PUT /api/v1/notifications/devices/:id` and revoke it through `DELETE /api/v1/notifications/devices/:id`. Tokens are AES-256-GCM encrypted in PostgreSQL and never appear in API responses or logs.
+
+Set `DEVICE_TOKEN_ENCRYPTION_KEY` to a base64-encoded 32-byte secret in every non-test environment. Set `FIREBASE_ENABLED=true` and configure the Firebase service-account variables to make actual sends; with it disabled, the adapter safely accepts outbox delivery without calling Firebase. Notification deep-link data is limited to `type`, `meetupId`, and optional `placeId`.
+
 ## Optional local PostgreSQL
 
 To use Docker PostgreSQL/PostGIS instead of Neon, start the existing offline profile:
