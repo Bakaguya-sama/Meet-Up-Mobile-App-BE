@@ -1,18 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import type { MeetupLocationAccessPort } from '../../application/ports/location-access.port';
+import { MeetupMembershipReader } from '../../../meetups/application/public/meetup-membership-reader';
 
-/** Safe default until Meetups exposes accepted-membership and active-status contracts. */
+/** Membership is rechecked on every access through Meetups' public read API. */
 @Injectable()
 export class MeetupLocationAdapter implements MeetupLocationAccessPort {
-  canJoin(): Promise<boolean> {
-    return Promise.resolve(false);
+  constructor(private readonly meetups: MeetupMembershipReader) {}
+
+  canJoin(userId: string, meetupId: string): Promise<boolean> {
+    return this.meetups.areAcceptedInActiveMeetup(meetupId, [userId]);
   }
 
-  canPublish(): Promise<boolean> {
-    return Promise.resolve(false);
+  canPublish(userId: string, meetupId: string): Promise<boolean> {
+    return this.meetups.areAcceptedInActiveMeetup(meetupId, [userId]);
   }
 
-  canRead(): Promise<boolean> {
-    return Promise.resolve(false);
+  canRead(
+    ownerId: string,
+    viewerId: string,
+    meetupId: string,
+  ): Promise<boolean> {
+    return this.meetups.areAcceptedInActiveMeetup(meetupId, [
+      ownerId,
+      viewerId,
+    ]);
   }
 }

@@ -8,6 +8,7 @@ import { RedisModule } from './infrastructure/redis/redis.module';
 import { OutboxModule } from './infrastructure/outbox/outbox.module';
 import { AuthModule } from './bounded-contexts/auth/auth.module';
 import { FriendsModule } from './bounded-contexts/friends/friends.module';
+import { MeetupsModule } from './bounded-contexts/meetups/meetups.module';
 import { LocationsModule } from './bounded-contexts/locations/locations.module';
 import { NotificationsModule } from './bounded-contexts/notifications/notifications.module';
 
@@ -20,6 +21,7 @@ const runtimeModules =
         OutboxModule,
         AuthModule,
         FriendsModule,
+        MeetupsModule,
         LocationsModule,
         NotificationsModule,
       ];
