@@ -1,7 +1,44 @@
 import type {
   MeetupState,
   ParticipantState,
+  ParticipantStatus,
+  PreferenceLevel,
+  PreferenceSource,
 } from '../../domain/aggregates/meetup.aggregate';
+
+export interface MeetupMemberPreferenceTagDto {
+  activityTagId: number;
+  tagCode: string;
+  displayName: string;
+  level: PreferenceLevel;
+  source: PreferenceSource;
+  updatedAt: string | null;
+}
+
+export interface MeetupMemberPreferenceResponseDto {
+  meetupId: string;
+  participantId: string;
+  userId: string;
+  hasExplicitMeetupPreference: boolean;
+  tags: MeetupMemberPreferenceTagDto[];
+}
+
+export interface ParticipantPreferenceSummaryItemDto {
+  participantId: string;
+  userId: string;
+  status: ParticipantStatus;
+  hasExplicitMeetupPreference: boolean;
+  source: PreferenceSource;
+  tags: MeetupMemberPreferenceTagDto[];
+}
+
+export interface MeetupPreferencesSummaryResponseDto {
+  meetupId: string;
+  totalParticipants: number;
+  submittedCount: number;
+  fallbackCount: number;
+  participants: ParticipantPreferenceSummaryItemDto[];
+}
 
 export function toMeetupSummary(state: Omit<MeetupState, 'participants'>) {
   return {
@@ -31,9 +68,18 @@ export function toMeetupDetail(state: MeetupState) {
 
 function toParticipant(state: ParticipantState) {
   return {
-    ...state,
+    id: state.id,
+    userId: state.userId,
+    status: state.status,
+    invitedById: state.invitedById,
     respondedAt: state.respondedAt?.toISOString() ?? null,
     joinedAt: state.joinedAt?.toISOString() ?? null,
     leftAt: state.leftAt?.toISOString() ?? null,
+    preferences: (state.preferences ?? []).map((p) => ({
+      activityTagId: p.activityTagId,
+      level: p.level,
+      source: p.source,
+      updatedAt: p.updatedAt.toISOString(),
+    })),
   };
 }

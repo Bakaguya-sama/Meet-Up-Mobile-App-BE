@@ -41,6 +41,8 @@ import { TypeOrmPrivacySettingsRepository } from './infrastructure/persistence/t
 import { PrivacyController } from './presentation/http/privacy.controller';
 import { PrivacySelectedFriendPurge } from './application/public/privacy-selected-friend-purge';
 import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.adapter';
+import { ProfilePreferenceReader } from './application/public/profile-preference-reader';
+import { TypeOrmProfilePreferenceReader } from './infrastructure/adapters/profile-preference-reader.adapter';
 
 @Module({
   imports: [
@@ -162,6 +164,10 @@ import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.ada
       useFactory: (uow: AuthUnitOfWork) => new UpdateProfileUseCase(uow),
       inject: [AUTH_UNIT_OF_WORK],
     },
+    {
+      provide: ProfilePreferenceReader,
+      useClass: TypeOrmProfilePreferenceReader,
+    },
     AccessTokenStrategy,
     GoogleStrategy,
     AccessTokenGuard,
@@ -170,6 +176,7 @@ import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.ada
   exports: [
     ACCESS_TOKEN_VALIDATOR,
     LocationPrivacyReader,
+    ProfilePreferenceReader,
     UserDirectory,
     AccessTokenGuard,
     RolesGuard,

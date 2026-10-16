@@ -18,6 +18,15 @@ export const PARTICIPANT_STATUSES = [
 export type MeetupStatus = (typeof MEETUP_STATUSES)[number];
 export type ParticipantStatus = (typeof PARTICIPANT_STATUSES)[number];
 export type RecommendationMode = 'balanced';
+export type PreferenceLevel = 'high' | 'normal' | 'avoid';
+export type PreferenceSource = 'meetup_input' | 'profile_fallback';
+
+export interface ParticipantPreferenceState {
+  activityTagId: number;
+  level: PreferenceLevel;
+  source: PreferenceSource;
+  updatedAt: Date;
+}
 
 export interface ParticipantState {
   id: string;
@@ -27,6 +36,7 @@ export interface ParticipantState {
   respondedAt: Date | null;
   joinedAt: Date | null;
   leftAt: Date | null;
+  preferences?: ParticipantPreferenceState[];
 }
 
 export interface MeetupDetails {
@@ -56,12 +66,14 @@ export type MeetupEvent = {
     | 'MeetupUpdated'
     | 'MeetupCancelled'
     | 'MeetupFinished'
-    | 'MeetupMemberChanged';
+    | 'MeetupMemberChanged'
+    | 'PreferenceUpdated';
   meetupId: string;
   occurredAt: Date;
   recipientIds: string[];
   userId?: string;
   membershipStatus?: ParticipantStatus;
+  participantId?: string;
 };
 
 /** BR-02/07/19, UC-05/06. All participant mutations belong to this aggregate. */
@@ -102,6 +114,7 @@ export class Meetup {
           respondedAt: new Date(now),
           joinedAt: new Date(now),
           leftAt: null,
+          preferences: [],
         },
         ...input.invitees.map((p): ParticipantState => ({
           ...p,
@@ -110,6 +123,7 @@ export class Meetup {
           respondedAt: null,
           joinedAt: null,
           leftAt: null,
+          preferences: [],
         })),
       ],
     });
@@ -122,11 +136,28 @@ export class Meetup {
   }
 
   static reconstitute(state: MeetupState): Meetup {
-    return new Meetup(structuredClone(state));
+    return new Meetup({
+      ...structuredClone(state),
+      participants: state.participants.map((p) => ({
+        ...p,
+        preferences: p.preferences
+          ? p.preferences.map((pref) => ({ ...pref }))
+          : [],
+      })),
+    });
   }
 
   snapshot(): MeetupState {
-    return structuredClone(this.state);
+    const state = structuredClone(this.state);
+    return {
+      ...state,
+      participants: state.participants.map((p) => ({
+        ...p,
+        preferences: p.preferences
+          ? p.preferences.map((pref) => ({ ...pref }))
+          : [],
+      })),
+    };
   }
   pendingEvents(): MeetupEvent[] {
     return structuredClone(this.events);
@@ -293,6 +324,43 @@ export class Meetup {
     this.record('MeetupFinished', now);
   }
 
+  setParticipantPreferences(
+    actorId: string,
+    items: Array<{ activityTagId: number; level: PreferenceLevel }>,
+    now: Date,
+  ): void {
+    this.assertVisible(actorId);
+    this.assertEditable();
+    const participant = this.state.participants.find(
+      (p) => p.userId === actorId,
+    );
+    if (!participant) {
+      throw new MeetupError('MEETUP_NOT_FOUND', 'Participant not found');
+    }
+    if (!['invited', 'accepted'].includes(participant.status)) {
+      throw new MeetupError(
+        'MEETUP_MEMBER_CONFLICT',
+        'Only an invited or accepted participant can set preferences',
+      );
+    }
+    validatePreferences(items);
+    participant.preferences = items.map((item) => ({
+      activityTagId: item.activityTagId,
+      level: item.level,
+      source: 'meetup_input',
+      updatedAt: new Date(now),
+    }));
+    this.state.updatedAt = new Date(now);
+    this.events.push({
+      name: 'PreferenceUpdated',
+      meetupId: this.state.id,
+      participantId: participant.id,
+      userId: actorId,
+      occurredAt: new Date(now),
+      recipientIds: [...new Set([this.state.organizerId, actorId])],
+    });
+  }
+
   private assertEditable(): void {
     if (!['inviting', 'choosing'].includes(this.state.status))
       throw new MeetupError(
@@ -399,4 +467,31 @@ function validateInvitees(organizerId: string, userIds: string[]): void {
       'INVALID_INPUT',
       'Invite at least one distinct user other than the organizer',
     );
+}
+
+function validatePreferences(
+  items: Array<{ activityTagId: number; level: PreferenceLevel }>,
+): void {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new MeetupError(
+      'INVALID_INPUT',
+      'At least one preference tag must be provided',
+    );
+  }
+  const seen = new Set<number>();
+  for (const item of items) {
+    if (!Number.isInteger(item.activityTagId) || item.activityTagId < 1) {
+      throw new MeetupError('INVALID_INPUT', 'Invalid activity tag ID');
+    }
+    if (seen.has(item.activityTagId)) {
+      throw new MeetupError(
+        'INVALID_INPUT',
+        `Duplicate activity tag ID ${item.activityTagId}`,
+      );
+    }
+    seen.add(item.activityTagId);
+    if (!['high', 'normal', 'avoid'].includes(item.level)) {
+      throw new MeetupError('INVALID_INPUT', 'Invalid preference level');
+    }
+  }
 }

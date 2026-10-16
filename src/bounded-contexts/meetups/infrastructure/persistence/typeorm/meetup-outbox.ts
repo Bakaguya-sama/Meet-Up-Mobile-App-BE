@@ -32,6 +32,13 @@ export async function writeMeetupEvents(
           membershipStatus: event.membershipStatus!,
         };
         break;
+      case 'PreferenceUpdated':
+        integration = {
+          ...metadata,
+          eventName: 'PreferenceUpdated.v1',
+          participantId: event.participantId!,
+        };
+        break;
       default:
         integration = { ...metadata, eventName: `${event.name}.v1` };
     }

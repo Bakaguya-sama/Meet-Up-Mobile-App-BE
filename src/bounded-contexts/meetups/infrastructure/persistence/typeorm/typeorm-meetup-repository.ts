@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import { TypeOrmTransactionalOutbox } from '../../../../../infrastructure/outbox/persistence/typeorm-outbox.port';
 import type { MeetupStorePort } from '../../../application/ports/persistence/meetup-store.port';
-import type { Meetup } from '../../../domain/aggregates/meetup.aggregate';
+import type {
+  Meetup,
+  MeetupState,
+} from '../../../domain/aggregates/meetup.aggregate';
 import { MeetupError } from '../../../domain/errors/meetup.error';
 import { MeetupEntity } from './entities/meetup.typeorm-entity';
 import { ParticipantEntity } from './entities/participant.typeorm-entity';
+import { ParticipantPreferenceEntity } from './entities/participant-preference.typeorm-entity';
 import { MeetupTypeOrmMapper } from './mappers/meetup.typeorm-mapper';
 import { writeMeetupEvents } from './meetup-outbox';
 
@@ -23,6 +27,14 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
           rows.participants.slice(offset, offset + 500),
         );
       }
+      if (rows.preferences.length > 0) {
+        for (let offset = 0; offset < rows.preferences.length; offset += 500) {
+          await manager.insert(
+            ParticipantPreferenceEntity,
+            rows.preferences.slice(offset, offset + 500),
+          );
+        }
+      }
       await writeMeetupEvents(meetup, new TypeOrmTransactionalOutbox(manager));
     });
   }
@@ -34,8 +46,13 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
         lock: { mode: 'pessimistic_write' },
       });
       if (!row) throw new MeetupError('MEETUP_NOT_FOUND', 'Meetup not found');
-      const participants = await this.participants(manager, id);
-      const meetup = MeetupTypeOrmMapper.toDomain(row, participants);
+      const { participants, preferences } =
+        await this.participantsAndPreferences(manager, id);
+      const meetup = MeetupTypeOrmMapper.toDomain(
+        row,
+        participants,
+        preferences,
+      );
       await change(meetup);
       const state = meetup.snapshot();
       const rows = MeetupTypeOrmMapper.toPersistence(state);
@@ -54,6 +71,30 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
           ['meetupId', 'userId'],
         );
       }
+      const preferenceEvents = meetup
+        .pendingEvents()
+        .filter((event) => event.name === 'PreferenceUpdated');
+      if (preferenceEvents.length > 0) {
+        const changedParticipantIds = new Set(
+          preferenceEvents.map((e) => e.participantId!).filter(Boolean),
+        );
+        for (const participantId of changedParticipantIds) {
+          await manager.delete(ParticipantPreferenceEntity, {
+            meetupParticipantId: participantId,
+          });
+          const newPrefs = rows.preferences.filter(
+            (p) => p.meetupParticipantId === participantId,
+          );
+          if (newPrefs.length > 0) {
+            for (let offset = 0; offset < newPrefs.length; offset += 500) {
+              await manager.insert(
+                ParticipantPreferenceEntity,
+                newPrefs.slice(offset, offset + 500),
+              );
+            }
+          }
+        }
+      }
       await writeMeetupEvents(meetup, new TypeOrmTransactionalOutbox(manager));
       return state;
     });
@@ -66,9 +107,26 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
         .andWhere('meetup.id = :id', { id })
         .getOne();
       if (!row) return null;
+      const { participants, preferences } =
+        await this.participantsAndPreferences(manager, id);
       return MeetupTypeOrmMapper.toDomain(
         row,
-        await this.participants(manager, id),
+        participants,
+        preferences,
+      ).snapshot();
+    });
+  }
+
+  findById(id: string): Promise<MeetupState | null> {
+    return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
+      const row = await manager.findOne(MeetupEntity, { where: { id } });
+      if (!row) return null;
+      const { participants, preferences } =
+        await this.participantsAndPreferences(manager, id);
+      return MeetupTypeOrmMapper.toDomain(
+        row,
+        participants,
+        preferences,
       ).snapshot();
     });
   }
@@ -121,10 +179,20 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
       });
   }
 
-  private participants(manager: EntityManager, meetupId: string) {
-    return manager.find(ParticipantEntity, {
+  private async participantsAndPreferences(
+    manager: EntityManager,
+    meetupId: string,
+  ) {
+    const participants = await manager.find(ParticipantEntity, {
       where: { meetupId },
       order: { id: 'ASC' },
     });
+    const participantIds = participants.map((p) => p.id);
+    const preferences = participantIds.length
+      ? await manager.find(ParticipantPreferenceEntity, {
+          where: { meetupParticipantId: In(participantIds) },
+        })
+      : [];
+    return { participants, preferences };
   }
 }

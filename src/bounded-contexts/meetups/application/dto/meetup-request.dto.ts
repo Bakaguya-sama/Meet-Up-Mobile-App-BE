@@ -14,6 +14,7 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 
 const trim = ({ value }: { value: unknown }) =>
@@ -117,4 +118,21 @@ export class MeetupPageRequest {
   @Min(1)
   @Max(100)
   limit: number = 20;
+}
+
+export class PreferenceTagInput {
+  @IsInt()
+  @Min(1)
+  activityTagId: number;
+
+  @IsIn(['high', 'normal', 'avoid'])
+  level: 'high' | 'normal' | 'avoid';
+}
+
+export class SetMeetupPreferencesRequest {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => PreferenceTagInput)
+  preferences: PreferenceTagInput[];
 }

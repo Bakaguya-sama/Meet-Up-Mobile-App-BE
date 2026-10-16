@@ -207,4 +207,136 @@ describe('Meetup aggregate', () => {
     expect(meetup.snapshot().scheduledAt.getUTCFullYear()).toBe(2030);
     expect(meetup.pendingEvents()[0].recipientIds).toEqual(['bob']);
   });
+
+  describe('participant preferences (UC-09, BR-21)', () => {
+    it('sets temporary preferences for accepted participant and emits PreferenceUpdated', () => {
+      const meetup = create();
+      meetup.setParticipantPreferences(
+        'alice',
+        [
+          { activityTagId: 1, level: 'high' },
+          { activityTagId: 2, level: 'avoid' },
+        ],
+        now,
+      );
+
+      const snapshot = meetup.snapshot();
+      const alice = snapshot.participants.find((p) => p.userId === 'alice')!;
+      expect(alice.preferences).toEqual([
+        {
+          activityTagId: 1,
+          level: 'high',
+          source: 'meetup_input',
+          updatedAt: now,
+        },
+        {
+          activityTagId: 2,
+          level: 'avoid',
+          source: 'meetup_input',
+          updatedAt: now,
+        },
+      ]);
+
+      const prefEvents = meetup
+        .pendingEvents()
+        .filter((e) => e.name === 'PreferenceUpdated');
+      expect(prefEvents).toHaveLength(1);
+      expect(prefEvents[0]).toMatchObject({
+        name: 'PreferenceUpdated',
+        meetupId: 'meetup',
+        participantId: 'pa',
+        userId: 'alice',
+        occurredAt: now,
+        recipientIds: ['alice'],
+      });
+    });
+
+    it('allows invited participant to set temporary preferences before finalization', () => {
+      const meetup = create();
+      meetup.setParticipantPreferences(
+        'bob',
+        [{ activityTagId: 3, level: 'normal' }],
+        now,
+      );
+
+      const bob = meetup
+        .snapshot()
+        .participants.find((p) => p.userId === 'bob')!;
+      expect(bob.preferences).toHaveLength(1);
+      expect(bob.preferences![0]).toMatchObject({
+        activityTagId: 3,
+        level: 'normal',
+        source: 'meetup_input',
+      });
+    });
+
+    it('rejects duplicate activity tag IDs or invalid levels', () => {
+      const meetup = create();
+      expect(() =>
+        meetup.setParticipantPreferences(
+          'alice',
+          [
+            { activityTagId: 1, level: 'high' },
+            { activityTagId: 1, level: 'avoid' },
+          ],
+          now,
+        ),
+      ).toThrow(code('INVALID_INPUT'));
+
+      expect(() =>
+        meetup.setParticipantPreferences(
+          'alice',
+          [
+            {
+              activityTagId: 1,
+              level: 'invalid' as 'high',
+            },
+          ],
+          now,
+        ),
+      ).toThrow(code('INVALID_INPUT'));
+
+      expect(() => meetup.setParticipantPreferences('alice', [], now)).toThrow(
+        code('INVALID_INPUT'),
+      );
+    });
+
+    it('rejects setting preferences when participant is not in meetup', () => {
+      const meetup = create();
+      expect(() =>
+        meetup.setParticipantPreferences(
+          'stranger',
+          [{ activityTagId: 1, level: 'high' }],
+          now,
+        ),
+      ).toThrow(code('MEETUP_NOT_FOUND'));
+    });
+
+    it('rejects setting preferences when participant has left or was removed', () => {
+      const meetup = create();
+      meetup.respond('bob', 'accepted', now);
+      meetup.leave('bob', now);
+
+      expect(() =>
+        meetup.setParticipantPreferences(
+          'bob',
+          [{ activityTagId: 1, level: 'high' }],
+          now,
+        ),
+      ).toThrow(code('MEETUP_NOT_FOUND'));
+    });
+
+    it('rejects setting preferences when meetup is cancelled or finished', () => {
+      const meetup = create();
+      meetup.cancel('alice', now);
+
+      expect(() =>
+        meetup.setParticipantPreferences(
+          'alice',
+          [{ activityTagId: 1, level: 'high' }],
+          now,
+        ),
+      ).toThrow(code('MEETUP_NOT_EDITABLE'));
+    });
+  });
 });

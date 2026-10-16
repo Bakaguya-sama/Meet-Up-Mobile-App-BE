@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -34,10 +35,12 @@ import {
   CreateMeetupRequest,
   InviteParticipantsRequest,
   MeetupPageRequest,
+  SetMeetupPreferencesRequest,
   UpdateMeetupRequest,
 } from '../../application/dto/meetup-request.dto';
 import { GetMeetupDetailQuery } from '../../application/queries/get-meetup-detail.query';
 import { ListMeetupsQuery } from '../../application/queries/list-meetups.query';
+import { GetMeetupPreferencesSummaryQuery } from '../../application/queries/get-meetup-preferences-summary.query';
 import { CreateMeetupUseCase } from '../../application/use-cases/create-meetup.use-case';
 import { UpdateMeetupUseCase } from '../../application/use-cases/update-meetup.use-case';
 import { InviteParticipantsUseCase } from '../../application/use-cases/invite-participants.use-case';
@@ -46,11 +49,16 @@ import { LeaveMeetupUseCase } from '../../application/use-cases/leave-meetup.use
 import { RemoveParticipantUseCase } from '../../application/use-cases/remove-participant.use-case';
 import { CancelMeetupUseCase } from '../../application/use-cases/cancel-meetup.use-case';
 import { FinishMeetupUseCase } from '../../application/use-cases/finish-meetup.use-case';
+import { SetMeetupMemberPreferenceUseCase } from '../../application/use-cases/set-meetup-member-preference.use-case';
+import { GetMeetupMemberPreferenceUseCase } from '../../application/use-cases/get-meetup-member-preference.use-case';
 import {
   createMeetupSchema,
   inviteParticipantsSchema,
   meetupDetailSchema,
+  meetupMemberPreferenceSchema,
   meetupPageSchema,
+  meetupPreferencesSummarySchema,
+  setMeetupPreferencesBodySchema,
   updateMeetupSchema,
 } from './meetups.openapi';
 
@@ -83,6 +91,9 @@ export class MeetupsController {
     private readonly finishMeetup: FinishMeetupUseCase,
     private readonly getDetail: GetMeetupDetailQuery,
     private readonly listMeetups: ListMeetupsQuery,
+    private readonly setMeetupPreference: SetMeetupMemberPreferenceUseCase,
+    private readonly getMeetupPreference: GetMeetupMemberPreferenceUseCase,
+    private readonly getPreferencesSummary: GetMeetupPreferencesSummaryQuery,
   ) {}
 
   @Post()
@@ -229,5 +240,53 @@ export class MeetupsController {
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
   ) {
     return this.finishMeetup.execute(actorId, meetupId);
+  }
+
+  @Get(':meetupId/preferences')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary:
+      'Get caller temporary preferences for this meetup (prefilled from profile fallback if not set)',
+  })
+  @ApiOkResponse({ schema: meetupMemberPreferenceSchema })
+  getMyPreference(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+  ) {
+    return this.getMeetupPreference.execute(actorId, meetupId);
+  }
+
+  @Put(':meetupId/preferences')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary:
+      'Set caller temporary preferences for this meetup; overrides profile fallback',
+  })
+  @ApiBody({ schema: setMeetupPreferencesBodySchema })
+  @ApiOkResponse({ schema: meetupMemberPreferenceSchema })
+  setMyPreference(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+    @Body() body: SetMeetupPreferencesRequest,
+  ) {
+    return this.setMeetupPreference.execute(
+      actorId,
+      meetupId,
+      body.preferences,
+    );
+  }
+
+  @Get(':meetupId/preferences/summary')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary:
+      'Get preferences summary of all participants before suggesting places (pre-check)',
+  })
+  @ApiOkResponse({ schema: meetupPreferencesSummarySchema })
+  getSummary(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+  ) {
+    return this.getPreferencesSummary.execute(actorId, meetupId);
   }
 }

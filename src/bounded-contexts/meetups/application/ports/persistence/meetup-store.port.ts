@@ -13,6 +13,7 @@ export interface MeetupStorePort {
     change: (meetup: Meetup) => void | Promise<void>,
   ): Promise<MeetupState>;
   findVisible(id: string, actorId: string): Promise<MeetupState | null>;
+  findById(id: string): Promise<MeetupState | null>;
   listVisible(input: {
     actorId: string;
     offset: number;

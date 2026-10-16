@@ -120,3 +120,96 @@ export const meetupPageSchema: SchemaObject = {
     limit: { type: 'integer' },
   },
 };
+
+export const setMeetupPreferencesBodySchema: SchemaObject = {
+  type: 'object',
+  required: ['preferences'],
+  additionalProperties: false,
+  properties: {
+    preferences: {
+      type: 'array',
+      minItems: 1,
+      items: {
+        type: 'object',
+        required: ['activityTagId', 'level'],
+        properties: {
+          activityTagId: { type: 'integer', minimum: 1 },
+          level: { type: 'string', enum: ['high', 'normal', 'avoid'] },
+        },
+      },
+      description:
+        'Temporary preferences for this meetup. Overrides profile preferences.',
+    },
+  },
+};
+
+export const meetupMemberPreferenceTagSchema: SchemaObject = {
+  type: 'object',
+  properties: {
+    activityTagId: { type: 'integer' },
+    tagCode: { type: 'string' },
+    displayName: { type: 'string' },
+    level: { type: 'string', enum: ['high', 'normal', 'avoid'] },
+    source: {
+      type: 'string',
+      enum: ['meetup_input', 'profile_fallback'],
+      description:
+        'meetup_input if chosen for this meetup; profile_fallback if inherited from profile',
+    },
+    updatedAt: nullableDate,
+  },
+};
+
+export const meetupMemberPreferenceSchema: SchemaObject = {
+  type: 'object',
+  properties: {
+    meetupId: uuid,
+    participantId: uuid,
+    userId: uuid,
+    hasExplicitMeetupPreference: { type: 'boolean' },
+    tags: {
+      type: 'array',
+      items: meetupMemberPreferenceTagSchema,
+    },
+  },
+};
+
+export const meetupPreferencesSummarySchema: SchemaObject = {
+  type: 'object',
+  properties: {
+    meetupId: uuid,
+    totalParticipants: { type: 'integer' },
+    submittedCount: {
+      type: 'integer',
+      description:
+        'Number of participants who explicitly chose meetup preferences',
+    },
+    fallbackCount: {
+      type: 'integer',
+      description: 'Number of participants using profile fallback preferences',
+    },
+    participants: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          participantId: uuid,
+          userId: uuid,
+          status: {
+            type: 'string',
+            enum: ['invited', 'accepted', 'declined', 'left', 'removed'],
+          },
+          hasExplicitMeetupPreference: { type: 'boolean' },
+          source: {
+            type: 'string',
+            enum: ['meetup_input', 'profile_fallback'],
+          },
+          tags: {
+            type: 'array',
+            items: meetupMemberPreferenceTagSchema,
+          },
+        },
+      },
+    },
+  },
+};
