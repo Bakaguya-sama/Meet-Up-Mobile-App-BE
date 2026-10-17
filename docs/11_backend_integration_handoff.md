@@ -109,3 +109,4 @@ Không gửi title/body/token/GPS qua integration event; title/body hiện đư�
 |---|---|---|---|---|
 | 2026-10-14 | Backend 2 | BE-05/BE-06 location Socket, Redis presence và room contract | Backend 1 cần nối Meetup membership port | Chờ BE-08 |
 | 2026-10-14 | Backend 2 | BE-07 `device_tokens`, FCM adapter, push outbox delivery | Backend 1 dùng `MeetupFinalized.v1` khi BE-10 hoàn thành | Sẵn sàng |
+| 2026-10-15 | Backend 1 | BE-03 hoàn thành vòng đời Meetup và thành viên, kết nối MeetupLocationAdapter, phát realtime & push outbox events | Backend 2 có thể join/read location theo active meetup | Sẵn sàng |

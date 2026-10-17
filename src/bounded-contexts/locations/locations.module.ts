@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { AuthModule } from '../auth/auth.module';
 import { FriendsModule } from '../friends/friends.module';
+import { MeetupsModule } from '../meetups/meetups.module';
 import {
   LOCATION_FRIENDSHIPS,
   LOCATION_PRIVACY,
@@ -28,7 +29,7 @@ import { LocationPermissionController } from './presentation/http/location-permi
 import { LocationGateway } from './presentation/websocket/location.gateway';
 
 @Module({
-  imports: [AuthModule, FriendsModule, RealtimeModule],
+  imports: [AuthModule, FriendsModule, MeetupsModule, RealtimeModule],
   controllers: [LocationController, LocationPermissionController],
   providers: [
     { provide: LOCATION_PRIVACY, useClass: AuthLocationPrivacyAdapter },
