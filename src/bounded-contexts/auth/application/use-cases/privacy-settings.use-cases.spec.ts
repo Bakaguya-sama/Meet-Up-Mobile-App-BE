@@ -28,10 +28,12 @@ describe('Privacy settings use cases', () => {
         saved = settings;
         return Promise.resolve();
       }),
-      updateLocked: jest.fn((_: string, change: (settings: PrivacySettings) => void) => {
-        if (saved) change(saved);
-        return Promise.resolve();
-      }),
+      updateLocked: jest.fn(
+        (_: string, change: (settings: PrivacySettings) => void) => {
+          if (saved) change(saved);
+          return Promise.resolve();
+        },
+      ),
     };
     users = {
       search: jest.fn(),
@@ -110,6 +112,7 @@ describe('Privacy settings use cases', () => {
       sharingMode: 'friends',
       selectedFriendIds: [],
     });
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(store.findByUserId).toHaveBeenLastCalledWith('owner');
   });
 });

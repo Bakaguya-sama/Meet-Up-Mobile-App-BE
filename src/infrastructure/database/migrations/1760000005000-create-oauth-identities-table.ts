@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateOauthIdentitiesTable1760000005000
-  implements MigrationInterface
-{
+export class CreateOauthIdentitiesTable1760000005000 implements MigrationInterface {
   name = 'CreateOauthIdentitiesTable1760000005000';
 
   async up(queryRunner: QueryRunner): Promise<void> {

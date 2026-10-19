@@ -1,4 +1,8 @@
 export const INTEGRATION_EVENT_NAMES = [
+  'MeetupCreated.v1',
+  'MeetupUpdated.v1',
+  'MeetupCancelled.v1',
+  'MeetupFinished.v1',
   'MeetupMemberChanged.v1',
   'PreferenceUpdated.v1',
   'LocationUpdated.v1',
@@ -19,6 +23,18 @@ export type MeetupMemberChangedV1 = EventMetadata<'MeetupMemberChanged.v1'> & {
   meetupId: string;
   userId: string;
   membershipStatus: string;
+};
+
+export type MeetupCreatedV1 = EventMetadata<'MeetupCreated.v1'> & {
+  meetupId: string;
+  organizerId: string;
+  inviteeIds: string[];
+};
+
+export type MeetupLifecycleV1 = EventMetadata<
+  'MeetupUpdated.v1' | 'MeetupCancelled.v1' | 'MeetupFinished.v1'
+> & {
+  meetupId: string;
 };
 
 export type PreferenceUpdatedV1 = EventMetadata<'PreferenceUpdated.v1'> & {
@@ -53,6 +69,8 @@ export type MeetupFinalizedV1 = EventMetadata<'MeetupFinalized.v1'> & {
 };
 
 export type IntegrationEvent =
+  | MeetupCreatedV1
+  | MeetupLifecycleV1
   | MeetupMemberChangedV1
   | PreferenceUpdatedV1
   | LocationUpdatedV1
@@ -94,6 +112,19 @@ export function isIntegrationEvent(value: unknown): value is IntegrationEvent {
   }
 
   switch (value.eventName) {
+    case 'MeetupCreated.v1':
+      return (
+        hasStrings(value, 'meetupId', 'organizerId') &&
+        Array.isArray(value.inviteeIds) &&
+        value.inviteeIds.length > 0 &&
+        value.inviteeIds.every(
+          (id) => typeof id === 'string' && UUID_PATTERN.test(id),
+        )
+      );
+    case 'MeetupUpdated.v1':
+    case 'MeetupCancelled.v1':
+    case 'MeetupFinished.v1':
+      return hasStrings(value, 'meetupId');
     case 'MeetupMemberChanged.v1':
       return hasStrings(value, 'meetupId', 'userId', 'membershipStatus');
     case 'PreferenceUpdated.v1':

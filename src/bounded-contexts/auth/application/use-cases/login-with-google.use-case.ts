@@ -39,7 +39,10 @@ export class LoginWithGoogleUseCase {
 
       if (!account) {
         if (!input.emailVerified) {
-          throw new AuthError('INVALID_CREDENTIALS', 'Google email is not verified');
+          throw new AuthError(
+            'INVALID_CREDENTIALS',
+            'Google email is not verified',
+          );
         }
         account = await store.accounts.findAccountByEmail(email);
       }

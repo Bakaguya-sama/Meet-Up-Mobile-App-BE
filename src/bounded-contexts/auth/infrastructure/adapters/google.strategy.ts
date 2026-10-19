@@ -40,7 +40,8 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       email,
       providerAccountId: profile.id,
       emailVerified:
-        profileJson.email_verified === true || profileJson.verified_email === true,
+        profileJson.email_verified === true ||
+        profileJson.verified_email === true,
       displayName,
       avatarUrl: profile.photos?.[0]?.value,
     });

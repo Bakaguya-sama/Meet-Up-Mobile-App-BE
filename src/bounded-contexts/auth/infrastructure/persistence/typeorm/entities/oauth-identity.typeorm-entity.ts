@@ -1,9 +1,13 @@
 import { Column, Entity, Index, PrimaryColumn } from 'typeorm';
 
 @Entity('oauth_identities')
-@Index('uq_oauth_identities_provider_account', ['provider', 'providerAccountId'], {
-  unique: true,
-})
+@Index(
+  'uq_oauth_identities_provider_account',
+  ['provider', 'providerAccountId'],
+  {
+    unique: true,
+  },
+)
 @Index('uq_oauth_identities_account_provider', ['userAccountId', 'provider'], {
   unique: true,
 })

@@ -35,7 +35,9 @@ describe('UnfriendUseCase', () => {
       findForUsers: jest.fn(),
       list: jest.fn(),
     };
-    purge = { removeFromOwnerSelection: jest.fn().mockResolvedValue(undefined) };
+    purge = {
+      removeFromOwnerSelection: jest.fn().mockResolvedValue(undefined),
+    };
     useCase = new UnfriendUseCase(store, purge);
   });
   afterEach(() => jest.useRealTimers());

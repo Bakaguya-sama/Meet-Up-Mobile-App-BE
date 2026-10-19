@@ -38,60 +38,58 @@ export async function saveUserPreferenceInTransaction(
   account.assertCanAuthenticate();
 
   const activeTags = await store.preferences.findActiveActivityTags();
-      const tagsById = new Map(activeTags.map((t) => [t.id, t]));
-      const tagsByCode = new Map(
-        activeTags.map((t) => [t.code.toLowerCase(), t]),
+  const tagsById = new Map(activeTags.map((t) => [t.id, t]));
+  const tagsByCode = new Map(activeTags.map((t) => [t.code.toLowerCase(), t]));
+
+  const resolvedItems: Array<{
+    activityTagId: number;
+    level: PreferenceLevelValue;
+    tagCode: string;
+    displayName: string;
+  }> = [];
+
+  for (const item of input.tags) {
+    let matched = item.activityTagId
+      ? tagsById.get(item.activityTagId)
+      : undefined;
+    if (!matched && item.tagCode) {
+      matched = tagsByCode.get(item.tagCode.toLowerCase().trim());
+    }
+
+    if (!matched) {
+      throw new AuthError(
+        'ACTIVITY_TAG_NOT_FOUND',
+        `Activity tag not found: ${item.tagCode ?? item.activityTagId}`,
       );
+    }
 
-      const resolvedItems: Array<{
-        activityTagId: number;
-        level: PreferenceLevelValue;
-        tagCode: string;
-        displayName: string;
-      }> = [];
+    const validLevel = PreferenceLevel.from(item.level).value;
+    resolvedItems.push({
+      activityTagId: matched.id,
+      level: validLevel,
+      tagCode: matched.code,
+      displayName: matched.displayName,
+    });
+  }
 
-      for (const item of input.tags) {
-        let matched = item.activityTagId
-          ? tagsById.get(item.activityTagId)
-          : undefined;
-        if (!matched && item.tagCode) {
-          matched = tagsByCode.get(item.tagCode.toLowerCase().trim());
-        }
+  const now = new Date();
+  let preference = await store.preferences.findByUserId(input.userId);
 
-        if (!matched) {
-          throw new AuthError(
-            'ACTIVITY_TAG_NOT_FOUND',
-            `Activity tag not found: ${item.tagCode ?? item.activityTagId}`,
-          );
-        }
+  if (!preference) {
+    preference = new UserPreference({
+      id: randomUUID(),
+      userId: input.userId,
+      updatedAt: now,
+      tags: [],
+    });
+  }
 
-        const validLevel = PreferenceLevel.from(item.level).value;
-        resolvedItems.push({
-          activityTagId: matched.id,
-          level: validLevel,
-          tagCode: matched.code,
-          displayName: matched.displayName,
-        });
-      }
+  preference.updateTags(resolvedItems, now);
+  await store.preferences.savePreference(preference);
 
-      const now = new Date();
-      let preference = await store.preferences.findByUserId(input.userId);
-
-      if (!preference) {
-        preference = new UserPreference({
-          id: randomUUID(),
-          userId: input.userId,
-          updatedAt: now,
-          tags: [],
-        });
-      }
-
-      preference.updateTags(resolvedItems, now);
-      await store.preferences.savePreference(preference);
-
-      const userTagMap = new Map(
-        preference.getTags().map((t) => [t.activityTagId, t.level]),
-      );
+  const userTagMap = new Map(
+    preference.getTags().map((t) => [t.activityTagId, t.level]),
+  );
 
   return {
     id: preference.getId(),
