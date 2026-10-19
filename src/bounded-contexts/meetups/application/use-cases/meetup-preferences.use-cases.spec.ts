@@ -201,14 +201,7 @@ describe('Meetup Preferences Use Cases and Queries (BE-02, BE-08, S3, Core)', ()
         updatedAt: null,
       });
 
-      const movie = result.tags.find((t) => t.activityTagId === 3)!;
-      expect(movie).toMatchObject({
-        activityTagId: 3,
-        tagCode: 'movie',
-        level: 'normal',
-        source: 'profile_fallback',
-        updatedAt: null,
-      });
+      expect(result.tags.find((t) => t.activityTagId === 3)).toBeUndefined();
     });
 
     it('BR-21: Prioritises temporary meetup preference over profile preference', async () => {
@@ -233,9 +226,24 @@ describe('Meetup Preferences Use Cases and Queries (BE-02, BE-08, S3, Core)', ()
       expect(coffee.level).toBe('avoid');
       expect(coffee.source).toBe('meetup_input');
 
-      const food = result.tags.find((t) => t.activityTagId === 1)!;
-      expect(food.level).toBe('normal');
-      expect(food.source).toBe('profile_fallback');
+      expect(result.tags).toHaveLength(1);
+      expect(result.tags.find((t) => t.activityTagId === 1)).toBeUndefined();
+      expect(mockFallback.getProfilePreference).not.toHaveBeenCalled();
+    });
+
+    it('PUT and GET agree, and clearing restores the profile fallback', async () => {
+      const set = new SetMeetupMemberPreferenceUseCase(mockStore, mockFallback);
+      const get = new GetMeetupMemberPreferenceUseCase(mockStore, mockFallback);
+      const saved = await set.execute('alice', 'meetup-1', [
+        { activityTagId: 2, level: 'avoid' },
+      ]);
+      expect(await get.execute('alice', 'meetup-1')).toEqual(saved);
+      const cleared = await set.execute('alice', 'meetup-1', []);
+      expect(cleared.hasExplicitMeetupPreference).toBe(false);
+      expect(cleared.tags.find((tag) => tag.activityTagId === 2)).toMatchObject(
+        { level: 'high', source: 'profile_fallback' },
+      );
+      expect(await get.execute('alice', 'meetup-1')).toEqual(cleared);
     });
 
     it('throws error when meetup is not found or not visible to user', async () => {

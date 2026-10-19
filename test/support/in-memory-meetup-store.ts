@@ -37,6 +37,10 @@ export class InMemoryMeetupStore implements MeetupStorePort {
     );
     return Promise.resolve(visible ? structuredClone(state!) : null);
   }
+  findById(id: string) {
+    const state = this.rows.get(id);
+    return Promise.resolve(state ? structuredClone(state) : null);
+  }
   listVisible(input: { actorId: string; offset: number; limit: number }) {
     const visible = [...this.rows.values()].filter((state) =>
       state.participants.some(

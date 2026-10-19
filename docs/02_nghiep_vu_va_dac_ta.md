@@ -41,7 +41,7 @@ Khi người dùng yêu cầu, hệ thống dùng điểm xếp hạng, ETA trun
 
 ### 3.4 Sở thích meetup
 
-Profile có thể lưu sở thích dài hạn để điền sẵn form. Khi tạo hoặc nhận meetup, mỗi người chọn sở thích tạm thời cho lần gặp đó. Tag hoạt động/bối cảnh có ba mức: `high`, `normal`, `avoid`. `MeetupMemberPreference` là nguồn dữ liệu chính; `UserPreference` chỉ là `profile_fallback` khi thành viên chưa chọn gì.
+Profile có thể lưu sở thích dài hạn để gợi ý trong form, nhưng giá trị điền sẵn không tự trở thành lựa chọn meetup nếu người dùng chưa xác nhận. Khi tạo hoặc nhận meetup, mỗi người có thể chọn một số tag hoạt động/bối cảnh với mức `high`, `normal`, `avoid`. Nếu đã chọn ít nhất một tag, chỉ những tag đã chọn được dùng; tag khác không tính và không lấy thêm từ profile. Nếu chưa chọn tag nào, dùng các tag đã lưu trong `UserPreference` làm `profile_fallback`. Không có tag trong cả hai nguồn thì không có preference để tính; không tự coi là `normal`. Xóa toàn bộ lựa chọn meetup sẽ trở lại fallback profile.
 
 Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ETA, điểm sở thích meetup và rating. Tag `avoid` làm hạ điểm địa điểm không phù hợp nhưng không có chế độ xếp hạng do người dùng chọn.
 
@@ -64,7 +64,7 @@ Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ET
 | BR-04 | Vị trí chỉ còn hiệu lực 5 phút. UI hiển thị thời điểm cập nhật; quá 5 phút là vị trí cũ. |
 | BR-05 | Vị trí trong meetup yêu cầu thành viên `accepted`, meetup còn hoạt động và chế độ/thời hạn chia sẻ của chủ vị trí cho phép người xem. `selected_friends` vẫn giới hạn người xem trong meetup. Khi rời/hủy/kết thúc meetup, backend ngừng phát vị trí vào room đó. |
 | BR-06 | Meetup cần ít nhất 2 thành viên chấp nhận và ít nhất 2 vị trí còn hiệu lực mới cho phép tìm địa điểm theo nhóm. |
-| BR-07 | Người tạo chỉ chỉnh sửa thành viên/bộ lọc trước khi chốt. Sau khi chốt chỉ được hủy meetup. |
+| BR-07 | Người tạo chỉ được sửa thông tin, bộ lọc và quản lý lời mời/thành viên trước cả hạn mời và khi chưa chốt. Từ đúng thời điểm hạn mời, không sửa các nội dung đó, không mời thêm hoặc phản hồi lời mời; organizer vẫn có thể hủy. Trước khi chốt, thành viên đã chấp nhận vẫn có thể rời và thành viên invited/accepted vẫn có thể sửa preference của chính mình. Sau khi chốt, organizer không sửa meetup và có thể hủy hoặc kết thúc theo điều kiện của meetup. Khi được mời lại vào cùng meetup, thành viên giữ preference tạm thời đã lưu trước đó. |
 | BR-08 | Mỗi thành viên có tối đa một vote cho một meetup; vote mới thay vote cũ trước hạn vote. |
 | BR-09 | Người tạo quyết định cuối cùng. Nếu chọn theo đa số, hòa phiếu ưu tiên nơi có `Max ETA` thấp hơn, sau đó điểm tổng cao hơn. |
 | BR-10 | Không lưu lịch sử GPS trong PostgreSQL ở MVP. Chỉ lưu latest location tạm thời trong Redis. |
@@ -78,7 +78,7 @@ Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ET
 | BR-18 | Gợi ý bạn ở gần được giới hạn tối đa một lần cho cùng một cặp trong 2 giờ để tránh làm phiền. |
 | BR-19 | Meetup không giới hạn số thành viên. Chỉ thành viên có trạng thái tham gia và vị trí còn hiệu lực được dùng để tính recommendation. |
 | BR-20 | Tối đa 20 thành viên tính ETA chính xác. Với 21–50 người, Route Matrix chia batch. Trên 50 người, hệ thống gom cụm vị trí và UI ghi rõ kết quả là ước lượng theo cụm. |
-| BR-21 | Sở thích do thành viên chọn trong meetup luôn ưu tiên hơn profile. Profile chỉ được dùng khi không có lựa chọn tạm thời. |
+| BR-21 | Nếu thành viên đã chọn ít nhất một tag meetup, chỉ các tag meetup đã chọn được tính; tag thiếu không tính, không mặc định `normal` và không fallback từng tag. Chỉ khi chưa chọn tag meetup nào mới fallback toàn bộ sang các tag đã lưu trong profile. Xóa toàn bộ lựa chọn meetup đưa thành viên về fallback profile. |
 
 ## 5. Công thức xếp hạng đơn giản
 
@@ -167,8 +167,10 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 **Tác nhân:** Người tạo meetup, Thành viên meetup.  
 **Điều kiện trước:** Meetup chưa chốt.  
-**Luồng chính:** Mỗi thành viên chọn tag hoạt động/bối cảnh với mức `high`, `normal` hoặc `avoid`. App điền sẵn từ profile nhưng lưu lựa chọn meetup riêng.  
-**Ngoại lệ:** Không có lựa chọn thì dùng `profile_fallback`.  
+**Luồng chính:** Mỗi thành viên chọn tag hoạt động/bối cảnh với mức `high`, `normal` hoặc `avoid`. Profile có thể gợi ý form; chỉ tag được xác nhận mới lưu là lựa chọn meetup. Lưu thay thế danh sách tag đã chọn; danh sách rỗng xóa lựa chọn meetup.
+
+**Ngoại lệ:** Không có lựa chọn meetup thì dùng `profile_fallback`; các tag không thuộc nguồn đang dùng không được tính.
+
 **Kết quả:** Recommendation có dữ liệu preference rõ ràng, có thể giải thích được.
 
 ### UC-10 Dẫn đường và kết thúc meetup

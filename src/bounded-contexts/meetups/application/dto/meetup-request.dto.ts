@@ -131,7 +131,6 @@ export class PreferenceTagInput {
 
 export class SetMeetupPreferencesRequest {
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => PreferenceTagInput)
   preferences: PreferenceTagInput[];

@@ -23,16 +23,12 @@ export class ProfilePreferenceFallbackAdapter implements ProfilePreferenceFallba
   async getProfilePreference(
     userId: string,
   ): Promise<ProfilePreferenceTag[] | null> {
-    try {
-      const pref = await this.profileReader.getPreference(userId);
-      return pref.tags.map((t) => ({
-        activityTagId: t.activityTagId,
-        tagCode: t.tagCode,
-        displayName: t.displayName,
-        level: t.level,
-      }));
-    } catch {
-      return null;
-    }
+    const pref = await this.profileReader.getPreference(userId);
+    return pref.tags.map((t) => ({
+      activityTagId: t.activityTagId,
+      tagCode: t.tagCode,
+      displayName: t.displayName,
+      level: t.level,
+    }));
   }
 }

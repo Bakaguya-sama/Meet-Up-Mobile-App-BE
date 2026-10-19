@@ -128,7 +128,6 @@ export const setMeetupPreferencesBodySchema: SchemaObject = {
   properties: {
     preferences: {
       type: 'array',
-      minItems: 1,
       items: {
         type: 'object',
         required: ['activityTagId', 'level'],
@@ -138,7 +137,7 @@ export const setMeetupPreferencesBodySchema: SchemaObject = {
         },
       },
       description:
-        'Temporary preferences for this meetup. Overrides profile preferences.',
+        'Complete replacement of selected tags; empty array clears them and restores profile fallback. Missing tags are not counted.',
     },
   },
 };

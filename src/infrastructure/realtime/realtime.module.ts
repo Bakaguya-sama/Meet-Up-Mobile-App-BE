@@ -12,6 +12,6 @@ import { RealtimePublisherAdapter } from './realtime-publisher.adapter';
     { provide: REALTIME_PUBLISHER, useExisting: RealtimePublisherAdapter },
     { provide: PRESENCE, useExisting: PresenceAdapter },
   ],
-  exports: [REALTIME_PUBLISHER, PRESENCE],
+  exports: [REALTIME_PUBLISHER, PRESENCE, RealtimePublisherAdapter],
 })
 export class RealtimeModule {}

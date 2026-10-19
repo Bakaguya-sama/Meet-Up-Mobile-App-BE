@@ -41,6 +41,7 @@ describe('LocationGateway', () => {
       meetups as never,
       publishLocation as never,
       getLatestLocation as never,
+      { bindServer: jest.fn() } as never,
     );
   });
 
@@ -68,6 +69,7 @@ describe('LocationGateway', () => {
       meetups as never,
       publishLocation as never,
       getLatestLocation as never,
+      { bindServer: jest.fn() } as never,
     );
     const middleware = installHandshakeMiddleware(gateway);
     const next = jest.fn();

@@ -21,6 +21,9 @@ import { RemoveParticipantUseCase } from '../src/bounded-contexts/meetups/applic
 import { CancelMeetupUseCase } from '../src/bounded-contexts/meetups/application/use-cases/cancel-meetup.use-case';
 import { FinishMeetupUseCase } from '../src/bounded-contexts/meetups/application/use-cases/finish-meetup.use-case';
 import { GetMeetupDetailQuery } from '../src/bounded-contexts/meetups/application/queries/get-meetup-detail.query';
+import { SetMeetupMemberPreferenceUseCase } from '../src/bounded-contexts/meetups/application/use-cases/set-meetup-member-preference.use-case';
+import { GetMeetupMemberPreferenceUseCase } from '../src/bounded-contexts/meetups/application/use-cases/get-meetup-member-preference.use-case';
+import { GetMeetupPreferencesSummaryQuery } from '../src/bounded-contexts/meetups/application/queries/get-meetup-preferences-summary.query';
 import { ListMeetupsQuery } from '../src/bounded-contexts/meetups/application/queries/list-meetups.query';
 import { MeetupMembershipReader } from '../src/bounded-contexts/meetups/application/public/meetup-membership-reader';
 import { MeetupLocationAdapter } from '../src/bounded-contexts/locations/infrastructure/adapters/meetup-location.adapter';
@@ -34,6 +37,14 @@ describe('Meetup HTTP contract', () => {
   const locked = 'dddddddd-0000-4000-8000-000000000004';
   let app: INestApplication<App>;
   const store = new InMemoryMeetupStore();
+  const fallback = {
+    getActiveTags: jest
+      .fn()
+      .mockResolvedValue([
+        { id: 1, code: 'coffee', displayName: 'Coffee', isActive: true },
+      ]),
+    getProfilePreference: jest.fn().mockResolvedValue([]),
+  };
   const eligibility = {
     eligibleIds: jest.fn((_: string, ids: string[]) =>
       Promise.resolve(ids.filter((id) => id === bob)),
@@ -65,6 +76,14 @@ describe('Meetup HTTP contract', () => {
         ...[CreateMeetupUseCase, InviteParticipantsUseCase].map((useCase) => ({
           provide: useCase,
           useValue: new useCase(store, eligibility),
+        })),
+        ...[
+          SetMeetupMemberPreferenceUseCase,
+          GetMeetupMemberPreferenceUseCase,
+          GetMeetupPreferencesSummaryQuery,
+        ].map((useCase) => ({
+          provide: useCase,
+          useValue: new useCase(store, fallback),
         })),
         ...[
           UpdateMeetupUseCase,
@@ -132,6 +151,29 @@ describe('Meetup HTTP contract', () => {
     );
     expect(await membership.canJoin(bob, id)).toBe(false);
     expect(await membership.canJoin(alice, id)).toBe(true);
+  });
+
+  it('round trips explicitly selected tags and restores fallback when cleared', async () => {
+    const id = await create();
+    const saved = await request(app.getHttpServer())
+      .put(`/api/v1/meetups/${id}/preferences`)
+      .set(auth(alice))
+      .send({ preferences: [{ activityTagId: 1, level: 'high' }] })
+      .expect(200);
+    const read = await request(app.getHttpServer())
+      .get(`/api/v1/meetups/${id}/preferences`)
+      .set(auth(alice))
+      .expect(200);
+    expect(read.body).toEqual(saved.body);
+    const cleared = await request(app.getHttpServer())
+      .put(`/api/v1/meetups/${id}/preferences`)
+      .set(auth(alice))
+      .send({ preferences: [] })
+      .expect(200);
+    expect(cleared.body).toMatchObject({
+      hasExplicitMeetupPreference: false,
+      tags: [],
+    });
   });
 
   it('requires authentication and rejects locked accounts', async () => {

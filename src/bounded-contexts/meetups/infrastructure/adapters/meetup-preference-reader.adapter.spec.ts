@@ -45,10 +45,7 @@ describe('TypeOrmMeetupPreferenceReader (Infrastructure Adapter)', () => {
 
     meetup.setParticipantPreferences(
       'alice',
-      [
-        { activityTagId: 1, level: 'high' },
-        { activityTagId: 2, level: 'avoid' },
-      ],
+      [{ activityTagId: 1, level: 'high' }],
       now,
     );
 
@@ -89,12 +86,8 @@ describe('TypeOrmMeetupPreferenceReader (Infrastructure Adapter)', () => {
     expect(alicePref.tags.find((t) => t.activityTagId === 1)!.level).toBe(
       'high',
     );
-    expect(alicePref.tags.find((t) => t.activityTagId === 2)!.level).toBe(
-      'avoid',
-    );
-    expect(alicePref.tags.find((t) => t.activityTagId === 2)!.source).toBe(
-      'meetup_input',
-    );
+    expect(alicePref.tags.find((t) => t.activityTagId === 2)).toBeUndefined();
+    expect(mockFallback.getProfilePreference).not.toHaveBeenCalledWith('alice');
 
     const bobPref = effective.find((p) => p.userId === 'bob')!;
     expect(bobPref.hasExplicitMeetupPreference).toBe(false);

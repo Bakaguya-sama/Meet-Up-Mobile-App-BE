@@ -23,7 +23,7 @@ export abstract class MeetupPreferenceReader {
    * Returns effective preferences for all accepted participants in a meetup.
    * Enforces BR-21: Meetup preferences take precedence over profile preferences.
    * If a member has not submitted meetup preferences, profile preferences are used
-   * as profile_fallback. If neither exists, defaults to 'normal'.
+   * as profile_fallback. Tags absent from the chosen source are not included.
    */
   abstract getEffectivePreferences(
     meetupId: string,
