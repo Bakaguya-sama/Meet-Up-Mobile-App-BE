@@ -8,6 +8,7 @@ export type MeetupErrorCode =
   | 'MEETUP_INVALID_TRANSITION'
   | 'MEETUP_INVITATION_EXPIRED'
   | 'MEETUP_MEMBER_CONFLICT'
+  | 'MEETUP_INSUFFICIENT_PARTICIPANTS'
   | 'MEETUP_INVITEE_UNAVAILABLE';
 
 export class MeetupError extends DomainError {

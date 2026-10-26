@@ -4,7 +4,13 @@ import { RouteMatrixAdapter } from './route-matrix.adapter';
 describe('recommendation adapters', () => {
   it('returns copies so a test cannot mutate future Place responses', async () => {
     const places = new PlaceSearchAdapter([
-      { providerPlaceId: 'place-1', name: 'Cafe', categories: ['cafe'] },
+      {
+        providerPlaceId: 'place-1',
+        name: 'Cafe',
+        categories: ['cafe'],
+        latitude: 10.7,
+        longitude: 106.7,
+      },
     ]);
 
     const result = await places.search({
@@ -15,7 +21,13 @@ describe('recommendation adapters', () => {
     });
 
     expect(result).toEqual([
-      { providerPlaceId: 'place-1', name: 'Cafe', categories: ['cafe'] },
+      {
+        providerPlaceId: 'place-1',
+        name: 'Cafe',
+        categories: ['cafe'],
+        latitude: 10.7,
+        longitude: 106.7,
+      },
     ]);
   });
 

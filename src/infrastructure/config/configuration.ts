@@ -11,6 +11,9 @@ export const configuration = () => ({
   redis: {
     url: process.env.REDIS_URL ?? 'redis://localhost:6379',
   },
+  googleMaps: {
+    apiKey: process.env.GOOGLE_MAPS_API_KEY ?? '',
+  },
   firebase: {
     enabled: process.env.FIREBASE_ENABLED === 'true',
     projectId: process.env.FIREBASE_PROJECT_ID,

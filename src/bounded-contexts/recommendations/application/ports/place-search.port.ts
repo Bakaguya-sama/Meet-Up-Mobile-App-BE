@@ -4,9 +4,11 @@ export interface PlaceCandidate {
   providerPlaceId: string;
   name: string;
   categories: string[];
+  latitude: number;
+  longitude: number;
+  formattedAddress?: string;
   rating?: number;
   openingHours?: { openNow?: boolean };
-  photoUrl?: string;
 }
 
 export interface PlaceSearchPort {

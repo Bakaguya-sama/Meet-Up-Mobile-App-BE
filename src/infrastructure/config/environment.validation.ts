@@ -63,6 +63,7 @@ const environmentSchema = Joi.object({
   REDIS_URL: Joi.string()
     .uri({ scheme: ['redis', 'rediss'] })
     .default('redis://localhost:6379'),
+  GOOGLE_MAPS_API_KEY: Joi.string().allow('').optional(),
   FIREBASE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   FIREBASE_PROJECT_ID: Joi.when('FIREBASE_ENABLED', {
     is: true,

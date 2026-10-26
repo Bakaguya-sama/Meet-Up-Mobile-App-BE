@@ -38,6 +38,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         MEETUP_NOT_FOUND: HttpStatus.NOT_FOUND,
         MEETUP_FORBIDDEN: HttpStatus.FORBIDDEN,
         MEETUP_INVITEE_UNAVAILABLE: HttpStatus.BAD_REQUEST,
+        MEETUP_INSUFFICIENT_PARTICIPANTS: HttpStatus.BAD_REQUEST,
+        RECOMMENDATION_INSUFFICIENT_LOCATIONS: HttpStatus.BAD_REQUEST,
+        PLACE_SEARCH_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
       };
       const status = statuses[exception.code] ?? HttpStatus.CONFLICT;
       response.status(status).json({

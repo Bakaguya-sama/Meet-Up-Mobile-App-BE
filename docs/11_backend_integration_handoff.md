@@ -111,3 +111,71 @@ Không gửi title/body/token/GPS qua integration event; title/body hiện đư�
 | 2026-10-14 | Backend 2 | BE-07 `device_tokens`, FCM adapter, push outbox delivery | Backend 1 dùng `MeetupFinalized.v1` khi BE-10 hoàn thành | Sẵn sàng |
 | 2026-10-15 | Backend 1 | BE-03 hoàn thành vòng đời Meetup và thành viên, kết nối MeetupLocationAdapter, phát realtime & push outbox events | Backend 2 có thể join/read location theo active meetup | Sẵn sàng |
 | 2026-10-19 | Backend 1 / Backend 2 | BR-07/21: sau hạn mời khóa sửa thông tin và quản lý thành viên của organizer; thành viên vẫn rời/sửa preference trước khi chốt. Preference meetup thay toàn bộ profile, chỉ tag đã chọn được tính; danh sách rỗng trở về profile. Mời lại giữ preference cũ. | Backend 2 recommendation phải dùng `MeetupPreferenceReader`, không tự bổ sung tag thiếu từ profile hoặc gán `normal`; mobile phân biệt profile gợi ý và tag đã xác nhận. | Cần kiểm tra tích hợp khi triển khai recommendation |
+| 2026-10-26 | Backend 2 | BE-13: candidate search dùng `MeetupCandidateSearchPort` và `MeetupLocationPort`, Google Places API (New), chưa có ETA/ranking/recommendationMode. | Backend 1 giữ public reader của Meetup; mobile gọi endpoint candidate và không gửi tọa độ tâm tìm kiếm. | Sẵn sàng, cần cấu hình Google Places |
+
+## 8. BE-13 — Lấy địa điểm ứng viên
+
+BE-13 lấy địa điểm ứng viên từ Google Places API (New) trước khi BE-14 tính ETA và BE-15 xếp hạng. Chức năng này không ghi `RecommendationRun`, không gọi Google Routes và không dùng `recommendationMode`.
+
+### API
+
+`POST /api/v1/meetups/:meetupId/recommendations/candidates`
+
+API yêu cầu Bearer access token. Chỉ organizer của meetup đang `inviting` hoặc `choosing` có thể gọi.
+
+Backend lấy `placeType` và `searchRadiusM` từ Meetup qua `MeetupCandidateSearchPort`. Tâm tìm kiếm là trung bình tọa độ đã được privacy-project cho organizer của các participant `accepted`, lấy qua `MeetupLocationPort`; client không gửi tọa độ tìm kiếm.
+
+Điều kiện trước:
+
+- Meetup có ít nhất hai participant `accepted`.
+- Có ít nhất hai latest location còn hiệu lực và được phép dùng trong meetup.
+- `GOOGLE_MAPS_API_KEY` đã cấu hình, không bị đưa vào client/log và Places API (New) được bật.
+
+Response thành công:
+
+```json
+{
+  "meetupId": "uuid",
+  "placeType": "cafe",
+  "searchedAround": { "latitude": 10.775, "longitude": 106.7 },
+  "candidates": [
+    {
+      "providerPlaceId": "places/abc",
+      "name": "Cafe Example",
+      "categories": ["cafe", "food"],
+      "latitude": 10.776,
+      "longitude": 106.701,
+      "formattedAddress": "District 1",
+      "rating": 4.5,
+      "openingHours": { "openNow": true }
+    }
+  ]
+}
+```
+
+### Privacy, dữ liệu và giới hạn
+
+- Location được đọc qua public API của context `locations`; mỗi mẫu được kiểm tra privacy và membership meetup trước khi dùng.
+- API không trả location của từng participant, token hoặc GPS history.
+- Google request chỉ yêu cầu các field candidate cần thiết: ID, display name, type, location của **địa điểm**, địa chỉ, rating và `openNow`.
+- Không dùng `priceLevel`, Budget filter hay PricePenalty.
+- Ảnh địa điểm chưa được trả ở BE-13 để tránh đưa server API key vào URL photo. Nếu cần ảnh, thêm endpoint proxy/adapter riêng sau.
+- BE-13 không cần migration vì chưa lưu `PlaceSnapshot` hay `RecommendationRun`.
+
+### Lỗi chính
+
+| Code | HTTP | Khi nào |
+|---|---:|---|
+| `MEETUP_NOT_FOUND` | 404 | Meetup không tồn tại |
+| `MEETUP_FORBIDDEN` | 403 | Caller không phải organizer |
+| `MEETUP_INSUFFICIENT_PARTICIPANTS` | 400 | Có dưới hai participant accepted |
+| `RECOMMENDATION_INSUFFICIENT_LOCATIONS` | 400 | Có dưới hai location hợp lệ/được phép |
+| `PLACE_SEARCH_UNAVAILABLE` | 503 | Chưa cấu hình key, Google lỗi hoặc timeout |
+
+### Kiểm thử
+
+- Organizer tìm candidate với hai location hợp lệ.
+- Non-organizer, meetup đã chốt/hủy và meetup có dưới hai member bị từ chối.
+- Location hết TTL, privacy không cho phép hoặc không có location làm request thất bại an toàn.
+- Google response thiếu ID/tên/tọa độ bị loại; field không cần thiết không được yêu cầu.
+- Google timeout/lỗi không làm thay đổi state Meetup.
