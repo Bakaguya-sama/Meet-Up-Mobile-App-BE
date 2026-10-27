@@ -10,7 +10,10 @@ describe('FindPlaceCandidatesUseCase', () => {
   const locations: jest.Mocked<MeetupLocationPort> = {
     getActiveLocations: jest.fn(),
   };
-  const places: jest.Mocked<PlaceSearchPort> = { search: jest.fn() };
+  const places: jest.Mocked<PlaceSearchPort> = {
+    search: jest.fn(),
+    searchPage: jest.fn(),
+  };
   const useCase = new FindPlaceCandidatesUseCase(meetups, locations, places);
 
   beforeEach(() => jest.resetAllMocks());
@@ -20,6 +23,11 @@ describe('FindPlaceCandidatesUseCase', () => {
       meetupId: 'meetup-1',
       placeType: 'cafe',
       searchRadiusMeters: 1500,
+      scheduledAt: new Date('2026-10-28T00:00:00Z'),
+      acceptedMembers: [
+        { participantId: 'participant-a', userId: 'user-a' },
+        { participantId: 'participant-b', userId: 'user-b' },
+      ],
       acceptedMemberUserIds: ['user-a', 'user-b'],
     });
     locations.getActiveLocations.mockResolvedValue([
@@ -54,6 +62,11 @@ describe('FindPlaceCandidatesUseCase', () => {
       meetupId: 'meetup-1',
       placeType: 'cafe',
       searchRadiusMeters: 1500,
+      scheduledAt: new Date('2026-10-28T00:00:00Z'),
+      acceptedMembers: [
+        { participantId: 'participant-a', userId: 'user-a' },
+        { participantId: 'participant-b', userId: 'user-b' },
+      ],
       acceptedMemberUserIds: ['user-a', 'user-b'],
     });
     locations.getActiveLocations.mockResolvedValue([

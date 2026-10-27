@@ -4,6 +4,8 @@ export interface MeetupCandidateSearchContext {
   meetupId: string;
   placeType: string;
   searchRadiusMeters: number;
+  scheduledAt: Date;
+  acceptedMembers: Array<{ participantId: string; userId: string }>;
   acceptedMemberUserIds: string[];
 }
 

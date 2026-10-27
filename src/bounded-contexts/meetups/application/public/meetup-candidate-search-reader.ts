@@ -5,6 +5,8 @@ export interface MeetupCandidateSearchContext {
   meetupId: string;
   placeType: string;
   searchRadiusMeters: number;
+  scheduledAt: Date;
+  acceptedMembers: Array<{ participantId: string; userId: string }>;
   acceptedMemberUserIds: string[];
 }
 
@@ -32,9 +34,15 @@ export class MeetupCandidateSearchReader {
         'Candidate places are unavailable for a finalized or closed meetup',
       );
     }
-    const acceptedMemberUserIds = meetup.participants
+    const acceptedMembers = meetup.participants
       .filter((participant) => participant.status === 'accepted')
-      .map((participant) => participant.userId);
+      .map((participant) => ({
+        participantId: participant.id,
+        userId: participant.userId,
+      }));
+    const acceptedMemberUserIds = acceptedMembers.map(
+      (member) => member.userId,
+    );
     if (acceptedMemberUserIds.length < 2) {
       throw new MeetupError(
         'MEETUP_INSUFFICIENT_PARTICIPANTS',
@@ -45,6 +53,8 @@ export class MeetupCandidateSearchReader {
       meetupId: meetup.id,
       placeType: meetup.placeType,
       searchRadiusMeters: meetup.searchRadiusM,
+      scheduledAt: new Date(meetup.scheduledAt),
+      acceptedMembers,
       acceptedMemberUserIds,
     };
   }
