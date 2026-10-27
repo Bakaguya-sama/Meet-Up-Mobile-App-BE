@@ -2,6 +2,7 @@ import { UserAccount } from '../../domain/aggregates/user-account.aggregate';
 import { IssueSession } from '../services/issue-session.service';
 import { LoginAccountUseCase } from './login-account.use-case';
 import { RefreshTokenUseCase } from './refresh-token.use-case';
+import type { AuthTransaction } from '../ports/auth-unit-of-work.port';
 
 const accountState = {
   id: 'user-1',
@@ -45,7 +46,11 @@ describe('BE-01 session flows', () => {
       preferences: {},
       oauthIdentities: {},
     };
-    return { run: jest.fn((work) => work(store)), store };
+    const run = jest.fn(
+      <T>(work: (transaction: AuthTransaction) => Promise<T>) =>
+        work(store as unknown as AuthTransaction),
+    );
+    return { run, store };
   };
 
   beforeEach(() => jest.clearAllMocks());

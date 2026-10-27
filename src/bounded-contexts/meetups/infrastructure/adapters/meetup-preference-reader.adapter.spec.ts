@@ -87,6 +87,7 @@ describe('TypeOrmMeetupPreferenceReader (Infrastructure Adapter)', () => {
       'high',
     );
     expect(alicePref.tags.find((t) => t.activityTagId === 2)).toBeUndefined();
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(mockFallback.getProfilePreference).not.toHaveBeenCalledWith('alice');
 
     const bobPref = effective.find((p) => p.userId === 'bob')!;

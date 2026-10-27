@@ -228,6 +228,7 @@ describe('Meetup Preferences Use Cases and Queries (BE-02, BE-08, S3, Core)', ()
 
       expect(result.tags).toHaveLength(1);
       expect(result.tags.find((t) => t.activityTagId === 1)).toBeUndefined();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockFallback.getProfilePreference).not.toHaveBeenCalled();
     });
 
