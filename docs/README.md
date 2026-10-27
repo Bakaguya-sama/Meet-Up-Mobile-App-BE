@@ -21,6 +21,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `10_notifications_api.md` | Đăng ký thiết bị FCM, mã hóa token và contract deep-link notification. |
 | `13_backend2_roadmap.md` | Roadmap triển khai Backend 2: realtime, recommendation, FCM, AI, nearby và quan sát hệ thống. |
 | `11_backend_integration_handoff.md` | Handoff giữa hai developer backend: owner, contract, outbox, migration và nhật ký phối hợp. |
+| `12_meetup_group_recommendation_engine.md` | Thiết kế kỹ thuật recommendation pipeline, fairness ranking, feedback logging và lộ trình offline learning/LTR. |
 
 ## Cách dùng nhanh
 
@@ -33,7 +34,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 
 Phạm vi triển khai gồm Android, một thành phố, di chuyển bằng xe máy/ô tô theo dữ liệu Google Routes, meetup có số thành viên linh hoạt và chia sẻ vị trí bằng một cờ chung trong hồ sơ. Thành viên meetup đã chấp nhận sẽ tự được dùng vị trí hợp lệ khi cờ này bật. Sau phần lõi, nhóm sẽ triển khai: lọc đang mở cửa, địa điểm yêu thích, lịch sử meetup, ETA từng thành viên, dẫn đường, chat nhóm, AI giải thích đề xuất và phát hiện bạn bè ở gần.
 
-Meetup không giới hạn số thành viên ở cấp sản phẩm. Engine gợi ý tự chọn cách tính theo quy mô: tối đa 20 người tính ETA chính xác; 21–50 người chạy theo batch; trên 50 người gom cụm vị trí trước rồi tính chi tiết cho các địa điểm tốt nhất. Hệ thống dùng một cách xếp hạng cố định, cân bằng ETA, sở thích meetup và rating.
+Meetup không giới hạn số thành viên ở cấp sản phẩm. Cách chia batch và gom cụm cho nhóm lớn vẫn cần được kiểm chứng theo giới hạn Route Matrix và ngân sách API. Công thức xếp hạng trong đặc tả nghiệp vụ hiện là placeholder; thiết kế có version, baseline và hướng đánh giá được mô tả trong `12_meetup_group_recommendation_engine.md`.
 
 Sở thích profile chỉ là giá trị mặc định. Khi tạo hoặc nhận meetup, mỗi người chọn sở thích tạm thời cho meetup; lựa chọn này là dữ liệu chính để xếp hạng.
 

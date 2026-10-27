@@ -82,6 +82,8 @@ Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ET
 
 ## 5. Công thức xếp hạng đơn giản
 
+> **Trạng thái:** Công thức trong mục này là placeholder nghiệp vụ ban đầu, không phải thiết kế thuật toán đã chốt. Thiết kế có version, baseline, fairness ranking và lộ trình học từ feedback nằm trong `12_meetup_group_recommendation_engine.md`.
+
 Với mỗi nơi `p`, hệ thống tính ETA của từng người bằng Google Routes. Điểm càng thấp càng tốt:
 
 `Diem(p) = 0.50 × AvgETA + 0.35 × MaxETA + 0.20 × PhatNguyenVong - 0.05 × Rating`

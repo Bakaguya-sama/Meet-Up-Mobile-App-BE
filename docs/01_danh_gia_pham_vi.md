@@ -75,7 +75,7 @@ Meetup không đặt giới hạn số thành viên. Tuy nhiên, không thể co
 | 21–50 | Chia Route Matrix thành các batch, tổng hợp sau khi hoàn thành | Có thể mất thêm thời gian |
 | Trên 50 | Gom cụm vị trí, tìm top địa điểm theo cụm, sau đó tính ETA chi tiết cho top 3 | Ước lượng theo cụm, hiển thị rõ trên UI |
 
-Engine dùng một cách xếp hạng cố định, cân bằng Avg ETA, Max ETA, sở thích meetup và rating. Sở thích profile chỉ dùng để điền sẵn form. Lựa chọn trong meetup mới là dữ liệu quyết định. Mỗi người có thể đánh dấu “rất muốn”, “muốn” hoặc “không muốn” cho hoạt động/bối cảnh như cà phê, xem phim, trong nhà, yên tĩnh.
+Engine cần cân bằng ETA, fairness, sở thích meetup và chất lượng địa điểm. Công thức từng ghi trong đặc tả chỉ là placeholder nghiệp vụ; thiết kế thuật toán có version và cách đánh giá nằm trong `12_meetup_group_recommendation_engine.md`. Sở thích profile chỉ dùng để điền sẵn form. Lựa chọn trong meetup mới là dữ liệu quyết định. Mỗi người có thể đánh dấu “rất muốn”, “muốn” hoặc “không muốn” cho hoạt động/bối cảnh như cà phê, xem phim, trong nhà, yên tĩnh.
 
 ## Quyết định phạm vi đề xuất
 
