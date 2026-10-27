@@ -1,0 +1,833 @@
+# Kế hoạch triển khai Backend — 13_implementation_plan
+
+> Ngày lập: 27/10/2026
+>
+> Phạm vi nguồn: workbook `MeetUp_Product_Backlog_Function_Points.xlsx` và tài liệu hiện có trong dự án
+>
+> Trạng thái: kế hoạch triển khai; quyết định tại Mục 7 là baseline triển khai hiện hành. Các ngưỡng benchmark còn mở không được tự hard-code cho production.
+
+## Mục lục
+
+1. [Mục tiêu và phạm vi](#1-mục-tiêu-và-phạm-vi)
+2. [Tóm tắt đầu vào](#2-tóm-tắt-đầu-vào)
+3. [Giả định và rủi ro](#3-giả-định-và-rủi-ro)
+4. [Đồ thị phụ thuộc](#4-đồ-thị-phụ-thuộc)
+5. [Các giai đoạn thực hiện](#5-các-giai-đoạn-thực-hiện)
+6. [Bảng đối chiếu function → bước](#6-bảng-đối-chiếu-function--bước)
+7. [Quyết định đã chốt và câu hỏi còn mở](#7-quyết-định-đã-chốt-và-câu-hỏi-còn-mở)
+
+## 1. Mục tiêu và phạm vi
+
+### 1.1. Mục tiêu
+
+Kế hoạch này sắp xếp toàn bộ 27 function trong tab **Chức năng BE** theo phụ thuộc kỹ thuật và nghiệp vụ. Mỗi bước nêu rõ việc cần làm, đầu vào, đầu ra và điều kiện hoàn thành để developer có thể bắt đầu và reviewer có thể quyết định đạt hay không đạt. [Nguồn: `MeetUp_Product_Backlog_Function_Points.xlsx` — sheet `Chức năng BE`, BE-01 đến BE-27]
+
+Kế hoạch bắt đầu từ trạng thái hiện tại của workbook:
+
+- 10 function đã thực hiện: BE-01 đến BE-09 và BE-13.
+- 17 function chưa thực hiện: BE-10 đến BE-12, BE-14 đến BE-27.
+- Mọi phần của recommendation engine, gồm online pipeline, offline evaluation và learning-to-rank, do **Dev Backend 2** phụ trách. [Nguồn: workbook — sheet `Chức năng BE`, cột `Phụ trách` và `Trạng thái`; sheet `Phân công`]
+
+Các function đã thực hiện không bị mặc định là “đạt”. Bước 0 kiểm chứng contract và tiêu chí trong nguồn trước khi function phụ thuộc được bắt đầu.
+
+### 1.2. Trong phạm vi
+
+- Xác thực, profile, friendship, privacy, realtime location, Socket, FCM, meetup, preference, vote, chat, history, favorite và admin account theo đúng function trong sheet. [Nguồn: workbook — `Chức năng BE`, BE-01 đến BE-12, BE-18 đến BE-20]
+- Candidate-only endpoint hiện có và recommendation engine hoàn chỉnh: run/context, candidate pipeline, Route Matrix, feature/utility, fairness ranking, explanation, persistence và result API. [Nguồn: workbook — `Chức năng BE`, BE-13 đến BE-17, BE-22, BE-23; `12_meetup_group_recommendation_engine.md` — Mục 4–8, 11]
+- Impression/feedback, observability/replay, offline dataset/evaluation và LTR lifecycle. [Nguồn: workbook — `Chức năng BE`, BE-21, BE-24 đến BE-26; Doc 12 — Mục 9–10, 14]
+- AI explanation tùy chọn và nearby friend detection theo phạm vi đã ghi trong sheet. [Nguồn: workbook — `Chức năng BE`, BE-18, BE-27]
+
+### 1.3. Ngoài phạm vi
+
+- Function không có trong sheet; microservice, Kafka hoặc RabbitMQ. [Nguồn: `09_cong_nghe_su_dung.md` — Mục 1, 10]
+- Budget filter, Google `priceLevel` hoặc `PricePenalty`. [Nguồn: workbook — `Giới thiệu`; `06_database_schema.dbml` — Project note]
+- GPS history, multi-stop routing, weather, calendar, reinforcement learning và real-time model update. [Nguồn: Doc 12 — Mục 1.5]
+- Multi-place-provider retrieval trong cùng một run, `OPEN_AT_SCHEDULED_TIME` và diversity re-ranking. Các mục này chưa có contract được chốt. [Nguồn: Doc 12 — Mục 4.5, 8.4, 13, 16.2]
+- Admin report handling, admin metrics UI và admin health UI không được đưa vào BE-19 vì sheet chỉ giao khóa/mở khóa tài khoản và audit. [Nguồn: workbook — `Chức năng BE`, BE-19; đối chiếu `07_usecase_admin.puml`]
+
+## 2. Tóm tắt đầu vào
+
+### 2.1. Cấu trúc workbook
+
+Tab `Chức năng BE` có 10 cột:
+
+| Cột | Ý nghĩa dùng trong plan |
+|---|---|
+| `Mã` | ID duy nhất của function, từ BE-01 đến BE-27. |
+| `Chức năng Backend` | Tên function dùng nguyên văn trong plan. |
+| `API/Event/Worker chính` | Bề mặt tích hợp phải được triển khai hoặc kiểm chứng. |
+| `Phạm vi` | `Core` hoặc `Planned`. |
+| `Điểm BE` | Độ lớn tương đối đã chốt trong workbook; không đổi thành giờ. |
+| `Phụ trách` | Dev Backend 1 hoặc Dev Backend 2. |
+| `Sprint` | Thứ tự mục tiêu S1 đến S7+. Không phải cam kết ngày. |
+| `Phụ thuộc` | Cạnh trong đồ thị phụ thuộc. |
+| `Tiêu chí hoàn thành` | Nguồn chính để viết exit gate. |
+| `Trạng thái` | `Đã thực hiện` hoặc `Chưa thực hiện`. |
+
+[Nguồn: workbook — sheet `Chức năng BE`, hàng tiêu đề và BE-01 đến BE-27]
+
+### 2.2. Thống kê function
+
+| Nhóm | Số function | Điểm BE | ID |
+|---|---:|---:|---|
+| Core | 17 | 152 | BE-01–BE-10, BE-13–BE-17, BE-22–BE-23 |
+| Planned | 10 | 75 | BE-11–BE-12, BE-18–BE-21, BE-24–BE-27 |
+| Đã thực hiện | 10 | 81 | BE-01–BE-09, BE-13 |
+| Chưa thực hiện | 17 | 146 | BE-10–BE-12, BE-14–BE-27 |
+| Dev Backend 1 | 11 | 72 | BE-01–BE-04, BE-08–BE-12, BE-19–BE-20 |
+| Dev Backend 2 | 16 | 155 | BE-05–BE-07, BE-13–BE-18, BE-21–BE-27 |
+| **Tổng** | **27** | **227** | BE-01–BE-27 |
+
+[Nguồn: workbook — sheet `Chức năng BE`; sheet `Tổng hợp`]
+
+Phân bố theo sprint: S1 có 3 function; S2 có 4; S3 có 3; S4 có 6; S5 có 6; S6 có 3; S7 có 1; S7+ có 1. [Nguồn: workbook — `Chức năng BE`, cột `Sprint`]
+
+### 2.3. Nguồn tài liệu và quy tắc rút ra
+
+| Nguồn | Nội dung dùng trong plan |
+|---|---|
+| `README.md`, `docs/README.md` | Lệnh build/test/migration; phạm vi và chỉ mục tài liệu. |
+| `01_danh_gia_pham_vi.md` | Phạm vi Core/Planned, privacy, TTL 5 phút và mục tiêu chất lượng. |
+| `02_nghiep_vu_va_dac_ta.md` | Actor, meetup lifecycle, business rules, preference và vote. Công thức recommendation tại đây được chính tài liệu đánh dấu là tạm thời. |
+| `03_usecase_users.puml`, `07_usecase_admin.puml` | Quan hệ use case người dùng và admin. |
+| `04_product_backlog.md` | Owner, Definition of Done chung và backlog nghiệp vụ. |
+| `05_ke_hoach_kiem_thu.md` | Scenario bắt buộc về privacy, TTL, vote, recommendation, AI và nearby. |
+| `06_database_schema.dbml` | Schema hiện tại; là nguồn phát hiện drift với engine mới. |
+| `08_huong_dan_cau_truc_ddd.md` | Layering, bounded context, port/event, error mapping, test và migration rule. |
+| `09_cong_nghe_su_dung.md` | Stack đã chốt: NestJS, PostgreSQL/PostGIS, Redis, BullMQ, Socket.IO, FCM, Google Places/Routes, Jest/Supertest/Testcontainers. |
+| `10_notifications_api.md` | Device token encryption, outbox, retry và notification payload. |
+| `11_backend_integration_handoff.md` | Contract giao thoa, BE-13 hiện tại, event và error code. |
+| `12_meetup_group_recommendation_engine.md` | Nguồn thiết kế đích cho recommendation online, offline và LTR. |
+| `Source/10_be03_friends_api.md` | Contract BE-03 và concurrency. |
+| `Source/10_realtime_event_contracts.md` | Event versioning, room authorization, outbox và idempotency. |
+| `Source/11_location_privacy_api.md` | Privacy mode, projection và kiểm tra quyền trên từng request. |
+| `Source/12_audit_remediation.md` | OAuth/profile transaction và các điểm audit đã sửa. |
+| `Source/13_backend2_roadmap.md` | Roadmap cũ; chỉ dùng để phát hiện mâu thuẫn với workbook mới và Doc 12. |
+
+### 2.4. Ràng buộc kiến trúc đã chốt
+
+- Backend là NestJS modular monolith. Dependency đi từ `presentation -> application -> domain`; infrastructure hiện thực port và domain không phụ thuộc NestJS/TypeORM/SDK ngoài. [Nguồn: `08_huong_dan_cau_truc_ddd.md` — Mục 2–4]
+- Context không đọc repository hoặc bảng của context khác. Tích hợp bằng public application port hoặc integration event có version. Không dùng `forwardRef` để che vòng phụ thuộc. [Nguồn: DDD doc — Mục 6, 11; `11_backend_integration_handoff.md` — Mục 2]
+- PostgreSQL/PostGIS lưu dữ liệu bền; Redis lưu latest location/presence/cooldown có TTL. Không lưu GPS history. [Nguồn: `09_cong_nghe_su_dung.md` — Mục 3–4; `06_database_schema.dbml` — Redis keys]
+- Side effect Socket/FCM được phát sau commit qua outbox; consumer phải idempotent. [Nguồn: `10_notifications_api.md` — Mục 5–6; realtime contracts — Mục 3]
+- Error mapping: 400 validation, 401 authentication, 403 authorization, 404 not found, 409 conflict, 502/503 external dependency. [Nguồn: DDD doc — Mục 8]
+- Migration là append-only; schema DBML phải được cập nhật cùng migration. [Nguồn: DDD doc — Mục 7, 12; `11_backend_integration_handoff.md` — Mục 3]
+- Recommendation dùng một active place provider và một route provider cho mỗi run; provider được che sau adapter. [Nguồn: Doc 12 — Mục 4.5, 13]
+- Vote chỉ xảy ra sau recommendation và không rerank cùng run. [Nguồn: workbook — BE-10; Doc 12 — Mục 3, 9]
+- Travel mode mặc định là `TWO_WHEELER`; `avoid` là soft penalty. [Nguồn: workbook — `Giới thiệu`, BE-16–BE-17; Doc 12 — Mục 3, 7]
+
+## 3. Giả định và rủi ro
+
+### 3.1. Giả định đang dùng
+
+| Giả định | Ảnh hưởng |
+|---|---|
+| Workbook backend là inventory hiện hành cho ID, tên, owner, sprint, điểm và trạng thái. | Không dùng ID/điểm cũ trong `13_backend2_roadmap.md`. Quy tắc canonical đã được chốt tại Mục 7.1. |
+| **[Giả định]** Function có trạng thái `Đã thực hiện` được kiểm chứng trước, không viết lại mặc định. | Bước 0 tạo baseline; chỉ sửa khi test hoặc contract chứng minh có gap. |
+| **[Giả định]** Sprint biểu diễn thứ tự ưu tiên, không phải deadline. | Không quy đổi điểm BE thành giờ hoặc ngày. |
+| **[Giả định]** Lệnh kiểm chứng chạy từ `Source/Meet-Up-Mobile-App-BE`. | Mọi exit gate dùng script đã công bố trong README/package scripts. |
+| **[Giả định]** Mỗi PR là một vertical slice hoặc một thay đổi contract rõ ràng. | Giảm conflict; phù hợp hướng dẫn PR hiện có. [Nguồn: DDD doc — Mục 12; `13_backend2_roadmap.md` — Mục 5] |
+
+### 3.2. Rủi ro và cách giảm thiểu
+
+| Rủi ro | Function bị ảnh hưởng | Cách giảm thiểu trong plan |
+|---|---|---|
+| Schema/roadmap cũ còn `exact/batch/cluster` và score thấp hơn tốt hơn; Doc 12 dùng route batching hai chiều, utility cao hơn tốt hơn và fairness ranker. | BE-14–BE-17, BE-22–BE-23 | Dùng Route Matrix đầy đủ, batch hai chiều và `rankingStrategy`; migration append-only thay thế model cũ theo Mục 7.1. |
+| Endpoint BE-13 không thống nhất GET/POST và search center không thống nhất trung bình/medoid. | BE-13–BE-15 | Giữ BE-13 dưới POST candidate-only; engine dùng medoid. Contract deprecation/internalization thực hiện theo Mục 7.1. |
+| Provider Places/Routes có quota, chi phí, timeout và lỗi từng element. | BE-13, BE-15–BE-16, BE-21 | Adapter contract, timeout/retry có giới hạn, element accounting, circuit breaker metric và test stub. [Nguồn: Doc 12 — Mục 12.1–12.2] |
+| LTR thiếu dữ liệu, label và fairness formula promotion. | BE-24–BE-26 | Time split, impressed-set evaluation, shadow trước A/B, fallback `fair-pareto-v1`; không promote khi contract chưa chốt. [Nguồn: Doc 12 — Mục 9–10, 14.5] |
+| Dữ liệu vị trí/token bị lộ qua log, event hoặc dataset. | BE-04–BE-07, BE-18, BE-21, BE-24–BE-26 | Per-request authorization, redaction test, pseudonymous offline export và không lưu origin coordinate lâu dài. [Nguồn: location privacy API; Doc 12 — Mục 12.3] |
+| Acceptance criteria còn thiếu cho một số hành vi phụ. | BE-11, BE-12, BE-19, BE-21, BE-25–BE-27 | Exit gate chỉ bắt buộc phần có nguồn; tiêu chí đề xuất được gắn **[Thiếu tiêu chí trong nguồn]** để Product/Tech Lead duyệt. |
+
+## 4. Đồ thị phụ thuộc
+
+### 4.1. Dependency graph theo workbook
+
+```mermaid
+flowchart LR
+    BE01[BE-01 Auth] --> BE02[BE-02 Profile]
+    BE01 --> BE03[BE-03 Friends]
+    BE01 --> BE04[BE-04 Privacy]
+    BE01 --> BE06[BE-06 Socket]
+    BE01 --> BE07[BE-07 FCM]
+    BE01 --> BE19[BE-19 Admin]
+
+    BE03 --> BE08[BE-08 Meetup]
+    BE08 --> BE09[BE-09 Meetup preference]
+    BE08 --> BE13[BE-13 Candidate-only]
+    BE08 --> BE11[BE-11 Chat]
+    BE08 --> BE20[BE-20 Favorite]
+
+    BE04 --> BE05[BE-05 Location]
+    BE04 --> BE18[BE-18 Nearby]
+    BE05 --> BE14[BE-14 Run/context]
+    BE05 --> BE16[BE-16 Route Matrix]
+    BE05 --> BE18
+    BE07 --> BE18
+
+    BE09 --> BE14
+    BE09 --> BE17[BE-17 Utility]
+    BE13 --> BE14
+    BE13 --> BE15[BE-15 Candidate pipeline]
+    BE13 --> BE20
+    BE14 --> BE15
+    BE15 --> BE16
+    BE16 --> BE17
+    BE17 --> BE22[BE-22 Ranking]
+    BE22 --> BE23[BE-23 Result API]
+
+    BE06 --> BE10[BE-10 Vote/finalize]
+    BE08 --> BE10
+    BE23 --> BE10
+    BE10 --> BE12[BE-12 History]
+
+    BE10 --> BE24[BE-24 Feedback]
+    BE20 --> BE24
+    BE23 --> BE24
+
+    BE14 --> BE21[BE-21 Observability/replay]
+    BE15 --> BE21
+    BE16 --> BE21
+    BE17 --> BE21
+    BE22 --> BE21
+    BE23 --> BE21
+    BE24 --> BE21
+
+    BE21 --> BE25[BE-25 Offline evaluation]
+    BE23 --> BE25
+    BE24 --> BE25
+    BE23 --> BE27[BE-27 AI explanation]
+
+    BE21 --> BE26[BE-26 LTR]
+    BE24 --> BE26
+    BE25 --> BE26
+```
+
+[Nguồn: workbook — sheet `Chức năng BE`, cột `Phụ thuộc`]
+
+### 4.2. Thứ tự triển khai và nhánh song song
+
+```text
+Bước 0: kiểm chứng BE-01..09, BE-13
+  ├─ Bước 1: BE-14, BE-15
+  │    └─ Bước 2: BE-16, BE-17, BE-22
+  │         └─ Bước 3: BE-23
+  │              ├─ Bước 4: BE-10, BE-11, BE-12, BE-20
+  │              │    └─ Bước 5: BE-24, BE-21
+  │              │         └─ Bước 7: BE-25 ──> Bước 8: BE-26
+  │              └─ Bước 6: BE-27
+  └─ Bước 6 độc lập sau baseline: BE-18, BE-19
+```
+
+BE-11 và BE-20 có thể bắt đầu ngay sau Bước 0. BE-18 và BE-19 cũng không cần chờ recommendation core. Thứ tự đặt sau Core chỉ phản ánh phạm vi `Planned`, không phải phụ thuộc kỹ thuật. [Nguồn: workbook — BE-11, BE-18–BE-20, cột `Phạm vi`, `Sprint`, `Phụ thuộc`]
+
+## 5. Các giai đoạn thực hiện
+
+### 5.1. Bước 0 — Khóa baseline cho function đã thực hiện
+
+**Mục tiêu.** Chứng minh 10 function đang ghi `Đã thực hiện` đáp ứng contract nguồn và cung cấp đầu vào ổn định cho phần còn lại. Không mở rộng scope. [Nguồn: workbook — BE-01–BE-09, BE-13]
+
+**Function thuộc bước**
+
+| ID | Function | Owner |
+|---|---|---|
+| BE-01 | Xác thực và phiên đăng nhập | Dev Backend 1 |
+| BE-02 | Hồ sơ và sở thích profile | Dev Backend 1 |
+| BE-03 | Kết bạn | Dev Backend 1 |
+| BE-04 | Quyền riêng tư vị trí | Dev Backend 1 |
+| BE-05 | Nhận và lưu vị trí realtime | Dev Backend 2 |
+| BE-06 | Nền tảng Socket và presence | Dev Backend 2 |
+| BE-07 | Thiết bị và nền tảng FCM | Dev Backend 2 |
+| BE-08 | Vòng đời Meetup và thành viên | Dev Backend 1 |
+| BE-09 | Sở thích tạm thời meetup | Dev Backend 1 |
+| BE-13 | Lấy địa điểm ứng viên (candidate-only) | Dev Backend 2 |
+
+**Checklist triển khai/kiểm chứng**
+
+- [ ] BE-01: kiểm chứng access/refresh flow, refresh reuse detection và locked account không đăng nhập. [Nguồn: workbook — BE-01; `12_audit_remediation.md` — Mục 1]
+- [ ] BE-02: kiểm chứng profile preference chỉ prefill; không ghi đè preference đã nhập trong meetup. [Nguồn: workbook — BE-02; `02_nghiep_vu_va_dac_ta.md` — BR-14 đến BR-16]
+- [ ] BE-03: kiểm chứng canonical friend pair, không self-friend, không duplicate và concurrency. [Nguồn: workbook — BE-03; `10_be03_friends_api.md` — Mục 3–7]
+- [ ] BE-04: kiểm chứng bốn privacy mode và gọi authorization ở mỗi lần đọc/publish; không cache kết quả quyền. [Nguồn: workbook — BE-04; `11_location_privacy_api.md` — Mục 3–6]
+- [ ] BE-05: kiểm chứng location hữu hạn, timestamp/accuracy, privacy, Redis TTL 5 phút và không lưu GPS history. [Nguồn: workbook — BE-05; realtime contracts — Mục 5; DBML — Redis keys]
+- [ ] BE-06: kiểm chứng JWT handshake, room authorization, presence TTL và shared publisher contract. [Nguồn: workbook — BE-06; realtime contracts — Mục 4–6]
+- [ ] BE-07: kiểm chứng token mã hóa AES-256-GCM, HMAC fingerprint, outbox worker, tối đa 5 retry exponential và revoke token invalid. [Nguồn: workbook — BE-07; `10_notifications_api.md` — Mục 2–6]
+- [ ] BE-08: kiểm chứng meetup lifecycle/member invariants. Xác nhận `recommendationMode` chưa nằm trong BE-08. [Nguồn: workbook — BE-08; `02_nghiep_vu_va_dac_ta.md` — BR-06 đến BR-13]
+- [ ] BE-09: kiểm chứng meetup preference thay thế profile theo tag, profile chỉ fallback khi thiếu và `avoid` được giữ để phạt mềm. [Nguồn: workbook — BE-09; Doc 12 — Mục 5.2 Bước 2, 7.2]
+- [ ] BE-13: khóa contract candidate-only hiện hành, adapter Google Places, authorization/state/error và test. Không coi provider order là recommendation order. [Nguồn: workbook — BE-13; `11_backend_integration_handoff.md` — Mục 8; Doc 12 — Mục 5.3]
+- [ ] Lập `baseline-verification.md` hoặc checklist trong PR, ghi rõ test nào chứng minh từng BE ID; gap có thật mới tạo fix.
+
+**Đầu vào cần có**
+
+- Code/migration hiện tại; PostgreSQL, Redis và test config.
+- Contract trong friends API, privacy API, realtime contracts, notifications API và handoff.
+
+**Đầu ra/deliverable**
+
+- Báo cáo baseline theo 10 BE ID.
+- Test thiếu được bổ sung; fix regression nếu có.
+- Public port/event/DTO được khóa version để Bước 1–6 dùng.
+- Khóa BE-13 là endpoint candidate-only `POST`; không dùng raw provider order cho mobile production sau khi BE-23 hoàn tất. [Nguồn: Mục 7.1, Q3]
+
+**Phụ thuộc và song song**
+
+- Không phụ thuộc bước trong plan.
+- Có thể chạy song song theo ba nhánh: BE-01–03; BE-04–07; BE-08–09/13.
+
+**Độ phức tạp: L.** Có 10 function, nhiều boundary PostgreSQL/Redis/Socket/FCM/Google và contract giao thoa.
+
+**Exit gate**
+
+Điều kiện bắt buộc:
+
+- [ ] Test chứng minh từng acceptance criterion trong workbook cho BE-01–BE-09 và BE-13.
+- [ ] Privacy test cho `off`, `friends`, `selected_friends`, `meetup_only`; unauthorized request không nhận exact location.
+- [ ] TTL test chứng minh latest location hết hiệu lực sau 5 phút.
+- [ ] Socket room từ chối non-member; notification retry không rollback business transaction.
+- [ ] BE-13 trả đúng năm nhóm lỗi đã tài liệu hóa: `MEETUP_NOT_FOUND` 404, `MEETUP_FORBIDDEN` 403, `MEETUP_INSUFFICIENT_PARTICIPANTS` 400, `RECOMMENDATION_INSUFFICIENT_LOCATIONS` 400, `PLACE_SEARCH_UNAVAILABLE` 503. [Nguồn: handoff — Mục 8]
+- [ ] `npm run lint`, `npm test`, `npm run test:e2e`, `npm run build` đều exit code 0. [Nguồn: backend README; DDD doc — Mục 9, 12]
+
+Cách kiểm chứng:
+
+```bash
+npm run lint
+npm test
+npm run test:e2e
+npm run build
+```
+
+Reviewer đối chiếu report với từng BE ID và xem kết quả test trong CI. Nếu có migration bổ sung, chạy `npm run migration:run`, `npm run migration:revert`, rồi `npm run migration:run` trên database dùng cho test. [Nguồn: backend README — Scripts; DDD doc — Mục 7]
+
+Tiêu chí không đạt:
+
+- Bất kỳ command nào lỗi; thiếu test cho tiêu chí sheet; public contract chưa version; truy cập location bỏ qua permission; BE-13 chưa xác định contract hiện hành.
+
+Người xác nhận: owner theo sheet thực hiện; backend còn lại review PR. Thay đổi cross-context phải được cả hai owner chấp nhận contract trước khi merge. [Nguồn: workbook — sheet `Hướng dẫn sử dụng`; DDD doc — Mục 12]
+
+### 5.2. Bước 1 — Recommendation run, context và candidate pipeline
+
+**Mục tiêu.** Tạo run idempotent, context hợp lệ và tập `EligibleCandidate` đã qua provider-side filter, merge/dedup và residual hard constraint. [Nguồn: workbook — BE-14, BE-15; Doc 12 — Mục 4.2, 5.2 Bước 1–4]
+
+**Function thuộc bước**
+
+| ID | Function | Owner |
+|---|---|---|
+| BE-14 | Khởi tạo recommendation run và context | Dev Backend 2 |
+| BE-15 | Candidate pipeline và constraint | Dev Backend 2 |
+
+**Checklist triển khai**
+
+- [ ] Tạo bounded module `recommendations` theo layering hiện có; định nghĩa orchestrator, context builder, ports và DTO trước adapter. [Nguồn: DDD doc — Mục 2–6; Doc 12 — Mục 4.3]
+- [ ] BE-14 validate actor, meetup state, UUID `requestId`, `topK`, radius, distinct categories và `openingFilter`; output là `ValidatedRecommendationRequest`. [Nguồn: Doc 12 — Mục 5.2 Bước 1]
+- [ ] Thêm idempotency unique `(meetup_id, request_id)` và `payload_hash`; same key/same payload trả run cũ, different payload trả 409 `IDEMPOTENCY_KEY_REUSED`. [Nguồn: Doc 12 — Mục 5.2 Bước 1, 11.4]
+- [ ] Context chỉ nhận accepted member có quyền chia sẻ, latest location chưa stale và dữ liệu tọa độ/accuracy/timestamp hợp lệ; sort member theo `participantId`; dưới 2 member trả `INSUFFICIENT_VALID_MEMBERS`. [Nguồn: workbook — BE-14; Doc 12 — Mục 5.2 Bước 2]
+- [ ] Snapshot `rankingStrategy`, `algorithmVersion`, `configVersion`, `featureSchemaVersion` và provider/category mapping version. `recommendationMode`, nếu cần tương thích workbook, chỉ là alias nội bộ của `rankingStrategy`, không là input organizer. [Nguồn: workbook — BE-14; Doc 12 — Mục 6.2, 11.3; Mục 7.1, Q2]
+- [ ] BE-15 tạo query deterministic cho từng required category với semantics ANY/OR; Text Search dùng một `includedType`, strict type và optional `openNow` tại request time. [Nguồn: workbook — BE-15; Doc 12 — Mục 4.2, 5.2 Bước 3]
+- [ ] Phân trang round-robin trong `providerCallBudget`; union và dedup bằng `canonicalCandidateKey`; giữ source category/page metadata. [Nguồn: Doc 12 — Mục 5.2 Bước 3, 6.3]
+- [ ] Áp dụng residual hard filter cho required field, exact radius, category/policy và business status khi provider xác nhận. Không hard-filter `avoid`, rating thiếu hoặc opening data thiếu. [Nguồn: workbook — BE-15; Doc 12 — Mục 5.2 Bước 4, Mục 3.10]
+- [ ] First page của required category lỗi sau retry thì run failed `PLACE_SEARCH_UNAVAILABLE`; không còn candidate thì `NO_ELIGIBLE_CANDIDATES`. [Nguồn: Doc 12 — Mục 4.2, 12.2]
+- [ ] Adapter không ghi database hoặc đổi run state; engine không đọc field riêng của Google ngoài canonical contract. [Nguồn: Doc 12 — Mục 4.5, 6.3]
+
+**Đầu vào cần có**
+
+- Bước 0 đạt cho BE-05, BE-08, BE-09, BE-13.
+- Google Places config/key và category mapping có version.
+- Các quyết định Mục 7.1: `rankingStrategy` server-side, medoid retrieval center và synchronous run API.
+
+**Đầu ra/deliverable**
+
+- `RecommendationModule`, run/context contracts, place-provider port/adapter.
+- Migration append-only cho run/idempotency và candidate snapshot cần thiết; DBML cập nhật cùng PR.
+- POST/GET run API theo Mục 7.1, Q3/Q5.
+- Unit, adapter contract, integration và E2E tests.
+
+**Phụ thuộc và song song**
+
+- BE-14 phụ thuộc BE-05/08/09/13; BE-15 phụ thuộc BE-13/14.
+- Sau khi BE-14 contracts được khóa, ContextBuilder và CandidateGenerator/ConstraintFilter có thể làm song song.
+
+**Độ phức tạp: L.** Có idempotency, privacy context, provider pagination, dedup/filter và migration mới.
+
+**Exit gate**
+
+Điều kiện bắt buộc:
+
+- [ ] Same requestId/same payload không tạo run thứ hai; different payload trả 409 đúng code.
+- [ ] 0 hoặc 1 valid member trả `INSUFFICIENT_VALID_MEMBERS`; stale/unauthorized/invalid location không lọt context.
+- [ ] Multi-category query có thứ tự deterministic, merge không duplicate canonical key và filter exact radius bằng backend.
+- [ ] `avoid` không bị loại; `OPEN_AT_REQUEST_TIME` chỉ dùng `openNow` tại thời điểm request.
+- [ ] Provider first-page failure và empty candidate set chuyển run sang `FAILED` với code đúng.
+- [ ] Migration chạy trên database rỗng; DBML phản ánh cùng schema; lint/unit/integration/E2E/build pass.
+- [ ] **[Thiếu tiêu chí trong nguồn]** Giá trị `maxTopK`, `maxSearchRadiusMeters`, `candidateTargetCount`, `candidateMaxCount`, `providerCallBudget` chưa được chốt. Reviewer chỉ xác nhận validation mechanism và versioning; không chấp nhận hard-code không được phê duyệt.
+
+Cách kiểm chứng:
+
+- Unit test ContextBuilder bằng member/location matrix; property/table test validation biên.
+- Adapter contract test với hai category, hai page, duplicate Place ID, place ngoài radius, `CLOSED_PERMANENTLY`, thiếu rating/opening.
+- E2E gửi cùng idempotency key hai lần và so `runId`.
+- Chạy bộ lệnh chuẩn ở Bước 0 và migration cycle nếu có migration.
+
+Tiêu chí không đạt:
+
+- Raw candidate được trả như final recommendation; provider adapter làm ranking; thiếu idempotency unique; privacy bị bỏ qua; tham số benchmark chưa duyệt bị hard-code; PR đi ngược `rankingStrategy` server-side, medoid hoặc synchronous API đã chốt.
+
+Người xác nhận: Dev Backend 2; Dev Backend 1 review các port Meetup/Preference/Location và API contract. [Nguồn: workbook — `Phân công`; handoff — Mục 2]
+
+### 5.3. Bước 2 — Route Matrix, feature/utility và group ranking
+
+**Mục tiêu.** Biến eligible candidates thành full deterministic ranking bằng route hợp lệ cho mọi member, utility versioned và ba strategy bắt buộc. [Nguồn: workbook — BE-16, BE-17, BE-22; Doc 12 — Mục 5.2 Bước 5–7, Mục 7–8]
+
+**Function thuộc bước**
+
+| ID | Function | Owner |
+|---|---|---|
+| BE-16 | Route Matrix và route validation | Dev Backend 2 |
+| BE-17 | Feature và member utility | Dev Backend 2 |
+| BE-22 | Group ranking và fairness | Dev Backend 2 |
+
+**Checklist triển khai**
+
+- [ ] BE-16 tạo `RouteBatchPlanner` chia cả origins và destinations theo element/waypoint limit; giữ index mapping sau khi ghép batch. [Nguồn: workbook — BE-16; Doc 12 — Mục 6.4, 12.1]
+- [ ] Gọi ComputeRouteMatrix với `TWO_WHEELER`; validate duration/distance hữu hạn, không âm; element lỗi thành `NO_ROUTE`. [Nguồn: workbook — BE-16; Doc 12 — Mục 3.5, 6.4]
+- [ ] Loại candidate nếu bất kỳ valid member thiếu route; toàn batch lỗi trả `ROUTE_MATRIX_UNAVAILABLE`; không còn candidate trả `NO_ROUTABLE_CANDIDATES`; thiếu K dùng `effectiveK` và warning, không bịa ETA. [Nguồn: Doc 12 — Mục 4.2, 12.2]
+- [ ] BE-17 dựng feature schema có version và tính `T`, `P`, `Q`, `U` đúng thứ tự sau route validation. [Nguồn: workbook — BE-17; Doc 12 — Mục 5.2 Bước 6, Mục 7.1–7.4]
+- [ ] Validate mọi input/config hữu hạn; utility nằm `[0,1]`; `tauSeconds > 0`; tag weights dương; `alpha+beta+gamma=1`; missing policy tránh chia 0. [Nguồn: Doc 12 — Mục 6.7, 7.1–7.4]
+- [ ] `avoid` dùng `s(avoid)` như soft penalty, không hard filter. Preference meetup ưu tiên profile fallback theo tag. [Nguồn: workbook — BE-17; Doc 12 — Mục 7.2]
+- [ ] BE-22 hiện thực `min-sum`, `min-max`, `fair-pareto-v1`; tính `G`, candidate least-misery `F`, member rank, Pareto level và Monte Carlo inclusion probability. [Nguồn: workbook — BE-22; Doc 12 — Mục 7.5–7.7, 8]
+- [ ] Tie-break deterministic theo strategy, seed, `utilityTieEpsilon` và `canonicalCandidateKey`; lưu full ranking, không chỉ top-K. [Nguồn: Doc 12 — Mục 8.2–8.3, 11.3]
+- [ ] Không gọi implementation này là XPO nguyên bản; tên production strategy là `fair-pareto-v1`. [Nguồn: Doc 12 — Mục 8.2–8.3, 13]
+
+**Đầu vào cần có**
+
+- Bước 1 đạt; `EligibleCandidate[]`, ordered valid members và config versions.
+- Google Routes config/key/quota test project.
+- Route Matrix đầy đủ/batch hai chiều và `rankingStrategy` server-side theo Mục 7.1, Q1/Q2.
+
+**Đầu ra/deliverable**
+
+- Route provider port/adapter, batch planner và element assembler.
+- Versioned FeatureBuilder, MemberUtilityScorer và GroupRanker.
+- Golden test vectors tính tay cho công thức và ranking.
+- Cost/element metadata để Bước 5 quan sát.
+
+**Phụ thuộc và song song**
+
+- BE-16 sau BE-05/15; BE-17 sau BE-09/16; BE-22 sau BE-17.
+- Adapter Route và pure utility/ranker có thể làm song song bằng fake contracts, nhưng integration theo đúng chuỗi trên.
+
+**Độ phức tạp: L.** Đây là lõi thuật toán, có external matrix, numeric validation, deterministic Monte Carlo và fairness semantics.
+
+**Exit gate**
+
+Điều kiện bắt buộc:
+
+- [ ] Test matrix nhiều batch chứng minh mọi `(participantId, canonicalCandidateKey)` được join đúng một lần, không đảo index.
+- [ ] Candidate có một `NO_ROUTE` bị loại; còn ít hơn K trả `effectiveK` và warning; không có route nào trả đúng failure code.
+- [ ] Golden tests khớp ví dụ Doc 12: `T≈0.607` với 600/1200; `P=0.55` với high+avoid; `Q=0.6` với 4.5/99/999; `U=0.5892` với 0.60/0.30/0.10. [Nguồn: Doc 12 — Mục 7.1–7.4]
+- [ ] Test reject `tauSeconds<=0`, negative/NaN/Infinity, invalid rating/review, weight sum sai và `S<=0`.
+- [ ] Cùng snapshot/version/seed tạo cùng full rank; test matrix nhỏ tính tay cho `min-sum`, `min-max`, Pareto dominance và tie-breaker.
+- [ ] Không candidate nào trong ranking thiếu route OK cho một valid member; utility đều hữu hạn và trong `[0,1]`.
+- [ ] Lint/unit/integration/E2E/build pass.
+- [ ] **[Thiếu tiêu chí trong nguồn]** `tauSeconds`, utility weights, `p_missing`, `q_missing`, `n_ref`, sample count và epsilon chưa được kiểm chứng. Chỉ merge production config khi version và người phê duyệt được ghi nhận.
+
+Cách kiểm chứng:
+
+- Chạy unit test bằng fixture số cố định và snapshot full ranking.
+- Integration test Route adapter với response out-of-order, partial element failure, batch failure và quota/timeout.
+- Chạy bộ lệnh chuẩn ở Bước 0.
+
+Tiêu chí không đạt:
+
+- Sai đơn vị giây/phút; có NaN/Infinity; dùng straight-line ETA fallback; random seed không lưu; rerun khác rank; dùng cluster hoặc public route strategy trái Mục 7.1, Q1.
+
+Người xác nhận: Dev Backend 2; reviewer phải kiểm tra golden vector, không chỉ happy-path API.
+
+### 5.4. Bước 3 — Explanation, persistence và API kết quả
+
+**Mục tiêu.** Persist atomically full run và trả top-K có explanation bám đúng feature/ranking. [Nguồn: workbook — BE-23; Doc 12 — Mục 5.2 Bước 8–9, Mục 11]
+
+**Function thuộc bước**
+
+| ID | Function | Owner |
+|---|---|---|
+| BE-23 | Explanation, persistence và API kết quả | Dev Backend 2 |
+
+**Checklist triển khai**
+
+- [ ] Tạo rule-based `ExplanationBuilder`; `summaryCode` theo strategy và facts từ snapshot thật, có unit/source. [Nguồn: Doc 12 — Mục 5.2 Bước 8, 6.6]
+- [ ] Không dùng claim “gần nhất”, “công bằng nhất”, “mọi người thích” nếu facts không chứng minh. [Nguồn: Doc 12 — Mục 5.2 Bước 8]
+- [ ] Persist run, candidate/filter reason, member feature/utility, full rank, seed, versions và explanation theo schema được duyệt. [Nguồn: workbook — BE-23; Doc 12 — Mục 11.1, 11.3]
+- [ ] Chuyển `RUNNING -> COMPLETED` trong cùng transaction với candidate/features/ranking; transaction lỗi không trả success. [Nguồn: Doc 12 — Mục 11.4]
+- [ ] POST tạo run trả sau khi commit; GET trả stored result; retry same key/payload trả lại cùng result. [Nguồn: Doc 12 — Mục 11.2, 11.4]
+- [ ] Ghi `RecommendationReady.v1` qua outbox sau commit với contract đã version. [Nguồn: workbook — BE-23; `11_backend_integration_handoff.md` — Mục 4]
+- [ ] Response chỉ chứa top-K nhưng database giữ full rank để replay; không trả raw provider order. [Nguồn: Doc 12 — Mục 5.3, 11.1]
+
+**Đầu vào cần có**
+
+- Bước 2 đạt; full deterministic ranking và feature snapshot.
+- API/state theo Mục 7.1, Q5; target schema theo Mục 7.1, Q6. Numeric retention phải có quyết định privacy riêng.
+
+**Đầu ra/deliverable**
+
+- Migration + DBML; repositories/mappers; result API; outbox event.
+- Atomic persistence integration test và lost-response/idempotent retry E2E.
+- API/event documentation cập nhật.
+
+**Phụ thuộc và song song**
+
+- Phụ thuộc BE-14 và BE-22.
+- Schema/repository và ExplanationBuilder có thể làm song song sau khi contract được khóa.
+
+**Độ phức tạp: L.** Nhiều bảng, transaction boundary, replay metadata, API và event cùng thay đổi.
+
+**Exit gate**
+
+Điều kiện bắt buộc:
+
+- [ ] Mỗi top-K item có rank, ETA mean/max, member results, group/least-misery utility và explanation facts đúng snapshot.
+- [ ] Full rank được lưu; top-K không chứa candidate filtered/no-route.
+- [ ] Inject lỗi giữa persist và state transition: run không ở `COMPLETED` và client không nhận success.
+- [ ] Mất HTTP response sau commit rồi retry: trả cùng `runId`, result và versions; không duplicate rows/event.
+- [ ] `RUNNING` retry trả 409 `RECOMMENDATION_RUN_IN_PROGRESS`; failed retry trả lỗi đã lưu theo Doc 12.
+- [ ] `RecommendationReady.v1` chỉ phát sau commit và consumer retry không tạo side effect trùng.
+- [ ] Migration cycle, lint/unit/integration/E2E/build pass.
+
+Cách kiểm chứng: transaction integration tests với fault injection; E2E POST/GET/retry; query database kiểm tra full count và terminal state; chạy bộ lệnh chuẩn.
+
+Tiêu chí không đạt: explanation không truy vết được fact; completed run thiếu full rank/version/seed; event phát trước commit; retry tạo run mới; schema đi ngược target của Mục 7.1, Q6 hoặc tự đặt retention chưa được duyệt.
+
+Người xác nhận: Dev Backend 2; Dev Backend 1 review `RecommendationReady.v1` và DTO mà Meetup/Vote dùng.
+
+### 5.5. Bước 4 — Vote, chat, history và favorite
+
+**Mục tiêu.** Hoàn tất các tính năng người dùng sau nền tảng và gắn vote/final selection với recommendation đã hiển thị. [Nguồn: workbook — BE-10–BE-12, BE-20]
+
+**Function thuộc bước**
+
+| ID | Function | Owner |
+|---|---|---|
+| BE-10 | Vote và chốt địa điểm sau recommendation | Dev Backend 1 |
+| BE-11 | Chat trong meetup | Dev Backend 1 |
+| BE-12 | Lịch sử meetup | Dev Backend 1 |
+| BE-20 | Địa điểm yêu thích | Dev Backend 1 |
+
+**Checklist triển khai**
+
+- [ ] BE-10 chỉ cho accepted participant vote candidate thuộc displayed run; một vote/member/meetup, cho đổi vote, tôn trọng deadline và quyền finalize. [Nguồn: workbook — BE-10; `02_nghiep_vu_va_dac_ta.md` — BR-17 đến BR-20; Doc 12 — Mục 9.1]
+- [ ] Vote payload có `runId`; không rerank cùng run; ghi `VoteUpdated.v1`/`MeetupFinalized.v1` qua outbox sau commit. [Nguồn: workbook — BE-10; handoff — Mục 4; Doc 12 — Mục 11.2]
+- [ ] BE-11 kiểm tra accepted membership và meetup state trước join/send; persist message và phát qua shared Socket publisher. [Nguồn: workbook — BE-11; `03_usecase_users.puml`; DBML — `meetup_chat_messages`]
+- [ ] BE-12 chỉ trả meetup đã hoàn tất/đủ quyền cùng selected place snapshot; không lưu hoặc trả GPS/route history. [Nguồn: workbook — BE-12; `02_nghiep_vu_va_dac_ta.md` — UC-12]
+- [ ] BE-20 add/remove favorite theo canonical Place ID/snapshot, unique theo user/place; invalid Place ID được xử lý theo contract. Không lưu route history. [Nguồn: workbook — BE-20; DBML — `favorite_places`, `place_snapshots`]
+
+**Đầu vào cần có**
+
+- Bước 0 cho BE-06/08/13; Bước 3 cho displayed recommendation run.
+- BE-11 và phần BE-20 canonical place có thể bắt đầu trước BE-23 nếu dùng contract fake.
+
+**Đầu ra/deliverable**
+
+- Vote/finalize APIs và events; chat API/Socket event; history query; favorite APIs.
+- Migration/DBML nếu schema hiện tại chưa đủ; tests cho authorization/concurrency/idempotency.
+
+**Phụ thuộc và song song**
+
+- BE-10 sau BE-06/08/23; BE-12 sau BE-08/10; BE-11 sau BE-06/08; BE-20 sau BE-08/13.
+- BE-11 và BE-20 làm song song với BE-10; BE-12 bắt đầu sau finalize contract.
+
+**Độ phức tạp: L.** Bốn vertical slice, có concurrency, Socket/outbox và privacy history.
+
+**Exit gate**
+
+Điều kiện bắt buộc:
+
+- [ ] Concurrent first vote/change vote không tạo hơn một active vote cho member/meetup.
+- [ ] Candidate ngoài displayed run, non-member, quá deadline hoặc actor không có quyền finalize bị từ chối bằng nhóm status/error phù hợp.
+- [ ] Vote không thay đổi rank trong cùng run; event có `runId` và phát sau commit.
+- [ ] Non-member không join/send chat; persisted message và emitted event có cùng identity/version.
+- [ ] History/favorite response không chứa member coordinates hoặc route history; duplicate favorite không tạo row thứ hai.
+- [ ] Lint/unit/integration/E2E/build pass; migration cycle pass nếu có.
+- [ ] **[Thiếu tiêu chí trong nguồn]** Sheet chưa chốt pagination, edit/delete/attachment rule cho chat và pagination/retention cho history. Không mở rộng các hành vi này nếu chưa được duyệt.
+
+Cách kiểm chứng: E2E với hai member và một outsider; test đồng thời vote/favorite; đọc outbox; scan response/log không có coordinates; chạy bộ lệnh chuẩn.
+
+Tiêu chí không đạt: vote candidate không được hiển thị; same-run rerank; chat outsider lọt; history lộ GPS/routes; event phát trước transaction commit.
+
+Người xác nhận: Dev Backend 1; Dev Backend 2 review Socket/outbox và `runId` linkage.
+
+### 5.6. Bước 5 — Impression, feedback, observability và replay
+
+**Mục tiêu.** Tạo dữ liệu có thể audit/replay và quan sát pipeline mà không chạy lại provider hoặc lộ dữ liệu nhạy cảm. [Nguồn: workbook — BE-24, BE-21; Doc 12 — Mục 9, 12.3–12.4, 14]
+
+**Function thuộc bước**
+
+| ID | Function | Owner |
+|---|---|---|
+| BE-24 | Impression và feedback linkage | Dev Backend 2 |
+| BE-21 | Observability và replay recommendation | Dev Backend 2 |
+
+**Checklist triển khai**
+
+- [ ] BE-24 ghi `RecommendationShown`, vote/change, selection, navigation và favorite linkage bằng unique `eventId`; same ID/different payload bị từ chối. [Nguồn: workbook — BE-24; Doc 12 — Mục 9.2]
+- [ ] Candidate gắn event phải thuộc run; impression/vote phải thuộc list đã hiển thị cho participant. `not shown` là unknown, không phải negative. [Nguồn: Doc 12 — Mục 9.2–9.3]
+- [ ] Feedback collection lỗi sau display được retry bằng eventId và không chạy lại recommendation. [Nguồn: workbook — BE-24; Doc 12 — Mục 12.2]
+- [ ] BE-21 xuất metric latency/error/cost/coverage theo stage/provider/version; structured log redacted. [Nguồn: workbook — BE-21; Doc 12 — Mục 12.1, 14.4]
+- [ ] Replay dùng candidate/feature/config/seed snapshot đã lưu, không gọi Places/Routes; so full rank và explanation facts. [Nguồn: workbook — BE-21; Doc 12 — Mục 12.4]
+- [ ] Readiness phản ánh PostgreSQL, Redis và dependency worker mà không lộ secret. [Nguồn: `13_backend2_roadmap.md` — Mục 4 Giai đoạn 6; `09_cong_nghe_su_dung.md` — Mục 9]
+
+**Đầu vào cần có**
+
+- BE-10, BE-20 và Bước 3; versioned event contract.
+
+**Đầu ra/deliverable**
+
+- Feedback tables/consumer/API; metric/log instrumentation; replay command/use case; runbook và privacy test.
+
+**Phụ thuộc và song song**
+
+- BE-24 sau BE-10/20/23. BE-21 sau toàn bộ BE-14–17, BE-22–24.
+- Instrumentation skeleton có thể thêm song song từ Bước 1; exit gate chỉ đạt khi full flow có metric.
+
+**Độ phức tạp: L.** Cross-cutting event linkage, idempotency, privacy, metrics và deterministic replay.
+
+**Exit gate**
+
+Điều kiện bắt buộc:
+
+- [ ] Retry cùng feedback event không tăng row/count; same eventId khác payload bị reject.
+- [ ] Event cho candidate/run/participant không hợp lệ bị reject; không gán negative cho candidate chưa shown.
+- [ ] Provider/feedback lỗi làm đúng metric tăng; log không chứa token, exact coordinates, raw AI payload hoặc request body nhạy cảm.
+- [ ] Replay một completed run khi provider bị vô hiệu hóa vẫn tạo full rank giống 100% snapshot. [Nguồn: Doc 12 — Mục 14.4]
+- [ ] Metric tối thiểu có run success, route element coverage, route-complete candidate coverage, end-to-end latency, explanation coverage, replay consistency, stale/unauthorized violations và elements/run. [Nguồn: Doc 12 — Mục 14.4]
+- [ ] Lint/unit/integration/E2E/build pass; migration cycle pass.
+- [ ] **[Thiếu tiêu chí trong nguồn]** Dashboard backend cụ thể, retention và alert thresholds chưa được chốt. Không coi UI/dashboard ngoài nguồn là điều kiện merge.
+
+Cách kiểm chứng: integration test duplicate/out-of-order events; replay test với network adapter fail-fast; log capture/redaction assertions; metrics scrape/assert; chạy bộ lệnh chuẩn.
+
+Tiêu chí không đạt: replay gọi provider; duplicate feedback; log lộ sensitive data; metric không tách version/provider; feedback failure kích hoạt rerun.
+
+Người xác nhận: Dev Backend 2; Dev Backend 1 review linkage từ Vote/Favorite.
+
+### 5.7. Bước 6 — Planned features độc lập: nearby, admin và AI explanation
+
+**Mục tiêu.** Hoàn tất ba Planned function có thể phát triển tương đối độc lập sau contract nền tảng. [Nguồn: workbook — BE-18, BE-19, BE-27]
+
+**Function thuộc bước**
+
+| ID | Function | Owner |
+|---|---|---|
+| BE-18 | Phát hiện bạn ở gần | Dev Backend 2 |
+| BE-19 | Quản trị tài khoản | Dev Backend 1 |
+| BE-27 | AI explanation mở rộng (tùy chọn) | Dev Backend 2 |
+
+**Checklist triển khai**
+
+- [ ] BE-18 chỉ xử lý khi hai user là accepted friends, cả hai opt-in, latest location hợp lệ và privacy cho phép; không phát tọa độ/địa chỉ người kia. [Nguồn: workbook — BE-18; `02_nghiep_vu_va_dac_ta.md` — BR-21]
+- [ ] Chuẩn hóa pair key và dùng Redis cooldown 2 giờ; concurrent request không gửi hơn một notification cho cùng pair. [Nguồn: workbook — BE-18; DBML — Redis keys]
+- [ ] BE-19 khóa/mở khóa account và ghi security audit không có exact coordinates/token; locked account không đăng nhập. [Nguồn: workbook — BE-19; `07_usecase_admin.puml`; DBML — `audit_logs`]
+- [ ] BE-27 nhận only aggregate facts từ BE-23, redaction trước provider, validate schema/length/timeout và dùng deterministic rule fallback. [Nguồn: workbook — BE-27; DBML — `ai_explanation_cache`; Doc 12 — Mục 1.5, 13]
+- [ ] AI không thay score/rank và không tạo claim ngoài feature snapshot. [Nguồn: workbook — BE-27; Doc 12 — Mục 5.2 Bước 8, 13]
+
+**Đầu vào cần có**
+
+- BE-18: BE-04/05/07 và friendship contract BE-03.
+- BE-19: BE-01 và admin authorization.
+- BE-27: BE-23; chỉ bắt đầu khi capacity/release scope cho phép theo Mục 7.1, Q7.
+
+**Đầu ra/deliverable**
+
+- Nearby detector/cooldown/notification tests.
+- Admin lock/unlock APIs và audit tests.
+- Nếu release scope chọn triển khai BE-27: AI port/adapter, schema validator, cache/fallback và redaction tests.
+
+**Phụ thuộc và song song**
+
+- Cả ba nhánh có thể làm song song sau dependency riêng; BE-27 không chặn Core result API.
+
+**Độ phức tạp: M.** Ba slice tách biệt; BE-18 có privacy/concurrency, BE-27 có external provider/fallback.
+
+**Exit gate**
+
+Điều kiện bắt buộc:
+
+- [ ] BE-18: một phía opt-in, non-friend, stale location hoặc privacy deny đều không gửi; cùng pair trong 2 giờ tối đa một notification; payload không có coordinates/address.
+- [ ] BE-19: actor không có quyền bị từ chối; lock/unlock đổi trạng thái đúng; mỗi thay đổi có audit actor/action/subject/timestamp; locked login bị chặn.
+- [ ] BE-27 nếu được duyệt: timeout/invalid JSON/invalid schema đều dùng rule fallback; AI output không đổi ranking; redaction test chứng minh không gửi coordinate, GPS history, token hoặc tên thật không cần thiết.
+- [ ] Lint/unit/integration/E2E/build pass; migration cycle pass nếu có.
+- [ ] **[Thiếu tiêu chí trong nguồn]** Sheet chưa nêu role model/admin endpoint cụ thể và AI provider/model/timeout/retention. Các giá trị này phải được duyệt trước khi adapter production được bật.
+
+Cách kiểm chứng: E2E/privacy/concurrency cho nearby; admin auth/audit E2E; fake AI provider cho timeout/schema/redaction; chạy bộ lệnh chuẩn.
+
+Tiêu chí không đạt: notification lộ location; cooldown race gửi trùng; admin action thiếu audit; AI đổi rank hoặc fail mà không fallback; BE-27 bị bật production khi không nằm trong release scope.
+
+Người xác nhận: owner theo sheet; backend còn lại review integration contract. Security/privacy reviewer nếu team có vai trò này; tài liệu hiện tại chưa nêu tên cụ thể.
+
+### 5.8. Bước 7 — Offline dataset và evaluation
+
+**Mục tiêu.** Tạo dataset tái lập và báo cáo so sánh strategy mà không leakage và không gọi provider lại. [Nguồn: workbook — BE-25; Doc 12 — Mục 9.3, 10, 14]
+
+**Function thuộc bước**
+
+| ID | Function | Owner |
+|---|---|---|
+| BE-25 | Offline dataset và evaluation | Dev Backend 2 |
+
+**Checklist triển khai**
+
+- [ ] Join feature snapshot tại recommendation time với impression/feedback theo `runId`, eventId và canonical key; pseudonymize participant ID. [Nguồn: Doc 12 — Mục 10.2, 12.3]
+- [ ] Tạo label versioned: selected=3, voted=2, favorite/navigation=1, shown-no-action=0, not-shown=unknown; giữ raw event counts để phân tích. [Nguồn: Doc 12 — Mục 9.3]
+- [ ] Split train/validation/test theo thời gian; không dùng vote/selection của cùng run làm input feature. [Nguồn: workbook — BE-25; Doc 12 — Mục 10.2, 10.4]
+- [ ] Replay `min-sum`, `min-max`, `fair-pareto-v1` trên cùng snapshot/version/seed. [Nguồn: workbook — BE-25; Doc 12 — Mục 10.1]
+- [ ] Báo utility/fairness, ETA, HitRate@K, NDCG@K trên cùng impressed set, coverage và system/cost metrics; breakdown theo group size/category. [Nguồn: workbook — BE-25; Doc 12 — Mục 14]
+- [ ] Run có `R=0` hoặc denominator 0 báo `N/A`; NDCG loại run có `IDCG=0` và báo evaluable coverage. [Nguồn: Doc 12 — Mục 14.3]
+
+**Đầu vào cần có**
+
+- BE-21, BE-23, BE-24 đạt; retention/export policy được duyệt.
+
+**Đầu ra/deliverable**
+
+- Dataset builder, immutable dataset manifest/schema/label version.
+- Offline evaluator và report theo time split, group size, category, algorithm/config version.
+- Data quality/leakage/privacy checks.
+
+**Phụ thuộc và song song**
+
+- Chỉ bắt đầu dữ liệu thật sau Bước 5. Metric implementation có thể viết sớm bằng fixture tổng hợp.
+
+**Độ phức tạp: L.** Có temporal join, exposure bias, metric semantics và privacy export.
+
+**Exit gate**
+
+Điều kiện bắt buộc:
+
+- [ ] Cùng manifest/version tạo cùng row count, labels và baseline ranking.
+- [ ] Test leakage chứng minh post-recommendation fields không nằm trong feature vector của cùng run.
+- [ ] `not shown` không bị encode thành 0; NDCG chỉ dùng impressed set; `IDCG=0` xử lý đúng.
+- [ ] Train/validation/test time windows không overlap và không có future record trong train.
+- [ ] Export không có exact coordinates, token hoặc direct participant ID.
+- [ ] Report có đủ ba baseline và breakdown group/category; unit/integration/build pass.
+- [ ] **[Thiếu tiêu chí trong nguồn]** Chưa có minimum run count, retention period, accepted metric delta hoặc fixed evaluation window. Report được tạo nhưng không được dùng để promote cho đến khi các ngưỡng được duyệt.
+
+Cách kiểm chứng: fixture có impressed/not-shown/selected cases; deterministic rerun checksum; schema scan; time-boundary tests; chạy `npm test` và `npm run build` cùng command riêng của evaluator nếu được thêm và tài liệu hóa.
+
+Tiêu chí không đạt: leakage; random split; provider call trong replay; unknown bị coi negative; report chỉ có average tổng thể; dataset chứa dữ liệu nhạy cảm.
+
+Người xác nhận: Dev Backend 2; Product/Tech Lead phải duyệt label version và promotion metrics. Tên vai trò cụ thể chưa có trong docs.
+
+### 5.9. Bước 8 — Learning-to-rank và model lifecycle
+
+**Mục tiêu.** Huấn luyện và đánh giá LTR ở shadow, chỉ promote khi fairness contract và guardrail được phê duyệt; baseline luôn là fallback. [Nguồn: workbook — BE-26; Doc 12 — Mục 10.3–10.5]
+
+**Function thuộc bước**
+
+| ID | Function | Owner |
+|---|---|---|
+| BE-26 | Learning-to-rank và model lifecycle | Dev Backend 2 |
+
+**Checklist triển khai**
+
+- [ ] Một `recommendationRunId` là một query group; không trộn candidate giữa meetup. [Nguồn: Doc 12 — Mục 10.2]
+- [ ] Model input chỉ dùng versioned group/candidate features có tại recommendation time; model tạo group relevance score, không ghi đè `T/P/Q/U`. [Nguồn: Doc 12 — Mục 10.2–10.3]
+- [ ] Registry lưu dataset window, feature/label schema, hyperparameters, offline metrics, commit SHA, checksum, approver và state. [Nguồn: Doc 12 — Mục 10.5]
+- [ ] Lifecycle: `candidate -> shadow -> A/B test -> production -> retired`; A/B chia theo meetup. [Nguồn: workbook — BE-26; Doc 12 — Mục 10.1, 10.5]
+- [ ] Giữ `fair-pareto-v1` fallback; model load/schema/non-finite score lỗi ghi `LTR_FALLBACK_TO_BASELINE` và lưu requested/actual strategy. [Nguồn: Doc 12 — Mục 10.3]
+- [ ] Không promote raw LTR score cho đến khi `ltrRankingStrategyVersion` định nghĩa normalization, fairness constraint, tie-breaker và fallback. [Nguồn: workbook — BE-26; Doc 12 — Mục 10.3]
+
+**Đầu vào cần có**
+
+- BE-21, BE-24, BE-25 đạt; qua train gate tại Mục 7.2. Chưa được A/B hoặc production nếu promotion criteria/công thức fairness còn mở.
+
+**Đầu ra/deliverable**
+
+- Trainer pipeline, model registry, shadow runner, report và fallback integration.
+- Model card/metadata cho mỗi version; A/B contract chỉ sau approval.
+
+**Phụ thuộc và song song**
+
+- Là bước cuối theo dependency. Trainer/registry có thể làm song song sau khi dataset schema ổn định.
+
+**Độ phức tạp: L.** Có ML lifecycle, version compatibility, fairness guardrail, shadow/A-B và rollback/fallback.
+
+**Exit gate**
+
+Điều kiện bắt buộc:
+
+- [ ] Dataset/query grouping đúng run; feature schema checksum khớp model.
+- [ ] Shadow result không ảnh hưởng response production hoặc vote flow.
+- [ ] Model load fail, schema mismatch và NaN score đều rơi về đúng full ranking `fair-pareto-v1`, có warning/metric/version audit.
+- [ ] Registry không cho state transition bỏ qua shadow; production artifact có checksum và approver.
+- [ ] Offline report so với cả ba baseline và kiểm tra privacy/fairness/system guardrail.
+- [ ] Lint/unit/integration/build pass; replay production/fallback deterministic.
+- [ ] **[Thiếu tiêu chí trong nguồn]** Không được chuyển sang A/B/production khi chưa có minimum dataset size, fairness formula, acceptable regression, A/B sample/stop rule và owner phê duyệt.
+
+Cách kiểm chứng: train bằng fixture nhỏ; registry transition tests; shadow isolation E2E; fault injection model artifact; replay/fallback comparison; chạy bộ lệnh chuẩn và trainer/evaluator command đã tài liệu hóa.
+
+Tiêu chí không đạt: model dùng feedback cùng run làm feature; raw score bypass fairness; shadow thay response; fallback khác baseline snapshot; promotion thiếu threshold/approver.
+
+Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs chưa chỉ định cá nhân cụ thể.
+
+## 6. Bảng đối chiếu function → bước
+
+| ID | Function trong sheet | Trạng thái sheet | Owner | Bước | Kết quả dự kiến |
+|---|---|---|---|---|---|
+| BE-01 | Xác thực và phiên đăng nhập | Đã thực hiện | Dev Backend 1 | Bước 0 | Baseline verified |
+| BE-02 | Hồ sơ và sở thích profile | Đã thực hiện | Dev Backend 1 | Bước 0 | Baseline verified |
+| BE-03 | Kết bạn | Đã thực hiện | Dev Backend 1 | Bước 0 | Baseline verified |
+| BE-04 | Quyền riêng tư vị trí | Đã thực hiện | Dev Backend 1 | Bước 0 | Baseline verified |
+| BE-05 | Nhận và lưu vị trí realtime | Đã thực hiện | Dev Backend 2 | Bước 0 | Baseline verified |
+| BE-06 | Nền tảng Socket và presence | Đã thực hiện | Dev Backend 2 | Bước 0 | Baseline verified |
+| BE-07 | Thiết bị và nền tảng FCM | Đã thực hiện | Dev Backend 2 | Bước 0 | Baseline verified |
+| BE-08 | Vòng đời Meetup và thành viên | Đã thực hiện | Dev Backend 1 | Bước 0 | Baseline verified; không gồm recommendationMode |
+| BE-09 | Sở thích tạm thời meetup | Đã thực hiện | Dev Backend 1 | Bước 0 | Baseline verified |
+| BE-10 | Vote và chốt địa điểm sau recommendation | Chưa thực hiện | Dev Backend 1 | Bước 4 | Vote/finalize linked run |
+| BE-11 | Chat trong meetup | Chưa thực hiện | Dev Backend 1 | Bước 4 | Chat persistence + realtime |
+| BE-12 | Lịch sử meetup | Chưa thực hiện | Dev Backend 1 | Bước 4 | Privacy-safe history |
+| BE-13 | Lấy địa điểm ứng viên (candidate-only) | Đã thực hiện | Dev Backend 2 | Bước 0 | Baseline verified; internal input for engine |
+| BE-14 | Khởi tạo recommendation run và context | Chưa thực hiện | Dev Backend 2 | Bước 1 | Validated/idempotent run context |
+| BE-15 | Candidate pipeline và constraint | Chưa thực hiện | Dev Backend 2 | Bước 1 | Eligible deduplicated candidates |
+| BE-16 | Route Matrix và route validation | Chưa thực hiện | Dev Backend 2 | Bước 2 | Route-complete candidates |
+| BE-17 | Feature và member utility | Chưa thực hiện | Dev Backend 2 | Bước 2 | Versioned T/P/Q/U |
+| BE-18 | Phát hiện bạn ở gần | Chưa thực hiện | Dev Backend 2 | Bước 6 | Privacy-safe nearby notification |
+| BE-19 | Quản trị tài khoản | Chưa thực hiện | Dev Backend 1 | Bước 6 | Lock/unlock + audit |
+| BE-20 | Địa điểm yêu thích | Chưa thực hiện | Dev Backend 1 | Bước 4 | Canonical add/remove favorite |
+| BE-21 | Observability và replay recommendation | Chưa thực hiện | Dev Backend 2 | Bước 5 | Metrics/log/replay |
+| BE-22 | Group ranking và fairness | Chưa thực hiện | Dev Backend 2 | Bước 2 | Three deterministic strategies |
+| BE-23 | Explanation, persistence và API kết quả | Chưa thực hiện | Dev Backend 2 | Bước 3 | Atomic full run + top-K API |
+| BE-24 | Impression và feedback linkage | Chưa thực hiện | Dev Backend 2 | Bước 5 | Idempotent feedback trail |
+| BE-25 | Offline dataset và evaluation | Chưa thực hiện | Dev Backend 2 | Bước 7 | Time-split dataset + report |
+| BE-26 | Learning-to-rank và model lifecycle | Chưa thực hiện | Dev Backend 2 | Bước 8 | Shadow-first model lifecycle |
+| BE-27 | AI explanation mở rộng (tùy chọn) | Chưa thực hiện | Dev Backend 2 | Bước 6 | Optional safe AI + fallback |
+
+Đối chiếu: 27/27 function đã được xếp; không có function chưa xếp. [Nguồn: workbook — sheet `Chức năng BE`, BE-01 đến BE-27]
+
+## 7. Quyết định đã chốt và câu hỏi còn mở
+
+Các quyết định tại Mục 7.1 là baseline để triển khai. Mục 7.2 chỉ giữ những điểm không thể chốt bằng tài liệu hiện có; developer không tự đặt giá trị production cho các điểm đó.
+
+### 7.1. Quyết định đã chốt
+
+| ID | Quyết định triển khai | Lý do và nguồn | Ảnh hưởng bắt buộc |
+|---|---|---|---|
+| Q1 | V1 **không dùng cluster**. Mọi candidate được xếp hạng phải có Route Matrix hợp lệ với mọi valid member. `RouteBatchPlanner` chia request theo hai chiều origin × destination; batching là chi tiết thực thi, không là recommendation strategy. | Cluster tạo ETA ước lượng và không thỏa invariant route-complete/fairness. Doc 12 mô tả matrix đầy đủ, batch hai chiều và loại candidate lỗi route. [Nguồn: Doc 12 — Mục 5.2 Bước 5, 6.4, 12.1–12.2] | BE-16 bỏ nhánh cluster; migration/schema mới không dùng `route_strategy` cũ cho engine mới; thay test mốc 20/21/50/51 bằng test batch element/index mapping. |
+| Q2 | `recommendationMode` **không là input của organizer**. Engine chọn và persist `rankingStrategy` server-side: `min-sum`, `min-max`, hoặc `fair-pareto-v1`. Nếu cần giữ field `recommendationMode` để tương thích workbook, nó chỉ là alias nội bộ của `rankingStrategy`. | Doc 02 không có mode do user chọn. Doc 12 đã định nghĩa ba baseline; bốn mode đổi trọng số trong roadmap cũ không tương thích utility/fairness mới. [Nguồn: `02_nghiep_vu_va_dac_ta.md`; Doc 12 — Mục 6.2, 8.1] | BE-14 không nhận mode từ mobile; BE-22 chỉ chạy strategy có version; BE-23 persist strategy thực tế và version. |
+| Q3 | BE-13 hiện hành chốt là `POST /api/v1/meetups/:meetupId/recommendations/candidates`. Đây là candidate-only API. Sau BE-23, mobile production gọi recommendation-run API; BE-13 chỉ giữ cho debug/admin hoặc internal use case. | Handoff đã định nghĩa POST, authorization, state và error code. Doc 12 xác nhận candidate-only không phải output cuối. [Nguồn: `11_backend_integration_handoff.md` — Mục 8; Doc 12 — Mục 5.3] | Cập nhật workbook/contract cũ đang ghi GET; thêm deprecation note cho mobile nếu endpoint đã được dùng. |
+| Q4 | Retrieval center dùng `search-center-medoid-v1`: chọn valid member location có tổng Haversine distance nhỏ nhất; tie-break bằng `participantId`. Input chỉ là location đã được ContextBuilder cho phép dùng. | Medoid là điểm thật, ít nhạy với outlier hơn arithmetic mean và deterministic. Nó chỉ giới hạn retrieval, không thay ETA/ranking. [Nguồn: Doc 12 — Mục 5.2 Bước 3] | BE-14/15 dùng medoid; loại arithmetic mean trong implementation/test mới. |
+| Q5 | V1 dùng synchronous API: `POST /api/v1/meetups/:meetupId/recommendation-runs` và `GET /api/v1/meetups/:meetupId/recommendation-runs/:runId`. Run state là `RUNNING`, `COMPLETED`, `FAILED`; retry theo idempotency contract Doc 12. Không thêm async `202` ở v1. | Doc 12 nêu synchronous flow, state, retry và điều kiện chỉ được thêm async sau khi có durable job/polling contract riêng. Prefix `/api/v1` giữ nhất quán với handoff. [Nguồn: Doc 12 — Mục 11.2–11.4; handoff — Mục 8] | BE-14/23 DTO, migration, error handling và E2E bám contract này. |
+| Q6 | Schema đích là recommendation schema của Doc 12. Evolve append-only từ DBML hiện tại; không xóa dữ liệu/bảng cũ trước migration/replay được review. Numeric retention **chưa chốt** và phải đi qua quyết định privacy riêng. | Schema cũ không đủ cho full candidate logging, feature snapshot, feedback, replay và LTR. Doc 12 liệt kê bảng/cột đích; DDD yêu cầu migration append-only. [Nguồn: Doc 12 — Mục 11.1, 11.3; DDD doc — Mục 7; DBML] | BE-14–17, BE-21–26 thêm bảng/trường theo migration; DBML cập nhật cùng PR; không tự đặt số ngày retention. |
+| Q7 | BE-27 là **optional Planned**. Rule-based explanation của BE-23 là release gate. AI chỉ được đưa vào release khi còn capacity hoặc có yêu cầu product riêng; AI không chặn recommendation/vote. | Doc 12 ưu tiên explanation deterministic dựa trên fact; AI chỉ diễn đạt, có fallback và không đổi rank. [Nguồn: workbook — BE-27; Doc 12 — Mục 1.5, 5.2 Bước 8, 13] | Capacity plan ghi BE-27 là optional; nếu không chọn, không tạo AI provider/config; nếu chọn phải qua exit gate Bước 6. |
+| Q11 | Với `OPEN_AT_REQUEST_TIME`, gửi `openNow=true` cho Places. Nếu provider trả candidate nhưng thiếu opening data, giữ candidate với `OPENING_STATUS_UNKNOWN` và warning/explanation; không tự loại chỉ vì dữ liệu thiếu. Candidate provider xác nhận đóng vĩnh viễn hoặc vi phạm policy vẫn bị loại. | Dữ liệu thiếu không đồng nghĩa địa điểm đóng; Doc 12 cấm biến rating/dữ liệu thiếu thành hard constraint. [Nguồn: Doc 12 — Mục 3, 5.2 Bước 3–4, 16.2] | BE-15 residual filter/explanation phải phân biệt `UNKNOWN` với `CLOSED`; test missing opening-hours không loại candidate. |
+| Q12 | Thứ tự canonical: (1) workbook backend cho inventory/owner/status; (2) Doc 12 cho engine đích; (3) handoff cho BE-13 hiện hành đến khi run API thay thế; (4) DBML cho schema đang tồn tại, không là schema engine đích; (5) `Project Documents/*` và `Source/13_backend2_roadmap.md` phải gắn `Superseded` hoặc bỏ khỏi chỉ mục triển khai. | Các bản cũ mâu thuẫn về budget, cluster, BE ID/point, formula và API. Thứ tự này ngăn reviewer dùng acceptance criteria cũ. [Nguồn: workbook; Doc 12; handoff; DBML; `Project Documents/*`; roadmap] | Cập nhật README/index và banner deprecation; PR liên quan contract/schema/algorithm phải cập nhật nguồn canonical tương ứng. |
+
+### 7.2. Điều kiện còn mở, không được tự hard-code
+
+| ID | Điều đã chốt | Điều còn phải đo hoặc phê duyệt | Quy tắc thực hiện ngay |
+|---|---|---|---|
+| Q8 | Train gate: feedback/impression ghép đáng tin; nhiều category/group/region; time split; baseline replay ổn định; export không có location nhạy cảm. Promote gate: qua shadow rồi A/B; không vi phạm privacy/replay/stale guardrail; cải thiện metric chính trên test theo thời gian; không vượt latency; ETA/cost không xấu hơn mức Product chấp thuận. | Minimum run count, metric delta và mức ETA/cost regression chấp nhận. | BE-25 chỉ tạo report và readiness evidence. BE-26 không A/B/production khi chưa có threshold được phê duyệt. [Nguồn: Doc 12 — Mục 10.4, 14.5, 16.2] |
+| Q9 | LTR chỉ tạo group relevance score; fairness re-ranker có version tạo thứ tự cuối. `fair-pareto-v1` luôn là baseline/fallback. A/B chia theo meetup. | Công thức `ltrRankingStrategyVersion`, A/B sample/stop rule và approver cụ thể. | Chỉ chạy shadow. Không nối raw LTR score trực tiếp vào rank production. Đề xuất khi lập governance: Tech Lead phê duyệt contract kỹ thuật; Product Owner phê duyệt trade-off fairness–ETA–cost. Vai trò này chưa được xác định trong nguồn. [Nguồn: Doc 12 — Mục 10.1, 10.3, 10.5] |
+| Q10 | Staging/dev baseline có version: `tauSeconds=1200`, `alpha/beta/gamma=0.60/0.30/0.10`, `p_missing=0.60`. | `q_missing`, `n_ref`, sample count, epsilon, candidate target/max, provider budget, production values và approver. | Dev Backend 2 benchmark trên validation set và ghi config version/golden test. Không hard-code hoặc thay production config khi chưa được phê duyệt. [Nguồn: Doc 12 — Mục 7.1–7.4, 7.7, 16.2] |
+
+### 7.3. Điều kiện ghi nhận quyết định tiếp theo
+
+- Quyết định mới phải ghi vào nguồn canonical, không chỉ ghi trong chat.
+- Đổi API/event/schema: cập nhật contract, DBML và workbook dependency/acceptance khi liên quan.
+- Đổi formula/config/ranking: tăng `algorithmVersion` hoặc `configVersion` và thêm golden test.
+- Thay thế tài liệu cũ: thêm banner `Superseded by ...` hoặc bỏ khỏi chỉ mục để reviewer không dùng nhầm.
