@@ -313,6 +313,10 @@ Người xác nhận: owner theo sheet thực hiện; backend còn lại review 
 
 ### 5.2. Bước 1 — Recommendation run, context và candidate pipeline
 
+**Trạng thái: ✅ Hoàn tất (27/10/2026).** Repository/API, ContextBuilder privacy/location,
+Google pagination, DBML/entity/migration, migration cycle, integration/E2E và full quality gate
+đều đã có evidence chạy thật. Chi tiết kiểm toán: [`step1-tracker.md`](step1-tracker.md).
+
 **Mục tiêu.** Tạo run idempotent, context hợp lệ và tập `EligibleCandidate` đã qua provider-side filter, merge/dedup và residual hard constraint. [Nguồn: workbook — BE-14, BE-15; Doc 12 — Mục 4.2, 5.2 Bước 1–4]
 
 **Function thuộc bước**
@@ -324,16 +328,16 @@ Người xác nhận: owner theo sheet thực hiện; backend còn lại review 
 
 **Checklist triển khai**
 
-- [ ] Tạo bounded module `recommendations` theo layering hiện có; định nghĩa orchestrator, context builder, ports và DTO trước adapter. [Nguồn: DDD doc — Mục 2–6; Doc 12 — Mục 4.3]
-- [ ] BE-14 validate actor, meetup state, UUID `requestId`, `topK`, radius, distinct categories và `openingFilter`; output là `ValidatedRecommendationRequest`. [Nguồn: Doc 12 — Mục 5.2 Bước 1]
-- [ ] Thêm idempotency unique `(meetup_id, request_id)` và `payload_hash`; same key/same payload trả run cũ, different payload trả 409 `IDEMPOTENCY_KEY_REUSED`. [Nguồn: Doc 12 — Mục 5.2 Bước 1, 11.4]
-- [ ] Context chỉ nhận accepted member có quyền chia sẻ, latest location chưa stale và dữ liệu tọa độ/accuracy/timestamp hợp lệ; sort member theo `participantId`; dưới 2 member trả `INSUFFICIENT_VALID_MEMBERS`. [Nguồn: workbook — BE-14; Doc 12 — Mục 5.2 Bước 2]
-- [ ] Snapshot `rankingStrategy`, `algorithmVersion`, `configVersion`, `featureSchemaVersion` và provider/category mapping version. `recommendationMode`, nếu cần tương thích workbook, chỉ là alias nội bộ của `rankingStrategy`, không là input organizer. [Nguồn: workbook — BE-14; Doc 12 — Mục 6.2, 11.3; Mục 7.1, Q2]
-- [ ] BE-15 tạo query deterministic cho từng required category với semantics ANY/OR; Text Search dùng một `includedType`, strict type và optional `openNow` tại request time. [Nguồn: workbook — BE-15; Doc 12 — Mục 4.2, 5.2 Bước 3]
-- [ ] Phân trang round-robin trong `providerCallBudget`; union và dedup bằng `canonicalCandidateKey`; giữ source category/page metadata. [Nguồn: Doc 12 — Mục 5.2 Bước 3, 6.3]
-- [ ] Áp dụng residual hard filter cho required field, exact radius, category/policy và business status khi provider xác nhận. Không hard-filter `avoid`, rating thiếu hoặc opening data thiếu. [Nguồn: workbook — BE-15; Doc 12 — Mục 5.2 Bước 4, Mục 3.10]
-- [ ] First page của required category lỗi sau retry thì run failed `PLACE_SEARCH_UNAVAILABLE`; không còn candidate thì `NO_ELIGIBLE_CANDIDATES`. [Nguồn: Doc 12 — Mục 4.2, 12.2]
-- [ ] Adapter không ghi database hoặc đổi run state; engine không đọc field riêng của Google ngoài canonical contract. [Nguồn: Doc 12 — Mục 4.5, 6.3]
+- [x] Tạo bounded module `recommendations` theo layering hiện có; định nghĩa orchestrator, context builder, ports và DTO trước adapter. [Nguồn: DDD doc — Mục 2–6; Doc 12 — Mục 4.3]
+- [x] BE-14 validate actor, meetup state, UUID `requestId`, `topK`, radius, distinct categories và `openingFilter`; output là `ValidatedRecommendationRequest`. [Nguồn: Doc 12 — Mục 5.2 Bước 1]
+- [x] Thêm idempotency unique `(meetup_id, request_id)` và `payload_hash`; same key/same payload trả run cũ, different payload trả 409 `IDEMPOTENCY_KEY_REUSED`. [Nguồn: Doc 12 — Mục 5.2 Bước 1, 11.4]
+- [x] Context chỉ nhận accepted member có quyền chia sẻ, latest location chưa stale và dữ liệu tọa độ/accuracy/timestamp hợp lệ; sort member theo `participantId`; dưới 2 member trả `INSUFFICIENT_VALID_MEMBERS`. [Nguồn: workbook — BE-14; Doc 12 — Mục 5.2 Bước 2]
+- [x] Snapshot `rankingStrategy`, `algorithmVersion`, `configVersion`, `featureSchemaVersion` và provider/category mapping version. `recommendationMode`, nếu cần tương thích workbook, chỉ là alias nội bộ của `rankingStrategy`, không là input organizer. [Nguồn: workbook — BE-14; Doc 12 — Mục 6.2, 11.3; Mục 7.1, Q2]
+- [x] BE-15 tạo query deterministic cho từng required category với semantics ANY/OR; Text Search dùng một `includedType`, strict type và optional `openNow` tại request time. [Nguồn: workbook — BE-15; Doc 12 — Mục 4.2, 5.2 Bước 3]
+- [x] Phân trang round-robin trong `providerCallBudget`; union và dedup bằng `canonicalCandidateKey`; giữ source category/page metadata. [Nguồn: Doc 12 — Mục 5.2 Bước 3, 6.3]
+- [x] Áp dụng residual hard filter cho required field, exact radius, category/policy và business status khi provider xác nhận. Không hard-filter `avoid`, rating thiếu hoặc opening data thiếu. [Nguồn: workbook — BE-15; Doc 12 — Mục 5.2 Bước 4, Mục 3.10]
+- [x] First page của required category lỗi sau retry thì run failed `PLACE_SEARCH_UNAVAILABLE`; không còn candidate thì `NO_ELIGIBLE_CANDIDATES`. [Nguồn: Doc 12 — Mục 4.2, 12.2]
+- [x] Adapter không ghi database hoặc đổi run state; engine không đọc field riêng của Google ngoài canonical contract. [Nguồn: Doc 12 — Mục 4.5, 6.3]
 
 **Đầu vào cần có**
 
@@ -359,13 +363,13 @@ Người xác nhận: owner theo sheet thực hiện; backend còn lại review 
 
 Điều kiện bắt buộc:
 
-- [ ] Same requestId/same payload không tạo run thứ hai; different payload trả 409 đúng code.
-- [ ] 0 hoặc 1 valid member trả `INSUFFICIENT_VALID_MEMBERS`; stale/unauthorized/invalid location không lọt context.
-- [ ] Multi-category query có thứ tự deterministic, merge không duplicate canonical key và filter exact radius bằng backend.
-- [ ] `avoid` không bị loại; `OPEN_AT_REQUEST_TIME` chỉ dùng `openNow` tại thời điểm request.
-- [ ] Provider first-page failure và empty candidate set chuyển run sang `FAILED` với code đúng.
-- [ ] Migration chạy trên database rỗng; DBML phản ánh cùng schema; lint/unit/integration/E2E/build pass.
-- [ ] **[Thiếu tiêu chí trong nguồn]** Giá trị `maxTopK`, `maxSearchRadiusMeters`, `candidateTargetCount`, `candidateMaxCount`, `providerCallBudget` chưa được chốt. Reviewer chỉ xác nhận validation mechanism và versioning; không chấp nhận hard-code không được phê duyệt.
+- [x] Same requestId/same payload không tạo run thứ hai; different payload trả 409 đúng code.
+- [x] 0 hoặc 1 valid member trả `INSUFFICIENT_VALID_MEMBERS`; stale/unauthorized/invalid location không lọt context.
+- [x] Multi-category query có thứ tự deterministic, merge không duplicate canonical key và filter exact radius bằng backend.
+- [x] `avoid` không bị loại; `OPEN_AT_REQUEST_TIME` chỉ dùng `openNow` tại thời điểm request.
+- [x] Provider first-page failure và empty candidate set chuyển run sang `FAILED` với code đúng.
+- [x] Migration chạy trên database rỗng; DBML phản ánh cùng schema; lint/unit/integration/E2E/build pass.
+- [x] Validation/config có version `recommendation-config-dev-v1` theo Q10; các giá trị production chưa được duyệt không bị hard-code.
 
 Cách kiểm chứng:
 
@@ -373,6 +377,37 @@ Cách kiểm chứng:
 - Adapter contract test với hai category, hai page, duplicate Place ID, place ngoài radius, `CLOSED_PERMANENTLY`, thiếu rating/opening.
 - E2E gửi cùng idempotency key hai lần và so `runId`.
 - Chạy bộ lệnh chuẩn ở Bước 0 và migration cycle nếu có migration.
+
+**Evidence đóng gate ngày 27/10/2026**
+
+- Build, typecheck, lint: `npm run build`, `npm run typecheck`,
+  `npx eslint "{src,apps,libs,test}/**/*.ts"` đều exit 0.
+- Unit: `npm test -- --runInBand` — 39 suite, 166 test pass.
+- Integration chạy hai lần trên PostgreSQL thật — mỗi lần 2 suite, 13 test pass.
+- E2E chạy hai lần qua HTTP app thật + PostgreSQL + Redis, Google giả lập ở HTTP boundary —
+  mỗi lần 6 suite, 51 test pass.
+- Migration thật: chuẩn bị baseline, `run` → kiểm tra 15/14 cột → `revert` → kiểm tra hai
+  relation đã drop → `run` lại; toàn bộ exit 0.
+- Source audit `TODO|FIXME|not implemented|skip|xit|it.skip|only(` trong phần Bước 1: 0 finding.
+
+**Danh sách file chính**
+
+- `src/bounded-contexts/recommendations/**`: domain, application, adapter Google, TypeORM repository,
+  controller, module và unit/adapter tests.
+- `src/infrastructure/database/migrations/1792080000000-create-recommendation-run-baseline.ts`,
+  `docs/06_database_schema.dbml`, `compose.yaml`, `package.json`.
+- `test/recommendations.integration-spec.ts`, `test/recommendation-runs.e2e-spec.ts`,
+  `test/jest-integration.json`.
+
+**[Giả định].** PostgreSQL/Redis test dùng image/config của `compose.yaml` với host port
+`55432`/`56379` để tránh xung đột cục bộ; default port dự án không đổi.
+
+**Vấn đề cần quyết định.** Không có blocker còn lại cho Bước 1. Ngưỡng production chưa được duyệt
+vẫn là quyết định product/benchmark về sau và không ảnh hưởng dev config có version.
+
+**Bàn giao Bước 2.** Có thể dùng persisted completed run/candidate snapshot, context privacy-safe,
+canonical candidate contract và các version snapshot làm đầu vào BE-16/BE-17/BE-22; không mở rộng
+Bước 1 sang route matrix, utility hoặc ranking.
 
 Tiêu chí không đạt:
 
@@ -790,8 +825,8 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-11 | Chat trong meetup | Chưa thực hiện | Dev Backend 1 | Bước 4 | Chat persistence + realtime |
 | BE-12 | Lịch sử meetup | Chưa thực hiện | Dev Backend 1 | Bước 4 | Privacy-safe history |
 | BE-13 | Lấy địa điểm ứng viên (candidate-only) | Đã thực hiện | Dev Backend 2 | Bước 0 | Baseline verified; internal input for engine |
-| BE-14 | Khởi tạo recommendation run và context | Chưa thực hiện | Dev Backend 2 | Bước 1 | Validated/idempotent run context |
-| BE-15 | Candidate pipeline và constraint | Chưa thực hiện | Dev Backend 2 | Bước 1 | Eligible deduplicated candidates |
+| BE-14 | Khởi tạo recommendation run và context | Chưa thực hiện (workbook); ✅ hoàn tất trong code 27/10/2026 | Dev Backend 2 | Bước 1 | Validated/idempotent run context |
+| BE-15 | Candidate pipeline và constraint | Chưa thực hiện (workbook); ✅ hoàn tất trong code 27/10/2026 | Dev Backend 2 | Bước 1 | Eligible deduplicated candidates |
 | BE-16 | Route Matrix và route validation | Chưa thực hiện | Dev Backend 2 | Bước 2 | Route-complete candidates |
 | BE-17 | Feature và member utility | Chưa thực hiện | Dev Backend 2 | Bước 2 | Versioned T/P/Q/U |
 | BE-18 | Phát hiện bạn ở gần | Chưa thực hiện | Dev Backend 2 | Bước 6 | Privacy-safe nearby notification |
@@ -831,7 +866,7 @@ Các quyết định tại Mục 7.1 là baseline để triển khai. Mục 7.2 
 |---|---|---|---|
 | Q8 | Train gate: feedback/impression ghép đáng tin; nhiều category/group/region; time split; baseline replay ổn định; export không có location nhạy cảm. Promote gate: qua shadow rồi A/B; không vi phạm privacy/replay/stale guardrail; cải thiện metric chính trên test theo thời gian; không vượt latency; ETA/cost không xấu hơn mức Product chấp thuận. | Minimum run count, metric delta và mức ETA/cost regression chấp nhận. | BE-25 chỉ tạo report và readiness evidence. BE-26 không A/B/production khi chưa có threshold được phê duyệt. [Nguồn: Doc 12 — Mục 10.4, 14.5, 16.2] |
 | Q9 | LTR chỉ tạo group relevance score; fairness re-ranker có version tạo thứ tự cuối. `fair-pareto-v1` luôn là baseline/fallback. A/B chia theo meetup. | Công thức `ltrRankingStrategyVersion`, A/B sample/stop rule và approver cụ thể. | Chỉ chạy shadow. Không nối raw LTR score trực tiếp vào rank production. Đề xuất khi lập governance: Tech Lead phê duyệt contract kỹ thuật; Product Owner phê duyệt trade-off fairness–ETA–cost. Vai trò này chưa được xác định trong nguồn. [Nguồn: Doc 12 — Mục 10.1, 10.3, 10.5] |
-| Q10 | Staging/dev baseline có version: `tauSeconds=1200`, `alpha/beta/gamma=0.60/0.30/0.10`, `p_missing=0.60`. | `q_missing`, `n_ref`, sample count, epsilon, candidate target/max, provider budget, production values và approver. | Dev Backend 2 benchmark trên validation set và ghi config version/golden test. Không hard-code hoặc thay production config khi chưa được phê duyệt. [Nguồn: Doc 12 — Mục 7.1–7.4, 7.7, 16.2] |
+| Q10 | Staging/dev baseline có version: `tauSeconds=1200`, `alpha/beta/gamma=0.60/0.30/0.10`, `p_missing=0.60`; **đã phê duyệt 27/10/2026:** `recommendation-config-dev-v1` có `maxTopK=5`, `maxSearchRadiusMeters=10000`, `candidateTargetCount=20`, `candidateMaxCount=30`, `providerCallBudget=4`, `maxRequiredCategories=3`. | `q_missing`, `n_ref`, sample count, epsilon và toàn bộ production values/approver. | Chỉ dùng baseline mới cho dev/staging, version hóa trong snapshot/golden test; không dùng làm production default khi chưa được phê duyệt. [Nguồn: Doc 12 — Mục 7.1–7.4, 7.7, 16.2; quyết định người dùng 27/10/2026] |
 
 ### 7.3. Điều kiện ghi nhận quyết định tiếp theo
 
