@@ -144,8 +144,7 @@ export class MeetupsController {
   @Patch(':meetupId')
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
-    summary:
-      'Update details or recommendationMode as organizer before finalization',
+    summary: 'Update meetup details as organizer before finalization',
   })
   @ApiBody({ schema: updateMeetupSchema })
   @ApiOkResponse({ schema: meetupDetailSchema })

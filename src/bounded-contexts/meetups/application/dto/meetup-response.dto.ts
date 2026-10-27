@@ -50,7 +50,6 @@ export function toMeetupSummary(state: Omit<MeetupState, 'participants'>) {
     invitationDeadlineAt: state.invitationDeadlineAt.toISOString(),
     searchRadiusM: state.searchRadiusM,
     placeType: state.placeType,
-    recommendationMode: state.recommendationMode,
     status: state.status,
     cancelledAt: state.cancelledAt?.toISOString() ?? null,
     finishedAt: state.finishedAt?.toISOString() ?? null,

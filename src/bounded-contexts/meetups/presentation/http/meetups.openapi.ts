@@ -42,11 +42,6 @@ export const updateMeetupSchema: SchemaObject = {
       pattern: '^[a-z][a-z0-9_]{0,99}$',
       example: 'cafe',
     },
-    recommendationMode: {
-      type: 'string',
-      enum: ['balanced'],
-      description: 'Organizer only, before finalization.',
-    },
   },
 };
 export const createMeetupSchema: SchemaObject = {

@@ -225,6 +225,8 @@ BE-11 và BE-20 có thể bắt đầu ngay sau Bước 0. BE-18 và BE-19 cũng
 
 ### 5.1. Bước 0 — Khóa baseline cho function đã thực hiện
 
+**Trạng thái: ✅ Hoàn tất (27/10/2026).** Evidence chi tiết: [`baseline-verification.md`](baseline-verification.md).
+
 **Mục tiêu.** Chứng minh 10 function đang ghi `Đã thực hiện` đáp ứng contract nguồn và cung cấp đầu vào ổn định cho phần còn lại. Không mở rộng scope. [Nguồn: workbook — BE-01–BE-09, BE-13]
 
 **Function thuộc bước**
@@ -244,17 +246,17 @@ BE-11 và BE-20 có thể bắt đầu ngay sau Bước 0. BE-18 và BE-19 cũng
 
 **Checklist triển khai/kiểm chứng**
 
-- [ ] BE-01: kiểm chứng access/refresh flow, refresh reuse detection và locked account không đăng nhập. [Nguồn: workbook — BE-01; `12_audit_remediation.md` — Mục 1]
-- [ ] BE-02: kiểm chứng profile preference chỉ prefill; không ghi đè preference đã nhập trong meetup. [Nguồn: workbook — BE-02; `02_nghiep_vu_va_dac_ta.md` — BR-14 đến BR-16]
-- [ ] BE-03: kiểm chứng canonical friend pair, không self-friend, không duplicate và concurrency. [Nguồn: workbook — BE-03; `10_be03_friends_api.md` — Mục 3–7]
-- [ ] BE-04: kiểm chứng bốn privacy mode và gọi authorization ở mỗi lần đọc/publish; không cache kết quả quyền. [Nguồn: workbook — BE-04; `11_location_privacy_api.md` — Mục 3–6]
-- [ ] BE-05: kiểm chứng location hữu hạn, timestamp/accuracy, privacy, Redis TTL 5 phút và không lưu GPS history. [Nguồn: workbook — BE-05; realtime contracts — Mục 5; DBML — Redis keys]
-- [ ] BE-06: kiểm chứng JWT handshake, room authorization, presence TTL và shared publisher contract. [Nguồn: workbook — BE-06; realtime contracts — Mục 4–6]
-- [ ] BE-07: kiểm chứng token mã hóa AES-256-GCM, HMAC fingerprint, outbox worker, tối đa 5 retry exponential và revoke token invalid. [Nguồn: workbook — BE-07; `10_notifications_api.md` — Mục 2–6]
-- [ ] BE-08: kiểm chứng meetup lifecycle/member invariants. Xác nhận `recommendationMode` chưa nằm trong BE-08. [Nguồn: workbook — BE-08; `02_nghiep_vu_va_dac_ta.md` — BR-06 đến BR-13]
-- [ ] BE-09: kiểm chứng meetup preference thay thế profile theo tag, profile chỉ fallback khi thiếu và `avoid` được giữ để phạt mềm. [Nguồn: workbook — BE-09; Doc 12 — Mục 5.2 Bước 2, 7.2]
-- [ ] BE-13: khóa contract candidate-only hiện hành, adapter Google Places, authorization/state/error và test. Không coi provider order là recommendation order. [Nguồn: workbook — BE-13; `11_backend_integration_handoff.md` — Mục 8; Doc 12 — Mục 5.3]
-- [ ] Lập `baseline-verification.md` hoặc checklist trong PR, ghi rõ test nào chứng minh từng BE ID; gap có thật mới tạo fix.
+- [x] BE-01: access/refresh flow, refresh reuse detection và locked account không đăng nhập — `session-flows.use-case.spec.ts` pass. [Nguồn: workbook — BE-01; `12_audit_remediation.md` — Mục 1]
+- [x] BE-02: profile preference chỉ prefill; không ghi đè preference đã nhập trong meetup — evidence trong `baseline-verification.md`. [Nguồn: workbook — BE-02; `02_nghiep_vu_va_dac_ta.md` — BR-14 đến BR-16]
+- [x] BE-03: canonical friend pair, không self-friend, không duplicate và concurrency protection — unit/E2E pass; unique pair + lock được đối chiếu tại repository/migration. [Nguồn: workbook — BE-03; `10_be03_friends_api.md` — Mục 3–7]
+- [x] BE-04: bốn privacy mode và authorization mỗi lần đọc/publish, không cache — `location-access.service.spec.ts` và `privacy.e2e-spec.ts` pass. [Nguồn: workbook — BE-04; `11_location_privacy_api.md` — Mục 3–6]
+- [x] BE-05: location hữu hạn, timestamp/accuracy, privacy, Redis TTL 5 phút và không GPS history — `publish-location.use-case.spec.ts` và `redis-location.adapter.spec.ts` pass. [Nguồn: workbook — BE-05; realtime contracts — Mục 5; DBML — Redis keys]
+- [x] BE-06: JWT handshake, room authorization, presence TTL và shared publisher contract — `location.gateway.spec.ts`, `realtime-publisher.adapter.spec.ts` pass. [Nguồn: workbook — BE-06; realtime contracts — Mục 4–6]
+- [x] BE-07: AES-256-GCM, HMAC fingerprint, outbox worker/retry và revoke token invalid — notification/outbox specs pass. [Nguồn: workbook — BE-07; `10_notifications_api.md` — Mục 2–6]
+- [x] BE-08: meetup lifecycle/member invariants; `recommendationMode` không còn ở public BE-08 DTO/OpenAPI/response — `meetups.e2e-spec.ts` pass. [Nguồn: workbook — BE-08; `02_nghiep_vu_va_dac_ta.md` — BR-06 đến BR-13]
+- [x] BE-09: meetup preference thay profile theo tag, profile fallback khi thiếu và giữ `avoid` phạt mềm — meetup preference specs pass. [Nguồn: workbook — BE-09; Doc 12 — Mục 5.2 Bước 2, 7.2]
+- [x] BE-13: candidate-only `POST`, Google Places adapter, authorization/state/error; không dùng provider order làm rank — `recommendations.e2e-spec.ts` pass. [Nguồn: workbook — BE-13; `11_backend_integration_handoff.md` — Mục 8; Doc 12 — Mục 5.3]
+- [x] Báo cáo baseline theo 10 BE ID: [`baseline-verification.md`](baseline-verification.md).
 
 **Đầu vào cần có**
 
@@ -279,12 +281,12 @@ BE-11 và BE-20 có thể bắt đầu ngay sau Bước 0. BE-18 và BE-19 cũng
 
 Điều kiện bắt buộc:
 
-- [ ] Test chứng minh từng acceptance criterion trong workbook cho BE-01–BE-09 và BE-13.
-- [ ] Privacy test cho `off`, `friends`, `selected_friends`, `meetup_only`; unauthorized request không nhận exact location.
-- [ ] TTL test chứng minh latest location hết hiệu lực sau 5 phút.
-- [ ] Socket room từ chối non-member; notification retry không rollback business transaction.
-- [ ] BE-13 trả đúng năm nhóm lỗi đã tài liệu hóa: `MEETUP_NOT_FOUND` 404, `MEETUP_FORBIDDEN` 403, `MEETUP_INSUFFICIENT_PARTICIPANTS` 400, `RECOMMENDATION_INSUFFICIENT_LOCATIONS` 400, `PLACE_SEARCH_UNAVAILABLE` 503. [Nguồn: handoff — Mục 8]
-- [ ] `npm run lint`, `npm test`, `npm run test:e2e`, `npm run build` đều exit code 0. [Nguồn: backend README; DDD doc — Mục 9, 12]
+- [x] Test chứng minh từng acceptance criterion trong workbook cho BE-01–BE-09 và BE-13 — mapping test-by-test trong [`baseline-verification.md`](baseline-verification.md).
+- [x] Privacy test cho `off`, `friends`, `selected_friends`, `meetup_only`; unauthorized request không nhận exact location — `location-access.service.spec.ts`, `privacy.e2e-spec.ts` pass.
+- [x] TTL test chứng minh latest location có TTL 5 phút — `redis-location.adapter.spec.ts` assert Redis `set(..., 300)`; `publish-location.use-case.spec.ts` pass.
+- [x] Socket room từ chối non-member; notification retry không rollback business transaction — `location.gateway.spec.ts`, `outbox-worker.service.spec.ts` pass.
+- [x] BE-13 trả đúng năm nhóm lỗi đã tài liệu hóa: `MEETUP_NOT_FOUND` 404, `MEETUP_FORBIDDEN` 403, `MEETUP_INSUFFICIENT_PARTICIPANTS` 400, `RECOMMENDATION_INSUFFICIENT_LOCATIONS` 400, `PLACE_SEARCH_UNAVAILABLE` 503 — `recommendations.e2e-spec.ts` pass. [Nguồn: handoff — Mục 8]
+- [x] `npm run lint`, `npm test`, `npm run test:e2e`, `npm run build` đều exit code 0 — lint/build exit 0; unit 34/149 pass; E2E 5/47 pass. [Nguồn: backend README; DDD doc — Mục 9, 12]
 
 Cách kiểm chứng:
 
@@ -302,6 +304,12 @@ Tiêu chí không đạt:
 - Bất kỳ command nào lỗi; thiếu test cho tiêu chí sheet; public contract chưa version; truy cập location bỏ qua permission; BE-13 chưa xác định contract hiện hành.
 
 Người xác nhận: owner theo sheet thực hiện; backend còn lại review PR. Thay đổi cross-context phải được cả hai owner chấp nhận contract trước khi merge. [Nguồn: workbook — sheet `Hướng dẫn sử dụng`; DDD doc — Mục 12]
+
+**Deliverable thực tế.** `docs/baseline-verification.md`; regression specs `session-flows.use-case.spec.ts`, `redis-location.adapter.spec.ts`, `recommendations.e2e-spec.ts`; BE-08 public DTO/OpenAPI/response đã bỏ `recommendationMode`.
+
+**[Giả định].** Giữ cột legacy `meetup_sessions.recommendation_mode` với giá trị nội bộ cố định `balanced` để tương thích schema hiện có; field không còn được nhận, mô tả hoặc trả qua BE-08. Xóa cột cần migration append-only và thuộc thay đổi recommendation schema ở bước sau.
+
+**Ghi chú cho Bước 1.** Dùng BE-13 `POST` candidate-only làm input; không đưa `recommendationMode` trở lại mobile/BE-08. Bước 1 phải persist `rankingStrategy` server-side theo Q2 và xử lý migration schema đích append-only.
 
 ### 5.2. Bước 1 — Recommendation run, context và candidate pipeline
 

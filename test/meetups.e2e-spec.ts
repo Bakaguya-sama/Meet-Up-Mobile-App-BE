@@ -136,12 +136,14 @@ describe('Meetup HTTP contract', () => {
     return (response.body as { id: string }).id;
   }
 
-  it('creates the default mode, membership and valid outbox deliveries', async () => {
+  it('creates membership and valid outbox deliveries without exposing recommendation mode', async () => {
     const id = await create();
-    expect(store.rows.get(id)).toMatchObject({
-      status: 'inviting',
-      recommendationMode: 'balanced',
-    });
+    expect(store.rows.get(id)).toMatchObject({ status: 'inviting' });
+    const response = await request(app.getHttpServer())
+      .get(`/api/v1/meetups/${id}`)
+      .set(auth(alice))
+      .expect(200);
+    expect(response.body).not.toHaveProperty('recommendationMode');
     expect(store.deliveries).toHaveLength(2);
     expect(store.deliveries.every((row) => isIntegrationEvent(row.event))).toBe(
       true,
@@ -196,7 +198,7 @@ describe('Meetup HTTP contract', () => {
     { scheduledAt: '2020-01-01T00:00:00Z' },
     { scheduledAt: '2030-01-01T12:00:00' },
     { searchRadiusM: 50001 },
-    { recommendationMode: null },
+    { recommendationMode: 'balanced' },
     { status: 'selected' },
     { organizerId: bob },
   ])('rejects invalid create request %j without writes', async (patch) => {
@@ -214,7 +216,7 @@ describe('Meetup HTTP contract', () => {
     await request(app.getHttpServer())
       .patch(`/api/v1/meetups/${id}`)
       .set(auth(bob))
-      .send({ recommendationMode: 'balanced' })
+      .send({ title: 'Blocked' })
       .expect(403);
     for (const patch of [
       {},
@@ -231,7 +233,7 @@ describe('Meetup HTTP contract', () => {
     await request(app.getHttpServer())
       .patch(`/api/v1/meetups/${id.toUpperCase()}`)
       .set(auth(alice))
-      .send({ title: 'Tea', description: null, recommendationMode: 'balanced' })
+      .send({ title: 'Tea', description: null })
       .expect(200);
     expect(store.rows.get(id)?.title).toBe('Tea');
   });
