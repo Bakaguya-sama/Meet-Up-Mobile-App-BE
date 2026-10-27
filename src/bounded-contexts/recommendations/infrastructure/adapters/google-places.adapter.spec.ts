@@ -5,6 +5,7 @@ describe('GooglePlacesAdapter', () => {
     const request: jest.MockedFunction<PlacesFetch> = jest.fn();
     request.mockResolvedValue({
       ok: true,
+      status: 200,
       json: () =>
         Promise.resolve({
           places: [
@@ -32,6 +33,7 @@ describe('GooglePlacesAdapter', () => {
       }),
     ).resolves.toEqual([
       {
+        provider: 'google-places',
         providerPlaceId: 'places/abc',
         name: 'Cafe Example',
         categories: ['cafe', 'food'],
@@ -65,5 +67,58 @@ describe('GooglePlacesAdapter', () => {
       }),
     ).rejects.toMatchObject({ code: 'PLACE_SEARCH_UNAVAILABLE' });
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it('passes pageToken/openNow and exposes the next page token', async () => {
+    const request: jest.MockedFunction<PlacesFetch> = jest.fn();
+    request.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ places: [], nextPageToken: 'next-2' }),
+    });
+    const adapter = new GooglePlacesAdapter('test-key', request);
+
+    await expect(
+      adapter.searchPage({
+        query: 'coffee',
+        includedType: 'cafe',
+        latitude: 10.7,
+        longitude: 106.7,
+        radiusMeters: 1000,
+        openNow: true,
+        pageToken: 'next-1',
+      }),
+    ).resolves.toEqual({ candidates: [], nextPageToken: 'next-2' });
+    expect(JSON.parse(request.mock.calls[0][1].body as string)).toMatchObject({
+      includedType: 'cafe',
+      openNow: true,
+      pageToken: 'next-1',
+    });
+  });
+
+  it('retries transient HTTP failures within the configured attempt limit', async () => {
+    const request: jest.MockedFunction<PlacesFetch> = jest.fn();
+    request
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: () => Promise.resolve({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ places: [] }),
+      });
+    const adapter = new GooglePlacesAdapter('test-key', request, 2, 100);
+
+    await expect(
+      adapter.search({
+        query: 'cafe',
+        latitude: 10.7,
+        longitude: 106.7,
+        radiusMeters: 1000,
+      }),
+    ).resolves.toEqual([]);
+    expect(request).toHaveBeenCalledTimes(2);
   });
 });

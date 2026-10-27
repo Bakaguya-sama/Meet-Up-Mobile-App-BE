@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type {
   PlaceCandidate,
+  PlaceSearchInput,
+  PlaceSearchPage,
   PlaceSearchPort,
 } from '../../application/ports/place-search.port';
 import { RecommendationError } from '../../domain/recommendation.error';
@@ -14,12 +16,14 @@ const FIELD_MASK = [
   'places.formattedAddress',
   'places.rating',
   'places.currentOpeningHours.openNow',
+  'places.businessStatus',
+  'nextPageToken',
 ].join(',');
 
 export type PlacesFetch = (
   url: string,
   init: RequestInit,
-) => Promise<Pick<Response, 'ok' | 'json'>>;
+) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
 
 interface GooglePlace {
   id?: unknown;
@@ -29,10 +33,12 @@ interface GooglePlace {
   formattedAddress?: unknown;
   rating?: unknown;
   currentOpeningHours?: { openNow?: unknown };
+  businessStatus?: unknown;
 }
 
 interface GoogleTextSearchResponse {
   places?: GooglePlace[];
+  nextPageToken?: unknown;
 }
 
 @Injectable()
@@ -40,59 +46,76 @@ export class GooglePlacesAdapter implements PlaceSearchPort {
   constructor(
     private readonly apiKey: string,
     private readonly request: PlacesFetch = fetch,
+    private readonly maxAttempts = 2,
+    private readonly timeoutMs = 8_000,
+    private readonly endpoint = TEXT_SEARCH_URL,
   ) {}
 
-  async search(input: {
-    query: string;
-    latitude: number;
-    longitude: number;
-    radiusMeters: number;
-  }): Promise<PlaceCandidate[]> {
+  async search(input: PlaceSearchInput): Promise<PlaceCandidate[]> {
+    return (await this.searchPage(input)).candidates;
+  }
+
+  async searchPage(input: PlaceSearchInput): Promise<PlaceSearchPage> {
     if (!this.apiKey) {
       throw new RecommendationError(
         'PLACE_SEARCH_UNAVAILABLE',
         'Google Places API is not configured',
       );
     }
-    try {
-      const response = await this.request(TEXT_SEARCH_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': this.apiKey,
-          'X-Goog-FieldMask': FIELD_MASK,
-        },
-        body: JSON.stringify({
-          textQuery: input.query,
-          includedType: input.query,
-          strictTypeFiltering: true,
-          pageSize: 20,
-          locationBias: {
-            circle: {
-              center: { latitude: input.latitude, longitude: input.longitude },
-              radius: input.radiusMeters,
-            },
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      try {
+        const response = await this.request(this.endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': this.apiKey,
+            'X-Goog-FieldMask': FIELD_MASK,
           },
-        }),
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!response.ok) {
-        throw new RecommendationError(
-          'PLACE_SEARCH_UNAVAILABLE',
-          'Google Places could not search for candidate places',
-        );
+          body: JSON.stringify({
+            textQuery: input.query,
+            includedType: input.includedType ?? input.query,
+            strictTypeFiltering: true,
+            pageSize: 20,
+            ...(input.pageToken ? { pageToken: input.pageToken } : {}),
+            ...(input.openNow === true ? { openNow: true } : {}),
+            locationBias: {
+              circle: {
+                center: {
+                  latitude: input.latitude,
+                  longitude: input.longitude,
+                },
+                radius: input.radiusMeters,
+              },
+            },
+          }),
+          signal: AbortSignal.timeout(this.timeoutMs),
+        });
+        if (!response.ok) {
+          if (response.status < 500 && response.status !== 429) break;
+          throw new Error(`Google Places HTTP ${response.status}`);
+        }
+        const payload = (await response.json()) as GoogleTextSearchResponse;
+        return {
+          candidates: (payload.places ?? [])
+            .map((place) => toCandidate(place))
+            .filter(
+              (candidate): candidate is PlaceCandidate => candidate !== null,
+            ),
+          ...(typeof payload.nextPageToken === 'string' &&
+          payload.nextPageToken.length > 0
+            ? { nextPageToken: payload.nextPageToken }
+            : {}),
+        };
+      } catch (error) {
+        lastError = error;
       }
-      const payload = (await response.json()) as GoogleTextSearchResponse;
-      return (payload.places ?? [])
-        .map((place) => toCandidate(place))
-        .filter((candidate): candidate is PlaceCandidate => candidate !== null);
-    } catch (error) {
-      if (error instanceof RecommendationError) throw error;
-      throw new RecommendationError(
-        'PLACE_SEARCH_UNAVAILABLE',
-        'Google Places could not search for candidate places',
-      );
     }
+    void lastError;
+    throw new RecommendationError(
+      'PLACE_SEARCH_UNAVAILABLE',
+      'Google Places could not search for candidate places',
+    );
   }
 }
 
@@ -108,6 +131,7 @@ function toCandidate(place: GooglePlace): PlaceCandidate | null {
     return null;
   }
   return {
+    provider: 'google-places',
     providerPlaceId: place.id,
     name: place.displayName.text,
     categories: Array.isArray(place.types)
@@ -124,5 +148,17 @@ function toCandidate(place: GooglePlace): PlaceCandidate | null {
     ...(typeof place.currentOpeningHours?.openNow === 'boolean'
       ? { openingHours: { openNow: place.currentOpeningHours.openNow } }
       : {}),
+    ...(isBusinessStatus(place.businessStatus)
+      ? { businessStatus: place.businessStatus }
+      : {}),
   };
+}
+
+function isBusinessStatus(
+  value: unknown,
+): value is PlaceCandidate['businessStatus'] {
+  return (
+    typeof value === 'string' &&
+    ['OPERATIONAL', 'CLOSED_TEMPORARILY', 'CLOSED_PERMANENTLY'].includes(value)
+  );
 }

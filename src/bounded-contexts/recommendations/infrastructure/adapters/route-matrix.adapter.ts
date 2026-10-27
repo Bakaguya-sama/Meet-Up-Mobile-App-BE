@@ -11,7 +11,10 @@ export class RouteMatrixAdapter implements RouteMatrixPort {
     }> = [],
   ) {}
 
-  calculate(): Promise<
+  calculate(input: {
+    origins: Array<{ id: string; latitude: number; longitude: number }>;
+    destinations: Array<{ id: string; latitude: number; longitude: number }>;
+  }): Promise<
     Array<{
       originId: string;
       destinationId: string;
@@ -19,6 +22,7 @@ export class RouteMatrixAdapter implements RouteMatrixPort {
       distanceMeters: number;
     }>
   > {
+    void input;
     return Promise.resolve([...this.routes]);
   }
 }
