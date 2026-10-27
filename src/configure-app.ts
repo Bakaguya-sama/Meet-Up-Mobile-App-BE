@@ -1,4 +1,8 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  BadRequestException,
+  INestApplication,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AllExceptionsFilter } from './presentation/http/filters/all-exceptions.filter';
@@ -13,6 +17,13 @@ export function configureApp(app: INestApplication): void {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: (errors) =>
+        new BadRequestException({
+          statusCode: 400,
+          code: 'INVALID_INPUT',
+          message: 'Request validation failed',
+          errors,
+        }),
     }),
   );
   app.useGlobalFilters(new AllExceptionsFilter());

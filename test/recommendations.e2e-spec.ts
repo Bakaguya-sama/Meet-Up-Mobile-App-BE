@@ -13,18 +13,24 @@ import { FindPlaceCandidatesUseCase } from '../src/bounded-contexts/recommendati
 import { RecommendationsController } from '../src/bounded-contexts/recommendations/presentation/http/recommendations.controller';
 import { AccessTokenGuard } from '../src/presentation/http/guards/access-token.guard';
 import { RecommendationError } from '../src/bounded-contexts/recommendations/domain/recommendation.error';
+import { CreateRecommendationRunUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/create-recommendation-run.use-case';
+import { GetRecommendationRunUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/get-recommendation-run.use-case';
 
 describe('BE-13 candidate-only HTTP contract', () => {
   const actorId = 'aaaaaaaa-0000-4000-8000-000000000001';
   const meetupId = 'bbbbbbbb-0000-4000-8000-000000000002';
   let app: INestApplication<App>;
   const findCandidates = { execute: jest.fn() };
+  const createRun = { execute: jest.fn() };
+  const getRun = { execute: jest.fn() };
 
   beforeAll(async () => {
     const fixture = await Test.createTestingModule({
       controllers: [RecommendationsController],
       providers: [
         { provide: FindPlaceCandidatesUseCase, useValue: findCandidates },
+        { provide: CreateRecommendationRunUseCase, useValue: createRun },
+        { provide: GetRecommendationRunUseCase, useValue: getRun },
         {
           provide: ConfigService,
           useValue: new ConfigService({
