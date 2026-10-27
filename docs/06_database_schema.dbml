@@ -211,15 +211,48 @@
   Table recommendation_runs {
     id uuid [pk]
     meetup_id uuid [not null]
+    request_id uuid [not null]
+    payload_hash char(64) [not null]
     requested_by_id uuid [not null]
-    route_strategy route_strategy [not null]
-    valid_member_count integer [not null]
-    status varchar(30) [not null] // pending, completed, failed
-    failure_reason varchar(500)
+    requested_k smallint [not null]
+    status varchar(20) [not null, note: 'RUNNING, COMPLETED, FAILED']
+    failure_code varchar(100)
+    ranking_strategy varchar(50) [not null]
+    algorithm_version varchar(100) [not null]
+    config_version varchar(100) [not null]
+    feature_schema_version varchar(100) [not null]
+    provider_mapping_version varchar(100) [not null]
     created_at timestamptz [not null]
     completed_at timestamptz
 
-    Note: 'Do not store individual current coordinates. The run only records strategy and result metadata.'
+    Indexes {
+      (meetup_id, request_id) [unique, name: 'uq_recommendation_runs_request']
+      (meetup_id, created_at) [name: 'idx_recommendation_runs_meetup_created']
+    }
+
+    Note: 'Step 1 run/idempotency metadata. Do not store individual member coordinates.'
+  }
+
+  Table recommendation_candidates {
+    id uuid [pk]
+    run_id uuid [not null]
+    canonical_candidate_key varchar(300) [not null]
+    provider varchar(50) [not null]
+    provider_place_id varchar(255) [not null]
+    name varchar(255) [not null]
+    latitude double [not null, note: 'Provider place coordinate, -90..90; never a member coordinate.']
+    longitude double [not null, note: 'Provider place coordinate, -180..180; never a member coordinate.']
+    provider_types jsonb [not null]
+    source_categories jsonb [not null]
+    source_pages jsonb [not null]
+    filter_status varchar(20) [not null, note: 'ELIGIBLE or FILTERED']
+    filter_reason varchar(100)
+    created_at timestamptz [not null]
+
+    Indexes {
+      (run_id, canonical_candidate_key) [unique, name: 'uq_recommendation_candidate']
+      (run_id, filter_status) [name: 'idx_recommendation_candidates_run_status']
+    }
   }
 
   // External place data persisted only when it is shown in a recommendation or saved as a favorite.
@@ -492,6 +525,7 @@
   Ref: activity_tags.id < meetup_participant_preferences.activity_tag_id
   Ref: meetup_sessions.id < recommendation_runs.meetup_id
   Ref: user_accounts.id < recommendation_runs.requested_by_id
+  Ref: recommendation_runs.id < recommendation_candidates.run_id [delete: cascade]
   Ref: recommendation_runs.id < recommendation_places.recommendation_run_id
   Ref: place_snapshots.id < recommendation_places.place_snapshot_id
   Ref: recommendation_places.id < recommendation_place_etas.recommendation_place_id
