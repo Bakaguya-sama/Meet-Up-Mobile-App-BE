@@ -1,0 +1,24 @@
+import type {
+  RecommendationCandidateSnapshot,
+  RecommendationRun,
+  RecommendationRunResult,
+} from '../../domain/recommendation-run';
+
+export const RECOMMENDATION_RUN_STORE = Symbol('RECOMMENDATION_RUN_STORE');
+export interface RecommendationRunStore {
+  findByRequest(
+    meetupId: string,
+    requestId: string,
+  ): Promise<RecommendationRunResult | null>;
+  findById(
+    meetupId: string,
+    runId: string,
+  ): Promise<RecommendationRunResult | null>;
+  create(run: RecommendationRun): Promise<RecommendationRunResult>;
+  complete(
+    runId: string,
+    candidates: RecommendationCandidateSnapshot[],
+    completedAt: Date,
+  ): Promise<RecommendationRunResult>;
+  fail(runId: string, failureCode: string, completedAt: Date): Promise<void>;
+}
