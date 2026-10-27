@@ -176,8 +176,8 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     await redis.set(
       `meetup-location:${meetupId}:${memberId}`,
       JSON.stringify({
-        latitude: 10.71,
-        longitude: 106.71,
+        latitude: 10.704,
+        longitude: 106.704,
         accuracy: 15,
         recordedAt,
       }),
