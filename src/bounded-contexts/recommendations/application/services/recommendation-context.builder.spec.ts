@@ -1,5 +1,6 @@
 import type { MeetupCandidateSearchPort } from '../ports/meetup-candidate-search.port';
 import type { MeetupLocationPort } from '../ports/meetup-location.port';
+import type { MeetupPreferencePort } from '../ports/meetup-preference.port';
 import { RecommendationContextBuilder } from './recommendation-context.builder';
 
 describe('RecommendationContextBuilder privacy/location boundary', () => {
@@ -75,5 +76,47 @@ describe('RecommendationContextBuilder privacy/location boundary', () => {
     await expect(builder.build('actor', 'meetup')).resolves.toMatchObject({
       searchCenter: { participantId: 'participant-c' },
     });
+  });
+
+  it('attaches only effective meetup-over-profile preferences by participant', async () => {
+    locations.getActiveLocations.mockResolvedValue([
+      { userId: 'user-a', latitude: 10, longitude: 106 },
+      { userId: 'user-b', latitude: 10, longitude: 107 },
+    ]);
+    const preferences: jest.Mocked<MeetupPreferencePort> = {
+      getEffectivePreferences: jest.fn().mockResolvedValue([
+        {
+          participantId: 'participant-a',
+          tags: [
+            {
+              tagCode: 'cafe',
+              level: 'avoid',
+              source: 'meetup_input',
+            },
+          ],
+        },
+        {
+          participantId: 'participant-b',
+          tags: [
+            {
+              tagCode: 'park',
+              level: 'high',
+              source: 'profile_fallback',
+            },
+          ],
+        },
+      ]),
+    };
+    const context = await new RecommendationContextBuilder(
+      meetups,
+      locations,
+      preferences,
+      () => new Date('2026-10-27T03:00:00.000Z'),
+    ).build('actor', 'meetup');
+    expect(context.members.map((member) => member.preferences)).toEqual([
+      [{ tagCode: 'cafe', level: 'avoid', source: 'meetup_input' }],
+      [{ tagCode: 'park', level: 'high', source: 'profile_fallback' }],
+    ]);
+    expect(JSON.stringify(context)).not.toContain('user-a');
   });
 });

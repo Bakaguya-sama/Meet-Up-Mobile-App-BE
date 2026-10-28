@@ -15,6 +15,7 @@ const FIELD_MASK = [
   'places.location',
   'places.formattedAddress',
   'places.rating',
+  'places.userRatingCount',
   'places.currentOpeningHours.openNow',
   'places.businessStatus',
   'nextPageToken',
@@ -32,6 +33,7 @@ interface GooglePlace {
   location?: { latitude?: unknown; longitude?: unknown };
   formattedAddress?: unknown;
   rating?: unknown;
+  userRatingCount?: unknown;
   currentOpeningHours?: { openNow?: unknown };
   businessStatus?: unknown;
 }
@@ -144,6 +146,11 @@ function toCandidate(place: GooglePlace): PlaceCandidate | null {
       : {}),
     ...(typeof place.rating === 'number' && Number.isFinite(place.rating)
       ? { rating: place.rating }
+      : {}),
+    ...(typeof place.userRatingCount === 'number' &&
+    Number.isInteger(place.userRatingCount) &&
+    place.userRatingCount >= 0
+      ? { userRatingCount: place.userRatingCount }
       : {}),
     ...(typeof place.currentOpeningHours?.openNow === 'boolean'
       ? { openingHours: { openNow: place.currentOpeningHours.openNow } }

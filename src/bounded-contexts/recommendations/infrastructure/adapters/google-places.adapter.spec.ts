@@ -16,6 +16,7 @@ describe('GooglePlacesAdapter', () => {
               location: { latitude: 10.77, longitude: 106.69 },
               formattedAddress: 'District 1',
               rating: 4.5,
+              userRatingCount: 99,
               currentOpeningHours: { openNow: true },
             },
             { id: 'incomplete' },
@@ -41,6 +42,7 @@ describe('GooglePlacesAdapter', () => {
         longitude: 106.69,
         formattedAddress: 'District 1',
         rating: 4.5,
+        userRatingCount: 99,
         openingHours: { openNow: true },
       },
     ]);

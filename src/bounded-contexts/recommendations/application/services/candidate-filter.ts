@@ -10,6 +10,7 @@ export interface RawCandidate {
   businessStatus?:
     'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY' | 'UNKNOWN';
   rating0To5?: number;
+  userRatingCount?: number;
   currentOpen?: boolean;
 }
 
@@ -19,6 +20,7 @@ export interface EligibleCandidate extends RawCandidate {
   matchedRequiredCategories: string[];
   sourceCategories: string[];
   sourcePages: number[];
+  normalizedTags: string[];
 }
 
 export function filterCandidates(
@@ -63,6 +65,7 @@ export function filterCandidates(
       matchedRequiredCategories: [...item.matched].sort(),
       sourceCategories: [...item.sources].sort(),
       sourcePages: [...item.pages].sort((a, b) => a - b),
+      normalizedTags: [...item.sources].sort(),
     }))
     .filter(
       (item) =>

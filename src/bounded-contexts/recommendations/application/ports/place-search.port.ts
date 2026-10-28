@@ -9,6 +9,7 @@ export interface PlaceCandidate {
   longitude: number;
   formattedAddress?: string;
   rating?: number;
+  userRatingCount?: number;
   openingHours?: { openNow?: boolean };
   businessStatus?:
     'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY' | 'UNKNOWN';

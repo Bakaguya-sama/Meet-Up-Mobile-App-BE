@@ -80,6 +80,7 @@ export class CandidateGenerator {
             sourcePage: state.page,
             businessStatus: candidate.businessStatus,
             rating0To5: candidate.rating,
+            userRatingCount: candidate.userRatingCount,
             currentOpen: candidate.openingHours?.openNow,
           });
         }

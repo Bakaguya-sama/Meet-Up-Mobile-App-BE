@@ -1,11 +1,17 @@
 import { RecommendationError } from '../../domain/recommendation.error';
 import type { MeetupCandidateSearchPort } from '../ports/meetup-candidate-search.port';
 import type { MeetupLocationPort } from '../ports/meetup-location.port';
+import type { MeetupPreferencePort } from '../ports/meetup-preference.port';
 
 export interface RecommendationMemberContext {
   participantId: string;
   latitude: number;
   longitude: number;
+  preferences: Array<{
+    tagCode: string;
+    level: 'high' | 'normal' | 'avoid';
+    source: 'meetup_input' | 'profile_fallback';
+  }>;
 }
 
 export interface RecommendationContext {
@@ -17,11 +23,19 @@ export interface RecommendationContext {
 }
 
 export class RecommendationContextBuilder {
+  private readonly preferences?: MeetupPreferencePort;
+  private readonly now: () => Date;
+
   constructor(
     private readonly meetups: MeetupCandidateSearchPort,
     private readonly locations: MeetupLocationPort,
-    private readonly now: () => Date = () => new Date(),
-  ) {}
+    preferencesOrNow?: MeetupPreferencePort | (() => Date),
+    now: () => Date = () => new Date(),
+  ) {
+    this.preferences =
+      typeof preferencesOrNow === 'function' ? undefined : preferencesOrNow;
+    this.now = typeof preferencesOrNow === 'function' ? preferencesOrNow : now;
+  }
 
   async build(
     actorId: string,
@@ -37,6 +51,15 @@ export class RecommendationContextBuilder {
       actorId.toLowerCase(),
       acceptedMembers.map((member) => member.userId),
     );
+    const effectivePreferences = this.preferences
+      ? await this.preferences.getEffectivePreferences(meetup.meetupId)
+      : [];
+    const preferencesByParticipant = new Map(
+      effectivePreferences.map((value) => [
+        value.participantId.toLowerCase(),
+        value.tags.map((tag) => ({ ...tag })),
+      ]),
+    );
     const locationByUserId = new Map(
       locations
         .filter(isValidCoordinate)
@@ -51,6 +74,8 @@ export class RecommendationContextBuilder {
                 participantId: member.participantId,
                 latitude: location.latitude,
                 longitude: location.longitude,
+                preferences:
+                  preferencesByParticipant.get(member.participantId) ?? [],
               },
             ]
           : [];
