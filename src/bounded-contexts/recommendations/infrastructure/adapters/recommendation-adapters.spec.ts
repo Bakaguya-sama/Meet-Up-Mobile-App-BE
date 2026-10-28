@@ -32,17 +32,33 @@ describe('recommendation adapters', () => {
   });
 
   it('returns deterministic route matrix rows', async () => {
-    const routes = new RouteMatrixAdapter([
-      {
-        originId: 'participant-1',
-        destinationId: 'place-1',
-        durationSeconds: 300,
-        distanceMeters: 1200,
-      },
-    ]);
+    const routes = new RouteMatrixAdapter({
+      features: [
+        {
+          participantId: 'participant-1',
+          canonicalCandidateKey: 'place-1',
+          etaSeconds: 300,
+          distanceMeters: 1200,
+          status: 'OK',
+        },
+      ],
+      failures: [],
+    });
 
     await expect(
-      routes.calculate({ origins: [], destinations: [] }),
-    ).resolves.toHaveLength(1);
+      routes.calculateBatch({
+        travelMode: 'TWO_WHEELER',
+        origins: [
+          { participantId: 'participant-1', latitude: 10, longitude: 106 },
+        ],
+        destinations: [
+          {
+            canonicalCandidateKey: 'place-1',
+            latitude: 10,
+            longitude: 106,
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ features: [{ etaSeconds: 300 }] });
   });
 });

@@ -1,28 +1,18 @@
-import type { RouteMatrixPort } from '../../application/ports/route-matrix.port';
+import type {
+  RouteBatchRequest,
+  RouteBatchResult,
+  RouteMatrixPort,
+} from '../../application/ports/route-matrix.port';
 
-/** Deterministic adapter for ETA/ranking tests before Google Routes is integrated. */
+/** Deterministic external-boundary fake used only by unit tests. */
 export class RouteMatrixAdapter implements RouteMatrixPort {
-  constructor(
-    private readonly routes: Array<{
-      originId: string;
-      destinationId: string;
-      durationSeconds: number;
-      distanceMeters: number;
-    }> = [],
-  ) {}
+  constructor(private readonly result: RouteBatchResult) {}
 
-  calculate(input: {
-    origins: Array<{ id: string; latitude: number; longitude: number }>;
-    destinations: Array<{ id: string; latitude: number; longitude: number }>;
-  }): Promise<
-    Array<{
-      originId: string;
-      destinationId: string;
-      durationSeconds: number;
-      distanceMeters: number;
-    }>
-  > {
+  calculateBatch(input: RouteBatchRequest): Promise<RouteBatchResult> {
     void input;
-    return Promise.resolve([...this.routes]);
+    return Promise.resolve({
+      features: this.result.features.map((feature) => ({ ...feature })),
+      failures: this.result.failures.map((failure) => ({ ...failure })),
+    });
   }
 }
