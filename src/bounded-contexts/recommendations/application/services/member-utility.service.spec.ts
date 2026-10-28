@@ -1,6 +1,15 @@
 import { RECOMMENDATION_CONFIG_DEV_V1 } from '../recommendation-config';
 import { MemberUtilityService } from './member-utility.service';
 
+function expectCode(action: () => unknown, code: string) {
+  try {
+    action();
+    throw new Error('Expected action to throw');
+  } catch (error) {
+    expect(error).toMatchObject({ code });
+  }
+}
+
 describe('MemberUtilityService', () => {
   it('matches every documented golden vector including avoid soft penalty', () => {
     const result = new MemberUtilityService(RECOMMENDATION_CONFIG_DEV_V1).score(
@@ -53,32 +62,31 @@ describe('MemberUtilityService', () => {
     { tagWeights: { cafe: 0 } },
     { utilityWeights: { travel: 0.6, preference: 0.6, quality: 0.1 } },
   ])('rejects invalid config %o', (override) => {
-    expect(
+    expectCode(
       () =>
         new MemberUtilityService({
           ...RECOMMENDATION_CONFIG_DEV_V1,
           ...override,
         }),
-    ).toThrow(
-      expect.objectContaining({ code: 'INVALID_RECOMMENDATION_CONFIG' }),
+      'INVALID_RECOMMENDATION_CONFIG',
     );
   });
 
   it('rejects invalid route numerics', () => {
     const service = new MemberUtilityService(RECOMMENDATION_CONFIG_DEV_V1);
-    expect(() =>
-      service.score({
-        participantId: 'p1',
-        canonicalCandidateKey: 'c1',
-        etaSeconds: Number.NaN,
-        distanceMeters: 0,
-        placeTags: [],
-        preferences: [],
-        rating0To5: null,
-        userRatingCount: null,
-      }),
-    ).toThrow(
-      expect.objectContaining({ code: 'INVALID_RECOMMENDATION_NUMERIC' }),
+    expectCode(
+      () =>
+        service.score({
+          participantId: 'p1',
+          canonicalCandidateKey: 'c1',
+          etaSeconds: Number.NaN,
+          distanceMeters: 0,
+          placeTags: [],
+          preferences: [],
+          rating0To5: null,
+          userRatingCount: null,
+        }),
+      'INVALID_RECOMMENDATION_NUMERIC',
     );
   });
 
@@ -89,19 +97,19 @@ describe('MemberUtilityService', () => {
     [4, -1],
     [4, 1.5],
   ])('rejects invalid provider quality values (%s, %s)', (rating, reviews) => {
-    expect(() =>
-      new MemberUtilityService(RECOMMENDATION_CONFIG_DEV_V1).score({
-        participantId: 'p1',
-        canonicalCandidateKey: 'c1',
-        etaSeconds: 1,
-        distanceMeters: 1,
-        placeTags: [],
-        preferences: [],
-        rating0To5: rating,
-        userRatingCount: reviews,
-      }),
-    ).toThrow(
-      expect.objectContaining({ code: 'INVALID_RECOMMENDATION_NUMERIC' }),
+    expectCode(
+      () =>
+        new MemberUtilityService(RECOMMENDATION_CONFIG_DEV_V1).score({
+          participantId: 'p1',
+          canonicalCandidateKey: 'c1',
+          etaSeconds: 1,
+          distanceMeters: 1,
+          placeTags: [],
+          preferences: [],
+          rating0To5: rating,
+          userRatingCount: reviews,
+        }),
+      'INVALID_RECOMMENDATION_NUMERIC',
     );
   });
 });

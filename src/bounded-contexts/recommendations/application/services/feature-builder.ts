@@ -20,7 +20,10 @@ export class FeatureBuilder {
       members.map((member) => [member.participantId, member]),
     );
     const candidateByKey = new Map(
-      candidates.map((candidate) => [candidate.canonicalCandidateKey, candidate]),
+      candidates.map((candidate) => [
+        candidate.canonicalCandidateKey,
+        candidate,
+      ]),
     );
     return routableCandidates.flatMap((routable) => {
       const candidate = candidateByKey.get(routable.canonicalCandidateKey);

@@ -1,8 +1,6 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddRecommendationRankingSnapshots1792090000000
-  implements MigrationInterface
-{
+export class AddRecommendationRankingSnapshots1792090000000 implements MigrationInterface {
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE recommendation_runs
@@ -100,9 +98,7 @@ export class AddRecommendationRankingSnapshots1792090000000
 
   async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query('DROP TABLE recommendation_member_features');
-    await queryRunner.query(
-      'DROP INDEX uq_recommendation_candidates_run_rank',
-    );
+    await queryRunner.query('DROP INDEX uq_recommendation_candidates_run_rank');
     await queryRunner.query(`
       ALTER TABLE recommendation_candidates
         DROP CONSTRAINT chk_recommendation_candidates_ranking,

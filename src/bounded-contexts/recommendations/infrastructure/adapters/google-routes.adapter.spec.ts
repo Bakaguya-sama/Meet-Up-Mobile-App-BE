@@ -76,4 +76,21 @@ describe('GoogleRoutesAdapter', () => {
     ).rejects.toMatchObject({ code: 'ROUTE_MATRIX_UNAVAILABLE' });
     expect(request).toHaveBeenCalledTimes(2);
   });
+
+  it.each([
+    [
+      'quota',
+      jest.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        json: () => Promise.resolve({}),
+      }),
+    ],
+    ['timeout', jest.fn().mockRejectedValue(new Error('request timed out'))],
+  ])('bounds retries for %s failures', async (_, request) => {
+    await expect(
+      new GoogleRoutesAdapter('key', request, 2, 1).calculateBatch(input),
+    ).rejects.toMatchObject({ code: 'ROUTE_MATRIX_UNAVAILABLE' });
+    expect(request).toHaveBeenCalledTimes(2);
+  });
 });

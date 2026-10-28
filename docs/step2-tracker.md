@@ -1,7 +1,7 @@
 # Step 2 tracker — BE-16, BE-17 và BE-22
 
 > Nguồn chính: `docs/13_implementation_plan.md`, Mục 5.3.  
-> Trạng thái: đang thực hiện; kiểm toán mới ngày 28/10/2026.  
+> Trạng thái: ✅ hoàn tất; kiểm toán và đóng exit gate ngày 28/10/2026.
 > Tiền điều kiện: Bước 1 đã ✅ Hoàn tất ngày 27/10/2026.
 
 ## Function, module và phạm vi
@@ -47,18 +47,27 @@
 - [x] 27. Test reject `tauSeconds<=0`, negative/NaN/Infinity, invalid rating/review, weight sum sai và `S<=0`.
 - [x] 28. Cùng snapshot/version/seed tạo cùng full rank; test matrix nhỏ tính tay cho `min-sum`, `min-max`, Pareto dominance và tie-breaker.
 - [x] 29. Không candidate nào trong ranking thiếu route OK cho một valid member; utility đều hữu hạn và trong `[0,1]`.
-- [ ] 30. Lint/unit/integration/E2E/build pass.
+- [x] 30. Lint/unit/integration/E2E/build pass.
 - [x] 31. `tauSeconds`, utility weights, `p_missing`, `q_missing`, `n_ref`, sample count và epsilon chỉ dùng config có version; không coi dev/test values là production-approved.
 
 ## Kiểm toán cuối
 
-- [ ] 32. Duyệt lại từng dòng checklist gốc với code thực tế.
-- [ ] 33. Chạy build, lint, typecheck, toàn bộ unit/integration/E2E và migration cycle nếu schema đổi; mọi lệnh exit 0.
-- [ ] 34. Chạy integration/E2E hai lần liên tiếp, không flaky và không phụ thuộc thứ tự.
-- [ ] 35. Rà `TODO|FIXME|not implemented|skip|xit|it.skip|only(` trong phần Bước 2; không còn vi phạm.
+- [x] 32. Duyệt lại từng dòng checklist gốc với code thực tế.
+- [x] 33. Chạy build, lint, typecheck, toàn bộ unit/integration/E2E và migration cycle nếu schema đổi; mọi lệnh exit 0.
+- [x] 34. Chạy integration/E2E hai lần liên tiếp, không flaky và không phụ thuộc thứ tự.
+- [x] 35. Rà `TODO|FIXME|not implemented|skip|xit|it.skip|only(` trong phần Bước 2; không còn vi phạm.
 
 ## Vấn đề cần quyết định
 
 - Production values/approver cho `q_missing`, `n_ref`, Monte Carlo sample count và
   `utilityTieEpsilon` chưa được nguồn chốt. Việc triển khai chỉ dùng dev/test config có version,
   không tuyên bố production approval.
+
+## Bằng chứng đóng gate ngày 28/10/2026
+
+- `npm.cmd run build`, `npm.cmd run typecheck`, `npx.cmd eslint "{src,apps,libs,test}/**/*.ts"`: exit 0.
+- `npm.cmd test -- --runInBand`: 44 suites, 188 tests pass.
+- `npm.cmd run test:integration` chạy hai lần: mỗi lần 2 suites, 13 tests pass trên PostgreSQL thật.
+- `npx.cmd jest --config ./test/jest-e2e.json --runInBand` chạy hai lần: mỗi lần 6 suites, 53 tests pass qua HTTP app thật, PostgreSQL và Redis thật; Google Places/Routes giả lập tại HTTP boundary.
+- Migration thật: `npm.cmd run migration:run` → `npm.cmd run migration:revert` → `npm.cmd run migration:run`, cả ba exit 0; integration test kiểm tra schema sau up/down/up.
+- Grep có word-boundary cho `TODO|FIXME|not implemented|skip|xit|it.skip|only(` trong source/test Bước 2: không có kết quả vi phạm.

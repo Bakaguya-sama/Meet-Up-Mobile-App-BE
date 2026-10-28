@@ -1,5 +1,4 @@
 import type {
-  RecommendationCandidateSnapshot,
   RecommendationCompletion,
   RecommendationRun,
   RecommendationRunResult,

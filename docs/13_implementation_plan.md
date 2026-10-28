@@ -417,6 +417,8 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review các port Meetup/Prefe
 
 ### 5.3. Bước 2 — Route Matrix, feature/utility và group ranking
 
+**Trạng thái: ✅ Hoàn tất (28/10/2026).**
+
 **Mục tiêu.** Biến eligible candidates thành full deterministic ranking bằng route hợp lệ cho mọi member, utility versioned và ba strategy bắt buộc. [Nguồn: workbook — BE-16, BE-17, BE-22; Doc 12 — Mục 5.2 Bước 5–7, Mục 7–8]
 
 **Function thuộc bước**
@@ -429,15 +431,15 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review các port Meetup/Prefe
 
 **Checklist triển khai**
 
-- [ ] BE-16 tạo `RouteBatchPlanner` chia cả origins và destinations theo element/waypoint limit; giữ index mapping sau khi ghép batch. [Nguồn: workbook — BE-16; Doc 12 — Mục 6.4, 12.1]
-- [ ] Gọi ComputeRouteMatrix với `TWO_WHEELER`; validate duration/distance hữu hạn, không âm; element lỗi thành `NO_ROUTE`. [Nguồn: workbook — BE-16; Doc 12 — Mục 3.5, 6.4]
-- [ ] Loại candidate nếu bất kỳ valid member thiếu route; toàn batch lỗi trả `ROUTE_MATRIX_UNAVAILABLE`; không còn candidate trả `NO_ROUTABLE_CANDIDATES`; thiếu K dùng `effectiveK` và warning, không bịa ETA. [Nguồn: Doc 12 — Mục 4.2, 12.2]
-- [ ] BE-17 dựng feature schema có version và tính `T`, `P`, `Q`, `U` đúng thứ tự sau route validation. [Nguồn: workbook — BE-17; Doc 12 — Mục 5.2 Bước 6, Mục 7.1–7.4]
-- [ ] Validate mọi input/config hữu hạn; utility nằm `[0,1]`; `tauSeconds > 0`; tag weights dương; `alpha+beta+gamma=1`; missing policy tránh chia 0. [Nguồn: Doc 12 — Mục 6.7, 7.1–7.4]
-- [ ] `avoid` dùng `s(avoid)` như soft penalty, không hard filter. Preference meetup ưu tiên profile fallback theo tag. [Nguồn: workbook — BE-17; Doc 12 — Mục 7.2]
-- [ ] BE-22 hiện thực `min-sum`, `min-max`, `fair-pareto-v1`; tính `G`, candidate least-misery `F`, member rank, Pareto level và Monte Carlo inclusion probability. [Nguồn: workbook — BE-22; Doc 12 — Mục 7.5–7.7, 8]
-- [ ] Tie-break deterministic theo strategy, seed, `utilityTieEpsilon` và `canonicalCandidateKey`; lưu full ranking, không chỉ top-K. [Nguồn: Doc 12 — Mục 8.2–8.3, 11.3]
-- [ ] Không gọi implementation này là XPO nguyên bản; tên production strategy là `fair-pareto-v1`. [Nguồn: Doc 12 — Mục 8.2–8.3, 13]
+- [x] BE-16 tạo `RouteBatchPlanner` chia cả origins và destinations theo element/waypoint limit; giữ index mapping sau khi ghép batch. [Nguồn: workbook — BE-16; Doc 12 — Mục 6.4, 12.1]
+- [x] Gọi ComputeRouteMatrix với `TWO_WHEELER`; validate duration/distance hữu hạn, không âm; element lỗi thành `NO_ROUTE`. [Nguồn: workbook — BE-16; Doc 12 — Mục 3.5, 6.4]
+- [x] Loại candidate nếu bất kỳ valid member thiếu route; toàn batch lỗi trả `ROUTE_MATRIX_UNAVAILABLE`; không còn candidate trả `NO_ROUTABLE_CANDIDATES`; thiếu K dùng `effectiveK` và warning, không bịa ETA. [Nguồn: Doc 12 — Mục 4.2, 12.2]
+- [x] BE-17 dựng feature schema có version và tính `T`, `P`, `Q`, `U` đúng thứ tự sau route validation. [Nguồn: workbook — BE-17; Doc 12 — Mục 5.2 Bước 6, Mục 7.1–7.4]
+- [x] Validate mọi input/config hữu hạn; utility nằm `[0,1]`; `tauSeconds > 0`; tag weights dương; `alpha+beta+gamma=1`; missing policy tránh chia 0. [Nguồn: Doc 12 — Mục 6.7, 7.1–7.4]
+- [x] `avoid` dùng `s(avoid)` như soft penalty, không hard filter. Preference meetup ưu tiên profile fallback theo tag. [Nguồn: workbook — BE-17; Doc 12 — Mục 7.2]
+- [x] BE-22 hiện thực `min-sum`, `min-max`, `fair-pareto-v1`; tính `G`, candidate least-misery `F`, member rank, Pareto level và Monte Carlo inclusion probability. [Nguồn: workbook — BE-22; Doc 12 — Mục 7.5–7.7, 8]
+- [x] Tie-break deterministic theo strategy, seed, `utilityTieEpsilon` và `canonicalCandidateKey`; lưu full ranking, không chỉ top-K. [Nguồn: Doc 12 — Mục 8.2–8.3, 11.3]
+- [x] Không gọi implementation này là XPO nguyên bản; tên production strategy là `fair-pareto-v1`. [Nguồn: Doc 12 — Mục 8.2–8.3, 13]
 
 **Đầu vào cần có**
 
@@ -463,20 +465,26 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review các port Meetup/Prefe
 
 Điều kiện bắt buộc:
 
-- [ ] Test matrix nhiều batch chứng minh mọi `(participantId, canonicalCandidateKey)` được join đúng một lần, không đảo index.
-- [ ] Candidate có một `NO_ROUTE` bị loại; còn ít hơn K trả `effectiveK` và warning; không có route nào trả đúng failure code.
-- [ ] Golden tests khớp ví dụ Doc 12: `T≈0.607` với 600/1200; `P=0.55` với high+avoid; `Q=0.6` với 4.5/99/999; `U=0.5892` với 0.60/0.30/0.10. [Nguồn: Doc 12 — Mục 7.1–7.4]
-- [ ] Test reject `tauSeconds<=0`, negative/NaN/Infinity, invalid rating/review, weight sum sai và `S<=0`.
-- [ ] Cùng snapshot/version/seed tạo cùng full rank; test matrix nhỏ tính tay cho `min-sum`, `min-max`, Pareto dominance và tie-breaker.
-- [ ] Không candidate nào trong ranking thiếu route OK cho một valid member; utility đều hữu hạn và trong `[0,1]`.
-- [ ] Lint/unit/integration/E2E/build pass.
-- [ ] **[Thiếu tiêu chí trong nguồn]** `tauSeconds`, utility weights, `p_missing`, `q_missing`, `n_ref`, sample count và epsilon chưa được kiểm chứng. Chỉ merge production config khi version và người phê duyệt được ghi nhận.
+- [x] Test matrix nhiều batch chứng minh mọi `(participantId, canonicalCandidateKey)` được join đúng một lần, không đảo index. Bằng chứng: `route-batch-planner.spec.ts`, `route-matrix.service.spec.ts`.
+- [x] Candidate có một `NO_ROUTE` bị loại; còn ít hơn K trả `effectiveK` và warning; không có route nào trả đúng failure code. Bằng chứng: unit + E2E `NO_ROUTABLE_CANDIDATES`/`ROUTE_MATRIX_UNAVAILABLE` pass.
+- [x] Golden tests khớp ví dụ Doc 12: `T≈0.607` với 600/1200; `P=0.55` với high+avoid; `Q=0.6` với 4.5/99/999; `U=0.5892` với 0.60/0.30/0.10. Bằng chứng: `member-utility.service.spec.ts`. [Nguồn: Doc 12 — Mục 7.1–7.4]
+- [x] Test reject `tauSeconds<=0`, negative/NaN/Infinity, invalid rating/review, weight sum sai và `S<=0`. Bằng chứng: `member-utility.service.spec.ts`.
+- [x] Cùng snapshot/version/seed tạo cùng full rank; test matrix nhỏ tính tay cho `min-sum`, `min-max`, Pareto dominance và tie-breaker. Bằng chứng: `group-ranker.service.spec.ts`.
+- [x] Không candidate nào trong ranking thiếu route OK cho một valid member; utility đều hữu hạn và trong `[0,1]`. Bằng chứng: route service unit và HTTP+DB E2E snapshot.
+- [x] Lint/unit/integration/E2E/build pass. Bằng chứng: build/typecheck/lint exit 0; unit 44/188; integration 2/13 hai lần; E2E 6/53 hai lần.
+- [x] **[Thiếu tiêu chí trong nguồn]** `tauSeconds`, utility weights, `p_missing`, `q_missing`, `n_ref`, sample count và epsilon chưa được kiểm chứng. Dev/test values nằm trong `recommendation-config-dev-v1`; chưa tuyên bố production-approved.
 
 Cách kiểm chứng:
 
 - Chạy unit test bằng fixture số cố định và snapshot full ranking.
 - Integration test Route adapter với response out-of-order, partial element failure, batch failure và quota/timeout.
 - Chạy bộ lệnh chuẩn ở Bước 0.
+
+**File tạo/sửa.** `route-matrix.port.ts`, `route-batch-planner.ts`, `route-matrix.service.ts`, `google-routes.adapter.ts`, `feature-builder.ts`, `member-utility.service.ts`, `group-ranker.service.ts`, `recommendation-config.ts`, `recommendation-context.builder.ts`, `create-recommendation-run.use-case.ts`, recommendation entities/repository/module, migration `1792090000000`, `06_database_schema.dbml`, unit/integration/E2E specs và `step2-tracker.md`.
+
+**[Giả định].** `q_missing=0.60`, `n_ref=999`, `monteCarloSamples=1000`, `utilityTieEpsilon=1e-6`, RNG `mulberry32-v1` chỉ là baseline dev/test có version. PostgreSQL/Redis kiểm chứng bằng compose trên host port `5433`/`6380`; cấu hình runtime mặc định không đổi.
+
+**Bàn giao Bước 3.** Full rank, per-member route/utility snapshots, `effectiveK`, warning, seed và cost metadata đã persist atomically. Bước 3 có thể dựng top-K/explanation từ cùng snapshot; không tính lại route/utility và không gọi kết quả hiện tại là XPO nguyên bản. Việc còn mở duy nhất là product/benchmark phê duyệt production values nêu trên.
 
 Tiêu chí không đạt:
 
