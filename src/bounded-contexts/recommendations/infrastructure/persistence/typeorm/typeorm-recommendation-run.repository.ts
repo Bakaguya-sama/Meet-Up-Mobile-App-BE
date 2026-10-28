@@ -4,11 +4,13 @@ import type { RecommendationRunStore } from '../../../application/ports/recommen
 import { RecommendationError } from '../../../domain/recommendation.error';
 import type {
   RecommendationCandidateSnapshot,
+  RecommendationCompletion,
   RecommendationRun,
   RecommendationRunResult,
 } from '../../../domain/recommendation-run';
 import { RecommendationCandidateEntity } from './entities/recommendation-candidate.typeorm-entity';
 import { RecommendationRunEntity } from './entities/recommendation-run.typeorm-entity';
+import { RecommendationMemberFeatureEntity } from './entities/recommendation-member-feature.typeorm-entity';
 
 @Injectable()
 export class TypeOrmRecommendationRunRepository implements RecommendationRunStore {
@@ -37,7 +39,7 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
 
   complete(
     runId: string,
-    candidates: RecommendationCandidateSnapshot[],
+    completion: RecommendationCompletion,
     completedAt: Date,
   ): Promise<RecommendationRunResult> {
     return this.dataSource.transaction(async (manager) => {
@@ -57,18 +59,37 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
           'Recommendation run is already terminal',
         );
       }
-      if (candidates.length) {
-        await manager.insert(RecommendationCandidateEntity, candidates);
+      if (completion.candidates.length) {
+        await manager.insert(
+          RecommendationCandidateEntity,
+          completion.candidates,
+        );
+      }
+      if (completion.memberFeatures.length) {
+        await manager.insert(
+          RecommendationMemberFeatureEntity,
+          completion.memberFeatures,
+        );
       }
       await manager.update(RecommendationRunEntity, runId, {
         status: 'COMPLETED',
         completedAt,
+        effectiveK: completion.effectiveK,
+        warnings: completion.warnings,
+        randomSeed: completion.randomSeed,
+        routeBatchCount: completion.routeBatchCount,
+        routeElementCount: completion.routeElementCount,
       });
       return {
         ...toDomain(run),
         status: 'COMPLETED',
         completedAt,
-        candidates: candidates.map(cloneCandidate),
+        effectiveK: completion.effectiveK,
+        warnings: [...completion.warnings],
+        randomSeed: completion.randomSeed,
+        routeBatchCount: completion.routeBatchCount,
+        routeElementCount: completion.routeElementCount,
+        candidates: completion.candidates.map(cloneCandidate),
       };
     });
   }
@@ -95,7 +116,9 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
       .findOne({
         where,
         relations: { candidates: true },
-        order: { candidates: { canonicalCandidateKey: 'ASC' } },
+        order: {
+          candidates: { finalRank: 'ASC', canonicalCandidateKey: 'ASC' },
+        },
       });
     return row
       ? {
@@ -123,6 +146,11 @@ function toDomain(row: RecommendationRunEntity): RecommendationRun {
     providerMappingVersion: row.providerMappingVersion,
     createdAt: new Date(row.createdAt),
     completedAt: row.completedAt ? new Date(row.completedAt) : null,
+    effectiveK: row.effectiveK,
+    warnings: [...row.warnings],
+    randomSeed: row.randomSeed,
+    routeBatchCount: row.routeBatchCount,
+    routeElementCount: row.routeElementCount,
   };
 }
 
@@ -136,6 +164,7 @@ function cloneCandidate(candidate: RecommendationCandidateSnapshot) {
     providerTypes: [...candidate.providerTypes],
     sourceCategories: [...candidate.sourceCategories],
     sourcePages: [...candidate.sourcePages],
+    normalizedTags: [...candidate.normalizedTags],
     createdAt: new Date(candidate.createdAt),
   };
 }

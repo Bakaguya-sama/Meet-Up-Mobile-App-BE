@@ -2,6 +2,11 @@ import type { RecommendationRunStore } from '../ports/recommendation-run-store.p
 import { CandidateGenerator } from '../services/candidate-generator';
 import { RecommendationContextBuilder } from '../services/recommendation-context.builder';
 import { CreateRecommendationRunUseCase } from './create-recommendation-run.use-case';
+import { RouteMatrixService } from '../services/route-matrix.service';
+import { RouteBatchPlanner } from '../services/route-batch-planner';
+import { MemberUtilityService } from '../services/member-utility.service';
+import { GroupRankerService } from '../services/group-ranker.service';
+import { RECOMMENDATION_CONFIG_DEV_V1 } from '../recommendation-config';
 const input = {
   requestId: 'aaaaaaaa-0000-4000-8000-000000000001',
   topK: 2,
@@ -22,14 +27,19 @@ describe('recommendation run orchestration', () => {
         stored = { ...run, candidates: [] };
         return Promise.resolve(stored);
       },
-      complete: (runId, candidates, completedAt) => {
+      complete: (runId, completion, completedAt) => {
         if (!stored) throw new Error('run fixture not initialized');
         stored = {
           ...stored,
           id: runId,
           status: 'COMPLETED',
           completedAt,
-          candidates,
+          effectiveK: completion.effectiveK,
+          warnings: completion.warnings,
+          randomSeed: completion.randomSeed,
+          routeBatchCount: completion.routeBatchCount,
+          routeElementCount: completion.routeElementCount,
+          candidates: completion.candidates,
         };
         return Promise.resolve(stored);
       },
@@ -41,7 +51,20 @@ describe('recommendation run orchestration', () => {
           meetupId: 'bbbbbbbb-0000-4000-8000-000000000002',
           requestedAt: '2026-10-27T00:00:00.000Z',
           scheduledAt: '2026-10-28T00:00:00.000Z',
-          members: [],
+          members: [
+            {
+              participantId: 'p1',
+              latitude: 10.7,
+              longitude: 106.7,
+              preferences: [],
+            },
+            {
+              participantId: 'p2',
+              latitude: 10.71,
+              longitude: 106.7,
+              preferences: [],
+            },
+          ],
           searchCenter: { latitude: 10.7, longitude: 106.7 },
         }),
     } as unknown as RecommendationContextBuilder;
@@ -66,6 +89,26 @@ describe('recommendation run orchestration', () => {
       candidates,
       undefined,
       () => new Date('2026-10-27T00:00:00Z'),
+      new RouteMatrixService(
+        {
+          calculateBatch: (batch) =>
+            Promise.resolve({
+              features: batch.origins.flatMap((origin) =>
+                batch.destinations.map((destination) => ({
+                  participantId: origin.participantId,
+                  canonicalCandidateKey: destination.canonicalCandidateKey,
+                  etaSeconds: 300,
+                  distanceMeters: 1000,
+                  status: 'OK' as const,
+                })),
+              ),
+              failures: [],
+            }),
+        },
+        new RouteBatchPlanner(),
+      ),
+      new MemberUtilityService(RECOMMENDATION_CONFIG_DEV_V1),
+      new GroupRankerService(RECOMMENDATION_CONFIG_DEV_V1),
     );
     const created = await useCase.execute(
       'actor',

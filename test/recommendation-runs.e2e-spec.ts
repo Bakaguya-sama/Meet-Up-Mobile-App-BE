@@ -8,7 +8,9 @@ import { DataSource } from 'typeorm';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { PLACE_SEARCH } from '../src/bounded-contexts/recommendations/application/ports/place-search.port';
+import { ROUTE_MATRIX } from '../src/bounded-contexts/recommendations/application/ports/route-matrix.port';
 import { GooglePlacesAdapter } from '../src/bounded-contexts/recommendations/infrastructure/adapters/google-places.adapter';
+import { GoogleRoutesAdapter } from '../src/bounded-contexts/recommendations/infrastructure/adapters/google-routes.adapter';
 import { RecommendationsModule } from '../src/bounded-contexts/recommendations/recommendations.module';
 import { configureApp } from '../src/configure-app';
 import { configuration } from '../src/infrastructure/config/configuration';
@@ -38,7 +40,15 @@ interface RecommendationRunHttpBody {
   meetupId: string;
   requestId: string;
   status: string;
-  candidates: unknown[];
+  effectiveK: number;
+  warnings: string[];
+  routeBatchCount: number;
+  routeElementCount: number;
+  candidates: Array<{
+    finalRank: number;
+    groupUtility: number;
+    avgEtaSeconds: number;
+  }>;
 }
 
 describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', () => {
@@ -47,7 +57,8 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
   let redis: RedisService;
   let google: Server;
   let googleEndpoint: string;
-  let googleMode: 'success' | 'empty' | 'failure' = 'success';
+  let googleMode: 'success' | 'empty' | 'failure' | 'routeFailure' | 'noRoute' =
+    'success';
   const actorId = randomUUID();
   const memberId = randomUUID();
   const meetupId = randomUUID();
@@ -61,13 +72,44 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
         body += chunk.toString('utf8');
       });
       incoming.on('end', () => {
-        if (googleMode === 'failure') {
+        const isRoute = incoming.url?.includes('computeRouteMatrix') ?? false;
+        if (
+          googleMode === 'failure' ||
+          (googleMode === 'routeFailure' && isRoute)
+        ) {
           response.writeHead(503, { 'Content-Type': 'application/json' });
           response.end(JSON.stringify({ error: 'unavailable' }));
           return;
         }
         const parsed = JSON.parse(body) as { pageToken?: string };
         response.writeHead(200, { 'Content-Type': 'application/json' });
+        if (isRoute) {
+          const routeInput = JSON.parse(body) as {
+            origins: unknown[];
+            destinations: unknown[];
+          };
+          response.end(
+            JSON.stringify(
+              routeInput.origins.flatMap((_, originIndex) =>
+                routeInput.destinations.map((__, destinationIndex) => ({
+                  originIndex,
+                  destinationIndex,
+                  condition:
+                    googleMode === 'noRoute'
+                      ? 'ROUTE_NOT_FOUND'
+                      : 'ROUTE_EXISTS',
+                  ...(googleMode === 'noRoute'
+                    ? { status: { code: 5 } }
+                    : {
+                        distanceMeters: 1000 + originIndex,
+                        duration: `${300 + originIndex}s`,
+                      }),
+                })),
+              ),
+            ),
+          );
+          return;
+        }
         response.end(
           JSON.stringify({
             places:
@@ -103,6 +145,20 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       .useFactory({
         factory: () =>
           new GooglePlacesAdapter('test-key', fetch, 2, 1_000, googleEndpoint),
+      })
+      .overrideProvider(ROUTE_MATRIX)
+      .useFactory({
+        factory: () =>
+          new GoogleRoutesAdapter(
+            'test-key',
+            fetch,
+            2,
+            1_000,
+            googleEndpoint.replace(
+              '/v1/places:searchText',
+              '/distanceMatrix/v2:computeRouteMatrix',
+            ),
+          ),
       })
       .compile();
     app = fixture.createNestApplication();
@@ -222,8 +278,21 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       meetupId,
       requestId,
       status: 'COMPLETED',
+      effectiveK: 1,
+      warnings: ['RESULT_COUNT_BELOW_REQUESTED_K'],
+      routeBatchCount: 1,
+      routeElementCount: 2,
     });
     expect(createdBody.candidates).toHaveLength(1);
+    expect(createdBody.candidates[0]).toMatchObject({ finalRank: 1 });
+    expect(Number.isFinite(createdBody.candidates[0].groupUtility)).toBe(true);
+    expect(Number.isFinite(createdBody.candidates[0].avgEtaSeconds)).toBe(true);
+    expect(
+      await db.query(
+        'SELECT count(*)::int AS count FROM recommendation_member_features WHERE run_id = $1',
+        [createdBody.id],
+      ),
+    ).toEqual([{ count: 2 }]);
 
     const retried = await request(app.getHttpServer())
       .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
@@ -260,6 +329,8 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
   it.each([
     ['empty', 'NO_ELIGIBLE_CANDIDATES', 422],
     ['failure', 'PLACE_SEARCH_UNAVAILABLE', 503],
+    ['routeFailure', 'ROUTE_MATRIX_UNAVAILABLE', 503],
+    ['noRoute', 'NO_ROUTABLE_CANDIDATES', 422],
   ] as const)(
     'persists terminal %s provider outcomes',
     async (mode, code, status) => {

@@ -5,6 +5,7 @@ import { LocationsModule } from '../locations/locations.module';
 import { MeetupLocationReader } from '../locations/application/public/meetup-location-reader';
 import { MeetupsModule } from '../meetups/meetups.module';
 import { MeetupCandidateSearchReader } from '../meetups/application/public/meetup-candidate-search-reader';
+import { MeetupPreferenceReader } from '../meetups/application/public/meetup-preference-reader';
 import {
   MEETUP_CANDIDATE_SEARCH,
   type MeetupCandidateSearchPort,
@@ -34,6 +35,22 @@ import { RecommendationsController } from './presentation/http/recommendations.c
 import { RecommendationRunEntity } from './infrastructure/persistence/typeorm/entities/recommendation-run.typeorm-entity';
 import { RecommendationCandidateEntity } from './infrastructure/persistence/typeorm/entities/recommendation-candidate.typeorm-entity';
 import { TypeOrmRecommendationRunRepository } from './infrastructure/persistence/typeorm/typeorm-recommendation-run.repository';
+import {
+  MEETUP_PREFERENCE,
+  type MeetupPreferencePort,
+} from './application/ports/meetup-preference.port';
+import {
+  ROUTE_MATRIX,
+  type RouteMatrixPort,
+} from './application/ports/route-matrix.port';
+import { MeetupsPreferenceAdapter } from './infrastructure/adapters/meetups-preference.adapter';
+import { GoogleRoutesAdapter } from './infrastructure/adapters/google-routes.adapter';
+import { RouteBatchPlanner } from './application/services/route-batch-planner';
+import { RouteMatrixService } from './application/services/route-matrix.service';
+import { MemberUtilityService } from './application/services/member-utility.service';
+import { GroupRankerService } from './application/services/group-ranker.service';
+import { RecommendationMemberFeatureEntity } from './infrastructure/persistence/typeorm/entities/recommendation-member-feature.typeorm-entity';
+import { FeatureBuilder } from './application/services/feature-builder';
 
 @Module({
   imports: [
@@ -42,6 +59,7 @@ import { TypeOrmRecommendationRunRepository } from './infrastructure/persistence
     TypeOrmModule.forFeature([
       RecommendationRunEntity,
       RecommendationCandidateEntity,
+      RecommendationMemberFeatureEntity,
     ]),
   ],
   controllers: [RecommendationsController],
@@ -57,12 +75,19 @@ import { TypeOrmRecommendationRunRepository } from './infrastructure/persistence
       useClass: TypeOrmRecommendationRunRepository,
     },
     {
+      provide: MEETUP_PREFERENCE,
+      useFactory: (reader: MeetupPreferenceReader) =>
+        new MeetupsPreferenceAdapter(reader),
+      inject: [MeetupPreferenceReader],
+    },
+    {
       provide: RecommendationContextBuilder,
       useFactory: (
         meetups: MeetupCandidateSearchPort,
         locations: MeetupLocationPort,
-      ) => new RecommendationContextBuilder(meetups, locations),
-      inject: [MEETUP_CANDIDATE_SEARCH, MEETUP_LOCATION],
+        preferences: MeetupPreferencePort,
+      ) => new RecommendationContextBuilder(meetups, locations, preferences),
+      inject: [MEETUP_CANDIDATE_SEARCH, MEETUP_LOCATION, MEETUP_PREFERENCE],
     },
     {
       provide: CandidateGenerator,
@@ -71,16 +96,64 @@ import { TypeOrmRecommendationRunRepository } from './infrastructure/persistence
       inject: [PLACE_SEARCH],
     },
     {
+      provide: ROUTE_MATRIX,
+      useFactory: (config: ConfigService) =>
+        new GoogleRoutesAdapter(config.get<string>('googleMaps.apiKey') ?? ''),
+      inject: [ConfigService],
+    },
+    {
+      provide: RouteBatchPlanner,
+      useFactory: () =>
+        new RouteBatchPlanner(RECOMMENDATION_CONFIG_DEV_V1.routeElementLimit),
+    },
+    {
+      provide: RouteMatrixService,
+      useFactory: (routes: RouteMatrixPort, planner: RouteBatchPlanner) =>
+        new RouteMatrixService(routes, planner),
+      inject: [ROUTE_MATRIX, RouteBatchPlanner],
+    },
+    {
+      provide: MemberUtilityService,
+      useFactory: () => new MemberUtilityService(RECOMMENDATION_CONFIG_DEV_V1),
+    },
+    {
+      provide: GroupRankerService,
+      useFactory: () => new GroupRankerService(RECOMMENDATION_CONFIG_DEV_V1),
+    },
+    {
+      provide: FeatureBuilder,
+      useFactory: () => new FeatureBuilder(),
+    },
+    {
       provide: CreateRecommendationRunUseCase,
       useFactory: (
         store: RecommendationRunStore,
         contexts: RecommendationContextBuilder,
         candidates: CandidateGenerator,
-      ) => new CreateRecommendationRunUseCase(store, contexts, candidates),
+        routes: RouteMatrixService,
+        utilities: MemberUtilityService,
+        ranker: GroupRankerService,
+        featureBuilder: FeatureBuilder,
+      ) =>
+        new CreateRecommendationRunUseCase(
+          store,
+          contexts,
+          candidates,
+          RECOMMENDATION_CONFIG_DEV_V1,
+          undefined,
+          routes,
+          utilities,
+          ranker,
+          featureBuilder,
+        ),
       inject: [
         RECOMMENDATION_RUN_STORE,
         RecommendationContextBuilder,
         CandidateGenerator,
+        RouteMatrixService,
+        MemberUtilityService,
+        GroupRankerService,
+        FeatureBuilder,
       ],
     },
     {

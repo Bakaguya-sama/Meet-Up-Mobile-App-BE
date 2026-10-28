@@ -6,49 +6,49 @@
 
 ## Function, module và phạm vi
 
-- [ ] 1. BE-16 — Route Matrix và route validation.
-- [ ] 2. BE-17 — Feature và member utility.
-- [ ] 3. BE-22 — Group ranking và fairness.
-- [ ] 4. Nối Bước 2 vào recommendation-run pipeline hiện có mà không triển khai API kết quả/explanation của Bước 3.
+- [x] 1. BE-16 — Route Matrix và route validation.
+- [x] 2. BE-17 — Feature và member utility.
+- [x] 3. BE-22 — Group ranking và fairness.
+- [x] 4. Nối Bước 2 vào recommendation-run pipeline hiện có mà không triển khai API kết quả/explanation của Bước 3.
 
 ## Checklist triển khai nguyên văn từ plan
 
-- [ ] 5. BE-16 tạo `RouteBatchPlanner` chia cả origins và destinations theo element/waypoint limit; giữ index mapping sau khi ghép batch.
-- [ ] 6. Gọi ComputeRouteMatrix với `TWO_WHEELER`; validate duration/distance hữu hạn, không âm; element lỗi thành `NO_ROUTE`.
-- [ ] 7. Loại candidate nếu bất kỳ valid member thiếu route; toàn batch lỗi trả `ROUTE_MATRIX_UNAVAILABLE`; không còn candidate trả `NO_ROUTABLE_CANDIDATES`; thiếu K dùng `effectiveK` và warning, không bịa ETA.
-- [ ] 8. BE-17 dựng feature schema có version và tính `T`, `P`, `Q`, `U` đúng thứ tự sau route validation.
-- [ ] 9. Validate mọi input/config hữu hạn; utility nằm `[0,1]`; `tauSeconds > 0`; tag weights dương; `alpha+beta+gamma=1`; missing policy tránh chia 0.
-- [ ] 10. `avoid` dùng `s(avoid)` như soft penalty, không hard filter. Preference meetup ưu tiên profile fallback theo tag.
-- [ ] 11. BE-22 hiện thực `min-sum`, `min-max`, `fair-pareto-v1`; tính `G`, candidate least-misery `F`, member rank, Pareto level và Monte Carlo inclusion probability.
-- [ ] 12. Tie-break deterministic theo strategy, seed, `utilityTieEpsilon` và `canonicalCandidateKey`; lưu full ranking, không chỉ top-K.
-- [ ] 13. Không gọi implementation này là XPO nguyên bản; tên production strategy là `fair-pareto-v1`.
+- [x] 5. BE-16 tạo `RouteBatchPlanner` chia cả origins và destinations theo element/waypoint limit; giữ index mapping sau khi ghép batch.
+- [x] 6. Gọi ComputeRouteMatrix với `TWO_WHEELER`; validate duration/distance hữu hạn, không âm; element lỗi thành `NO_ROUTE`.
+- [x] 7. Loại candidate nếu bất kỳ valid member thiếu route; toàn batch lỗi trả `ROUTE_MATRIX_UNAVAILABLE`; không còn candidate trả `NO_ROUTABLE_CANDIDATES`; thiếu K dùng `effectiveK` và warning, không bịa ETA.
+- [x] 8. BE-17 dựng feature schema có version và tính `T`, `P`, `Q`, `U` đúng thứ tự sau route validation.
+- [x] 9. Validate mọi input/config hữu hạn; utility nằm `[0,1]`; `tauSeconds > 0`; tag weights dương; `alpha+beta+gamma=1`; missing policy tránh chia 0.
+- [x] 10. `avoid` dùng `s(avoid)` như soft penalty, không hard filter. Preference meetup ưu tiên profile fallback theo tag.
+- [x] 11. BE-22 hiện thực `min-sum`, `min-max`, `fair-pareto-v1`; tính `G`, candidate least-misery `F`, member rank, Pareto level và Monte Carlo inclusion probability.
+- [x] 12. Tie-break deterministic theo strategy, seed, `utilityTieEpsilon` và `canonicalCandidateKey`; lưu full ranking, không chỉ top-K.
+- [x] 13. Không gọi implementation này là XPO nguyên bản; tên production strategy là `fair-pareto-v1`.
 
 ## Deliverable nguyên văn từ plan
 
-- [ ] 14. Route provider port/adapter, batch planner và element assembler.
-- [ ] 15. Versioned FeatureBuilder, MemberUtilityScorer và GroupRanker.
-- [ ] 16. Golden test vectors tính tay cho công thức và ranking.
-- [ ] 17. Cost/element metadata để Bước 5 quan sát.
+- [x] 14. Route provider port/adapter, batch planner và element assembler.
+- [x] 15. Versioned FeatureBuilder, MemberUtilityScorer và GroupRanker.
+- [x] 16. Golden test vectors tính tay cho công thức và ranking.
+- [x] 17. Cost/element metadata để Bước 5 quan sát.
 
 ## Các lớp bắt buộc theo kiến trúc
 
-- [ ] 18. Domain/application contracts cho route element, feature, utility, ranking, warning và version snapshot.
-- [ ] 19. Google Routes HTTP adapter chỉ ở external boundary; timeout/retry/error mapping và response out-of-order.
-- [ ] 20. TypeORM entity/repository thật cho route/feature/full-ranking snapshot; DBML và migration khớp.
-- [ ] 21. Orchestrator/service nối đúng thứ tự route → feature → utility → rank → persist.
-- [ ] 22. DTO/response/error mapping chỉ mở rộng contract Bước 2 cần thiết; không làm trước Bước 3.
-- [ ] 23. Unit, adapter contract, repository integration và HTTP E2E chạy DB thật; Google Routes mock tại HTTP boundary.
+- [x] 18. Domain/application contracts cho route element, feature, utility, ranking, warning và version snapshot.
+- [x] 19. Google Routes HTTP adapter chỉ ở external boundary; timeout/retry/error mapping và response out-of-order.
+- [x] 20. TypeORM entity/repository thật cho route/feature/full-ranking snapshot; DBML và migration khớp.
+- [x] 21. Orchestrator/service nối đúng thứ tự route → feature → utility → rank → persist.
+- [x] 22. DTO/response/error mapping chỉ mở rộng contract Bước 2 cần thiết; không làm trước Bước 3.
+- [x] 23. Unit, adapter contract, repository integration và HTTP E2E chạy DB thật; Google Routes mock tại HTTP boundary.
 
 ## Exit gate nguyên văn từ plan
 
-- [ ] 24. Test matrix nhiều batch chứng minh mọi `(participantId, canonicalCandidateKey)` được join đúng một lần, không đảo index.
-- [ ] 25. Candidate có một `NO_ROUTE` bị loại; còn ít hơn K trả `effectiveK` và warning; không có route nào trả đúng failure code.
-- [ ] 26. Golden tests khớp ví dụ Doc 12: `T≈0.607` với 600/1200; `P=0.55` với high+avoid; `Q=0.6` với 4.5/99/999; `U=0.5892` với 0.60/0.30/0.10.
-- [ ] 27. Test reject `tauSeconds<=0`, negative/NaN/Infinity, invalid rating/review, weight sum sai và `S<=0`.
-- [ ] 28. Cùng snapshot/version/seed tạo cùng full rank; test matrix nhỏ tính tay cho `min-sum`, `min-max`, Pareto dominance và tie-breaker.
-- [ ] 29. Không candidate nào trong ranking thiếu route OK cho một valid member; utility đều hữu hạn và trong `[0,1]`.
+- [x] 24. Test matrix nhiều batch chứng minh mọi `(participantId, canonicalCandidateKey)` được join đúng một lần, không đảo index.
+- [x] 25. Candidate có một `NO_ROUTE` bị loại; còn ít hơn K trả `effectiveK` và warning; không có route nào trả đúng failure code.
+- [x] 26. Golden tests khớp ví dụ Doc 12: `T≈0.607` với 600/1200; `P=0.55` với high+avoid; `Q=0.6` với 4.5/99/999; `U=0.5892` với 0.60/0.30/0.10.
+- [x] 27. Test reject `tauSeconds<=0`, negative/NaN/Infinity, invalid rating/review, weight sum sai và `S<=0`.
+- [x] 28. Cùng snapshot/version/seed tạo cùng full rank; test matrix nhỏ tính tay cho `min-sum`, `min-max`, Pareto dominance và tie-breaker.
+- [x] 29. Không candidate nào trong ranking thiếu route OK cho một valid member; utility đều hữu hạn và trong `[0,1]`.
 - [ ] 30. Lint/unit/integration/E2E/build pass.
-- [ ] 31. `tauSeconds`, utility weights, `p_missing`, `q_missing`, `n_ref`, sample count và epsilon chỉ dùng config có version; không coi dev/test values là production-approved.
+- [x] 31. `tauSeconds`, utility weights, `p_missing`, `q_missing`, `n_ref`, sample count và epsilon chỉ dùng config có version; không coi dev/test values là production-approved.
 
 ## Kiểm toán cuối
 

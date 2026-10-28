@@ -1,5 +1,6 @@
 import type {
   RecommendationCandidateSnapshot,
+  RecommendationCompletion,
   RecommendationRun,
   RecommendationRunResult,
 } from '../../domain/recommendation-run';
@@ -17,7 +18,7 @@ export interface RecommendationRunStore {
   create(run: RecommendationRun): Promise<RecommendationRunResult>;
   complete(
     runId: string,
-    candidates: RecommendationCandidateSnapshot[],
+    completion: RecommendationCompletion,
     completedAt: Date,
   ): Promise<RecommendationRunResult>;
   fail(runId: string, failureCode: string, completedAt: Date): Promise<void>;

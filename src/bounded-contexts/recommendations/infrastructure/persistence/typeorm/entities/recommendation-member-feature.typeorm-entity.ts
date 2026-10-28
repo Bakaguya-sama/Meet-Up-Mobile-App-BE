@@ -37,7 +37,12 @@ export class RecommendationMemberFeatureEntity {
   @Column('double precision', { name: 'eta_seconds' }) etaSeconds: number;
   @Column('double precision', { name: 'distance_meters' })
   distanceMeters: number;
-  @Column('jsonb', { name: 'matched_tags' }) matchedTags: unknown[];
+  @Column('jsonb', { name: 'matched_tags' })
+  matchedTags: Array<{
+    tagCode: string;
+    level: 'high' | 'normal' | 'avoid';
+    weight: number;
+  }>;
   @Column('jsonb', { name: 'missing_flags' }) missingFlags: string[];
   @Column('double precision', { name: 'travel_utility' })
   travelUtility: number;

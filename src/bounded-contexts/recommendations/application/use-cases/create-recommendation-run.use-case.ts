@@ -11,6 +11,10 @@ import { filterCandidates } from '../services/candidate-filter';
 import { CandidateGenerator } from '../services/candidate-generator';
 import { RecommendationContextBuilder } from '../services/recommendation-context.builder';
 import { validateRecommendationRequest } from '../services/recommendation-request-validator';
+import { RouteMatrixService } from '../services/route-matrix.service';
+import { MemberUtilityService } from '../services/member-utility.service';
+import { GroupRankerService } from '../services/group-ranker.service';
+import { FeatureBuilder } from '../services/feature-builder';
 
 export class CreateRecommendationRunUseCase {
   constructor(
@@ -19,6 +23,10 @@ export class CreateRecommendationRunUseCase {
     private readonly candidates: CandidateGenerator,
     private readonly config: RecommendationConfig = RECOMMENDATION_CONFIG_DEV_V1,
     private readonly now: () => Date = () => new Date(),
+    private readonly routes?: RouteMatrixService,
+    private readonly utilities?: MemberUtilityService,
+    private readonly ranker?: GroupRankerService,
+    private readonly featureBuilder: FeatureBuilder = new FeatureBuilder(),
   ) {}
 
   async execute(
@@ -53,6 +61,11 @@ export class CreateRecommendationRunUseCase {
       providerMappingVersion: this.config.providerMappingVersion,
       createdAt,
       completedAt: null,
+      effectiveK: null,
+      warnings: [],
+      randomSeed: null,
+      routeBatchCount: null,
+      routeElementCount: null,
     };
     const persisted = await this.store.create(run);
     if (persisted.id !== run.id) {
@@ -78,11 +91,63 @@ export class CreateRecommendationRunUseCase {
           'No candidate satisfies the required constraints',
         );
       }
-      const completedAt = this.now();
-      return await this.store.complete(
-        run.id,
+      if (!this.routes || !this.utilities || !this.ranker) {
+        throw new RecommendationError(
+          'INVALID_RECOMMENDATION_CONFIG',
+          'Recommendation ranking services are not configured',
+        );
+      }
+      const routeOutcome = await this.routes.calculate(
+        context.members.map((member) => ({
+          participantId: member.participantId,
+          latitude: member.latitude,
+          longitude: member.longitude,
+        })),
         eligible.map((candidate) => ({
-          id: randomUUID(),
+          canonicalCandidateKey: candidate.canonicalCandidateKey,
+          latitude: candidate.latitude,
+          longitude: candidate.longitude,
+        })),
+        request.topK,
+      );
+      const eligibleByKey = new Map(
+        eligible.map((candidate) => [
+          candidate.canonicalCandidateKey,
+          candidate,
+        ]),
+      );
+      const features = this.featureBuilder
+        .build(
+          context.members.map((member) => ({
+            participantId: member.participantId,
+            preferences: member.preferences.map((value) => ({
+              tagCode: value.tagCode,
+              level: value.level,
+            })),
+          })),
+          eligible,
+          routeOutcome.candidates,
+        )
+        .map((feature) => this.utilities!.score(feature));
+      const seed = request.payloadHash.slice(0, 16);
+      const ranking = this.ranker.rank(
+        features,
+        run.rankingStrategy,
+        routeOutcome.effectiveK,
+        seed,
+      );
+      const rankByKey = new Map(
+        ranking.map((value) => [value.canonicalCandidateKey, value]),
+      );
+      const completedAt = this.now();
+      const candidatesByKey = new Map<string, string>();
+      const candidateSnapshots = routeOutcome.candidates.map((routable) => {
+        const candidate = eligibleByKey.get(routable.canonicalCandidateKey)!;
+        const ranked = rankByKey.get(routable.canonicalCandidateKey)!;
+        const id = randomUUID();
+        candidatesByKey.set(candidate.canonicalCandidateKey, id);
+        return {
+          id,
           runId: run.id,
           canonicalCandidateKey: candidate.canonicalCandidateKey,
           provider: candidate.provider,
@@ -96,7 +161,46 @@ export class CreateRecommendationRunUseCase {
           filterStatus: 'ELIGIBLE' as const,
           filterReason: null,
           createdAt: completedAt,
-        })),
+          normalizedTags: [...candidate.normalizedTags],
+          rating0To5: candidate.rating0To5 ?? null,
+          userRatingCount: candidate.userRatingCount ?? null,
+          finalRank: ranked.finalRank,
+          groupUtility: ranked.groupUtility,
+          candidateLeastMiseryUtility: ranked.leastMiseryUtility,
+          paretoLevel: ranked.paretoLevel,
+          inclusionProbability: ranked.inclusionProbability,
+          avgEtaSeconds: ranked.avgEtaSeconds,
+          maxEtaSeconds: ranked.maxEtaSeconds,
+          etaRangeSeconds: ranked.etaRangeSeconds,
+        };
+      });
+      return await this.store.complete(
+        run.id,
+        {
+          candidates: candidateSnapshots,
+          memberFeatures: features.map((feature) => ({
+            id: randomUUID(),
+            runId: run.id,
+            candidateId: candidatesByKey.get(feature.canonicalCandidateKey)!,
+            participantId: feature.participantId,
+            canonicalCandidateKey: feature.canonicalCandidateKey,
+            etaSeconds: feature.etaSeconds,
+            distanceMeters: feature.distanceMeters,
+            matchedTags: feature.matchedTags,
+            missingFlags: feature.missingFlags,
+            travelUtility: feature.travelUtility,
+            preferenceUtility: feature.preferenceUtility,
+            placeQualityUtility: feature.placeQualityUtility,
+            memberUtility: feature.memberUtility,
+            routeStatus: 'OK' as const,
+            createdAt: completedAt,
+          })),
+          effectiveK: routeOutcome.effectiveK,
+          warnings: routeOutcome.warnings,
+          randomSeed: seed,
+          routeBatchCount: routeOutcome.batchCount,
+          routeElementCount: routeOutcome.elementCount,
+        },
         completedAt,
       );
     } catch (error) {

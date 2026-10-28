@@ -35,6 +35,10 @@ import { RecommendationRunEntity } from './recommendation-run.typeorm-entity';
   'chk_recommendation_candidates_review_count',
   'user_rating_count IS NULL OR user_rating_count >= 0',
 )
+@Check(
+  'chk_recommendation_candidates_ranking',
+  '(final_rank IS NULL OR final_rank > 0) AND (group_utility IS NULL OR group_utility BETWEEN 0 AND 1) AND (candidate_least_misery_utility IS NULL OR candidate_least_misery_utility BETWEEN 0 AND 1) AND (pareto_level IS NULL OR pareto_level > 0) AND (inclusion_probability IS NULL OR inclusion_probability BETWEEN 0 AND 1) AND (avg_eta_seconds IS NULL OR avg_eta_seconds >= 0) AND (max_eta_seconds IS NULL OR max_eta_seconds >= 0) AND (eta_range_seconds IS NULL OR eta_range_seconds >= 0)',
+)
 export class RecommendationCandidateEntity {
   @PrimaryColumn('uuid') id: string;
   @Column('uuid', { name: 'run_id' }) runId: string;
