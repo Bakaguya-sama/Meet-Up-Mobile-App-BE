@@ -22,6 +22,14 @@ import { RecommendationCandidateEntity } from './recommendation-candidate.typeor
   'chk_recommendation_runs_status',
   "status IN ('RUNNING','COMPLETED','FAILED')",
 )
+@Check(
+  'chk_recommendation_runs_effective_k',
+  'effective_k IS NULL OR (effective_k > 0 AND effective_k <= requested_k)',
+)
+@Check(
+  'chk_recommendation_runs_route_counts',
+  '(route_batch_count IS NULL OR route_batch_count >= 0) AND (route_element_count IS NULL OR route_element_count >= 0)',
+)
 export class RecommendationRunEntity {
   @PrimaryColumn('uuid') id: string;
   @Column('uuid', { name: 'meetup_id' }) meetupId: string;
@@ -45,6 +53,16 @@ export class RecommendationRunEntity {
   @Column('timestamptz', { name: 'created_at' }) createdAt: Date;
   @Column('timestamptz', { name: 'completed_at', nullable: true })
   completedAt: Date | null;
+  @Column('smallint', { name: 'effective_k', nullable: true })
+  effectiveK: number | null;
+  @Column('jsonb', { default: () => "'[]'::jsonb" })
+  warnings: string[];
+  @Column('varchar', { name: 'random_seed', length: 100, nullable: true })
+  randomSeed: string | null;
+  @Column('integer', { name: 'route_batch_count', nullable: true })
+  routeBatchCount: number | null;
+  @Column('integer', { name: 'route_element_count', nullable: true })
+  routeElementCount: number | null;
   @OneToMany(() => RecommendationCandidateEntity, (candidate) => candidate.run)
   candidates?: RecommendationCandidateEntity[];
   @ManyToOne(() => MeetupEntity, { nullable: false })

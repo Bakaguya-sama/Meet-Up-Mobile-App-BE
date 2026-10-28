@@ -222,6 +222,11 @@
     config_version varchar(100) [not null]
     feature_schema_version varchar(100) [not null]
     provider_mapping_version varchar(100) [not null]
+    effective_k smallint
+    warnings jsonb [not null, default: `'[]'::jsonb`]
+    random_seed varchar(100)
+    route_batch_count integer
+    route_element_count integer
     created_at timestamptz [not null]
     completed_at timestamptz
 
@@ -245,13 +250,48 @@
     provider_types jsonb [not null]
     source_categories jsonb [not null]
     source_pages jsonb [not null]
+    normalized_tags jsonb [not null, default: `'[]'::jsonb`]
+    rating_0_to_5 double
+    user_rating_count integer
     filter_status varchar(20) [not null, note: 'ELIGIBLE or FILTERED']
     filter_reason varchar(100)
+    final_rank smallint
+    group_utility double
+    candidate_least_misery_utility double
+    pareto_level integer
+    inclusion_probability double
+    avg_eta_seconds double
+    max_eta_seconds double
+    eta_range_seconds double
     created_at timestamptz [not null]
 
     Indexes {
       (run_id, canonical_candidate_key) [unique, name: 'uq_recommendation_candidate']
       (run_id, filter_status) [name: 'idx_recommendation_candidates_run_status']
+      (run_id, final_rank) [unique, name: 'uq_recommendation_candidates_run_rank', note: 'Partial unique index where final_rank is not null.']
+    }
+  }
+
+  Table recommendation_member_features {
+    id uuid [pk]
+    run_id uuid [not null]
+    candidate_id uuid [not null]
+    participant_id uuid [not null]
+    canonical_candidate_key varchar(300) [not null]
+    eta_seconds double [not null]
+    distance_meters double [not null]
+    matched_tags jsonb [not null]
+    missing_flags jsonb [not null]
+    travel_utility double [not null]
+    preference_utility double [not null]
+    place_quality_utility double [not null]
+    member_utility double [not null]
+    route_status varchar(20) [not null, note: 'Step 2 persists only OK route features.']
+    created_at timestamptz [not null]
+
+    Indexes {
+      (run_id, participant_id, canonical_candidate_key) [unique, name: 'uq_recommendation_member_feature']
+      (run_id, candidate_id) [name: 'idx_recommendation_member_features_run_candidate']
     }
   }
 
@@ -526,6 +566,9 @@
   Ref: meetup_sessions.id < recommendation_runs.meetup_id
   Ref: user_accounts.id < recommendation_runs.requested_by_id
   Ref: recommendation_runs.id < recommendation_candidates.run_id [delete: cascade]
+  Ref: recommendation_runs.id < recommendation_member_features.run_id [delete: cascade]
+  Ref: recommendation_candidates.id < recommendation_member_features.candidate_id [delete: cascade]
+  Ref: meetup_participants.id < recommendation_member_features.participant_id
   Ref: recommendation_runs.id < recommendation_places.recommendation_run_id
   Ref: place_snapshots.id < recommendation_places.place_snapshot_id
   Ref: recommendation_places.id < recommendation_place_etas.recommendation_place_id
