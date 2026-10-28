@@ -471,7 +471,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review các port Meetup/Prefe
 - [x] Test reject `tauSeconds<=0`, negative/NaN/Infinity, invalid rating/review, weight sum sai và `S<=0`. Bằng chứng: `member-utility.service.spec.ts`.
 - [x] Cùng snapshot/version/seed tạo cùng full rank; test matrix nhỏ tính tay cho `min-sum`, `min-max`, Pareto dominance và tie-breaker. Bằng chứng: `group-ranker.service.spec.ts`.
 - [x] Không candidate nào trong ranking thiếu route OK cho một valid member; utility đều hữu hạn và trong `[0,1]`. Bằng chứng: route service unit và HTTP+DB E2E snapshot.
-- [x] Lint/unit/integration/E2E/build pass. Bằng chứng: build/typecheck/lint exit 0; unit 44/188; integration 2/13 hai lần; E2E 6/53 hai lần.
+- [x] Lint/unit/integration/E2E/build pass. Bằng chứng: build/typecheck/lint exit 0; unit 44/190; integration 2/13 hai lần; E2E 6/53 hai lần.
 - [x] **[Thiếu tiêu chí trong nguồn]** `tauSeconds`, utility weights, `p_missing`, `q_missing`, `n_ref`, sample count và epsilon chưa được kiểm chứng. Dev/test values nằm trong `recommendation-config-dev-v1`; chưa tuyên bố production-approved.
 
 Cách kiểm chứng:

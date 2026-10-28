@@ -66,7 +66,7 @@
 ## Bằng chứng đóng gate ngày 28/10/2026
 
 - `npm.cmd run build`, `npm.cmd run typecheck`, `npx.cmd eslint "{src,apps,libs,test}/**/*.ts"`: exit 0.
-- `npm.cmd test -- --runInBand`: 44 suites, 188 tests pass.
+- `npm.cmd test -- --runInBand`: 44 suites, 190 tests pass.
 - `npm.cmd run test:integration` chạy hai lần: mỗi lần 2 suites, 13 tests pass trên PostgreSQL thật.
 - `npx.cmd jest --config ./test/jest-e2e.json --runInBand` chạy hai lần: mỗi lần 6 suites, 53 tests pass qua HTTP app thật, PostgreSQL và Redis thật; Google Places/Routes giả lập tại HTTP boundary.
 - Migration thật: `npm.cmd run migration:run` → `npm.cmd run migration:revert` → `npm.cmd run migration:run`, cả ba exit 0; integration test kiểm tra schema sau up/down/up.
