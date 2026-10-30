@@ -606,7 +606,7 @@ Người xác nhận: Dev Backend 1; Dev Backend 2 review Socket/outbox và `run
 
 ### 5.6. Bước 5 — Impression, feedback, observability và replay
 
-**Mục tiêu.** Tạo dữ liệu có thể audit/replay và quan sát pipeline mà không chạy lại provider hoặc lộ dữ liệu nhạy cảm. [Nguồn: workbook — BE-24, BE-21; Doc 12 — Mục 9, 12.3–12.4, 14]
+**Mục tiêu.** Tạo dữ liệu có thể audit/replay, quan sát pipeline và quản lý vòng đời snapshot recommendation mà không chạy lại provider, tạo orphan record hoặc lộ dữ liệu nhạy cảm. [Nguồn: workbook — BE-24, BE-21; Doc 12 — Mục 9, 12.3–12.4, 14; Q6, Q13]
 
 **Function thuộc bước**
 
@@ -622,19 +622,25 @@ Người xác nhận: Dev Backend 1; Dev Backend 2 review Socket/outbox và `run
 - [ ] Feedback collection lỗi sau display được retry bằng eventId và không chạy lại recommendation. [Nguồn: workbook — BE-24; Doc 12 — Mục 12.2]
 - [ ] BE-21 xuất metric latency/error/cost/coverage theo stage/provider/version; structured log redacted. [Nguồn: workbook — BE-21; Doc 12 — Mục 12.1, 14.4]
 - [ ] Replay dùng candidate/feature/config/seed snapshot đã lưu, không gọi Places/Routes; so full rank và explanation facts. [Nguồn: workbook — BE-21; Doc 12 — Mục 12.4]
+- [ ] BE-21 triển khai `RecommendationSnapshotRetentionJob` đọc **retention policy có version đã được phê duyệt**; chọn run đủ điều kiện theo trạng thái/thời điểm, sắp xếp ổn định `(created_at, id)` và xử lý theo batch hữu hạn. Job xóa từ aggregate root `recommendation_runs`; FK cascade chịu trách nhiệm xóa `recommendation_candidates`, `recommendation_member_features` và snapshot con, không xóa rời từng feature/candidate. [Nguồn: Doc 12 — Mục 11.1, 11.3; Q6, Q13]
+- [ ] Retention policy phân loại tối thiểu `FAILED`, completed chưa sử dụng, đã shown/vote/selected và run cần cho replay/evaluation/export/legal hold. Run có vote/final selection hoặc đang được giữ cho replay/evaluation/export không được cleanup trước khi policy tương ứng cho phép. Không suy diễn một TTL chung cho mọi loại run. [Nguồn: Doc 12 — Mục 9, 10, 12.4; Q13]
+- [ ] Cleanup có dry-run, retry idempotent, chống hai worker xử lý trùng, tiếp tục an toàn sau lỗi giữa batch và không giữ transaction/lock cho toàn bộ backlog. Structured audit/metric tối thiểu gồm số run scanned/deleted/protected/failed, duration và oldest eligible age; không log exact coordinates hoặc raw member-feature payload. [Nguồn: Doc 12 — Mục 12.1, 14.4; Q13]
 - [ ] Readiness phản ánh PostgreSQL, Redis và dependency worker mà không lộ secret. [Nguồn: `13_backend2_roadmap.md` — Mục 4 Giai đoạn 6; `09_cong_nghe_su_dung.md` — Mục 9]
 
 **Đầu vào cần có**
 
-- BE-10, BE-20 và Bước 3; versioned event contract.
+- BE-10, BE-20, Bước 3 và linkage vote/selection của Bước 4; versioned event contract.
+- Retention/export/privacy policy đã được Product và Security/Privacy phê duyệt, gồm TTL theo từng loại run, protected/hold rules, lịch chạy, batch size, archive/anonymization (nếu có) và người chịu trách nhiệm. Khi Q13 chưa được phê duyệt, job chỉ được test bằng fixture policy và phải **disabled by default** ở production; không tự đặt số ngày.
 
 **Đầu ra/deliverable**
 
 - Feedback tables/consumer/API; metric/log instrumentation; replay command/use case; runbook và privacy test.
+- Versioned retention-policy contract/config; scheduled cleanup job; dry-run command; audit/metrics/alert hook; integration, failure-recovery và concurrency tests trên PostgreSQL thật.
 
 **Phụ thuộc và song song**
 
 - BE-24 sau BE-10/20/23. BE-21 sau toàn bộ BE-14–17, BE-22–24.
+- Cleanup sau schema snapshot của Bước 3 và vote/selection linkage của Bước 4. Có thể implement/test bằng fixture policy, nhưng chỉ được bật production sau khi Q13 được phê duyệt.
 - Instrumentation skeleton có thể thêm song song từ Bước 1; exit gate chỉ đạt khi full flow có metric.
 
 **Độ phức tạp: L.** Cross-cutting event linkage, idempotency, privacy, metrics và deterministic replay.
@@ -648,12 +654,15 @@ Người xác nhận: Dev Backend 1; Dev Backend 2 review Socket/outbox và `run
 - [ ] Provider/feedback lỗi làm đúng metric tăng; log không chứa token, exact coordinates, raw AI payload hoặc request body nhạy cảm.
 - [ ] Replay một completed run khi provider bị vô hiệu hóa vẫn tạo full rank giống 100% snapshot. [Nguồn: Doc 12 — Mục 14.4]
 - [ ] Metric tối thiểu có run success, route element coverage, route-complete candidate coverage, end-to-end latency, explanation coverage, replay consistency, stale/unauthorized violations và elements/run. [Nguồn: Doc 12 — Mục 14.4]
+- [ ] Với fixed clock và PostgreSQL thật, fixture có expired/young/protected runs chứng minh chỉ run đủ điều kiện bị xóa; candidate/member-feature/snapshot con của run đó được cascade sạch, không còn orphan; run còn hạn hoặc protected không đổi.
+- [ ] Chạy cleanup hai lần và chạy hai worker đồng thời cho cùng backlog cho cùng kết quả cuối, không double-count side effect, không deadlock; inject lỗi giữa batch rồi retry vẫn hoàn tất đúng và không xóa run protected.
+- [ ] Dry-run xóa `0` row nhưng báo đúng scanned/eligible/protected; cleanup thật bị giới hạn bởi batch size, phát metric/audit đúng và không chứa coordinates/raw feature. Cleanup không làm hỏng luồng POST/GET recommendation đang chạy đồng thời.
 - [ ] Lint/unit/integration/E2E/build pass; migration cycle pass.
-- [ ] **[Thiếu tiêu chí trong nguồn]** Dashboard backend cụ thể, retention và alert thresholds chưa được chốt. Không coi UI/dashboard ngoài nguồn là điều kiện merge.
+- [ ] **[Thiếu tiêu chí trong nguồn]** Dashboard backend cụ thể và alert thresholds chưa được chốt. Các giá trị retention production (TTL từng loại, lịch chạy, batch size, archive/anonymization và approver) phải được chốt tại Q13; trước đó không bật cleanup production và không coi một TTL tự đặt là điều kiện merge.
 
-Cách kiểm chứng: integration test duplicate/out-of-order events; replay test với network adapter fail-fast; log capture/redaction assertions; metrics scrape/assert; chạy bộ lệnh chuẩn.
+Cách kiểm chứng: integration test duplicate/out-of-order events; replay test với network adapter fail-fast; log capture/redaction assertions; metrics scrape/assert; chạy retention integration test trên PostgreSQL thật với fixed clock, dry-run, cascade/orphan query, concurrent workers và injected failure; chạy bộ lệnh chuẩn.
 
-Tiêu chí không đạt: replay gọi provider; duplicate feedback; log lộ sensitive data; metric không tách version/provider; feedback failure kích hoạt rerun.
+Tiêu chí không đạt: replay gọi provider; duplicate feedback; log lộ sensitive data; metric không tách version/provider; feedback failure kích hoạt rerun; hard-code TTL chưa phê duyệt; xóa run protected/đã chọn/cần evaluation; còn orphan; unbounded delete/transaction dài; cleanup audit chứa coordinates hoặc raw member feature.
 
 Người xác nhận: Dev Backend 2; Dev Backend 1 review linkage từ Vote/Favorite.
 
@@ -875,6 +884,7 @@ Các quyết định tại Mục 7.1 là baseline để triển khai. Mục 7.2 
 | Q8 | Train gate: feedback/impression ghép đáng tin; nhiều category/group/region; time split; baseline replay ổn định; export không có location nhạy cảm. Promote gate: qua shadow rồi A/B; không vi phạm privacy/replay/stale guardrail; cải thiện metric chính trên test theo thời gian; không vượt latency; ETA/cost không xấu hơn mức Product chấp thuận. | Minimum run count, metric delta và mức ETA/cost regression chấp nhận. | BE-25 chỉ tạo report và readiness evidence. BE-26 không A/B/production khi chưa có threshold được phê duyệt. [Nguồn: Doc 12 — Mục 10.4, 14.5, 16.2] |
 | Q9 | LTR chỉ tạo group relevance score; fairness re-ranker có version tạo thứ tự cuối. `fair-pareto-v1` luôn là baseline/fallback. A/B chia theo meetup. | Công thức `ltrRankingStrategyVersion`, A/B sample/stop rule và approver cụ thể. | Chỉ chạy shadow. Không nối raw LTR score trực tiếp vào rank production. Đề xuất khi lập governance: Tech Lead phê duyệt contract kỹ thuật; Product Owner phê duyệt trade-off fairness–ETA–cost. Vai trò này chưa được xác định trong nguồn. [Nguồn: Doc 12 — Mục 10.1, 10.3, 10.5] |
 | Q10 | Staging/dev baseline có version: `tauSeconds=1200`, `alpha/beta/gamma=0.60/0.30/0.10`, `p_missing=0.60`; **đã phê duyệt 27/10/2026:** `recommendation-config-dev-v1` có `maxTopK=5`, `maxSearchRadiusMeters=10000`, `candidateTargetCount=20`, `candidateMaxCount=30`, `providerCallBudget=4`, `maxRequiredCategories=3`. | `q_missing`, `n_ref`, sample count, epsilon và toàn bộ production values/approver. | Chỉ dùng baseline mới cho dev/staging, version hóa trong snapshot/golden test; không dùng làm production default khi chưa được phê duyệt. [Nguồn: Doc 12 — Mục 7.1–7.4, 7.7, 16.2; quyết định người dùng 27/10/2026] |
+| Q13 | Cleanup là một phần của BE-21/Bước 5 và thao tác theo aggregate: chọn `recommendation_runs` đủ điều kiện theo versioned policy trong batch hữu hạn, xóa parent để FK cascade xóa candidate/member-feature/snapshot con. Job phải dry-run được, idempotent, retry/concurrency-safe, có audit/metrics và không để orphan. Run có vote/final selection hoặc đang phục vụ replay/evaluation/export/legal hold là protected cho đến khi policy cho phép. | TTL theo từng loại run (`FAILED`, completed chưa sử dụng, shown/voted/selected, evaluation/export/hold), lịch chạy, batch size, archive/anonymization, alert threshold và Product + Security/Privacy approver cụ thể. | Implement/test bằng fixture policy có version và disabled-by-default; không bật production, không hard-code số ngày và không xóa dữ liệu cho đến khi policy được phê duyệt và ghi vào nguồn canonical. [Nguồn: Doc 12 — Mục 9, 10, 11.1, 11.3, 12.4, 14.4; Q6] |
 
 ### 7.3. Điều kiện ghi nhận quyết định tiếp theo
 
