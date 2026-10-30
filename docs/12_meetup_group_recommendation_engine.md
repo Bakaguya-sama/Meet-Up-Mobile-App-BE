@@ -52,13 +52,13 @@
 
 **[Tự đề xuất]** Một recommendation run cần các nhóm dữ liệu sau:
 
-- `meetupId`, thời gian dự kiến và cấu hình tìm kiếm.
+- `meetupId`, `scheduledAt` của meetup và cấu hình tìm kiếm.
 - Danh sách thành viên đã chấp nhận meetup.
 - Latest location còn hiệu lực của từng thành viên, gồm tọa độ, `accuracy` và `updatedAt`.
 - Preference tạm thời của từng thành viên trong meetup. Preference profile chỉ là fallback.
-- Loại địa điểm, bán kính và opening filter tại request time.
+- Loại địa điểm, bán kính, opening policy và weather policy.
 - Candidate places từ Google Places hoặc provider tương đương.
-- ETA và khoảng cách từ từng thành viên đến từng candidate từ Google Routes.
+- ETA và khoảng cách từ từng thành viên đến từng candidate từ Google Routes; travel mode của member là `TWO_WHEELER` hoặc `DRIVE`, mặc định `TWO_WHEELER` khi chưa có giá trị.
 - `algorithmVersion`, `configVersion` và `modelVersion` nếu có.
 
 ### 1.4. Đầu ra
@@ -72,6 +72,8 @@
 - Các feature chính được dùng để xếp hạng.
 - Lý do giải thích dạng có cấu trúc.
 - Cờ dữ liệu thiếu và warning khi kết quả ít hơn `requestedK`. Candidate top-K luôn có route hợp lệ cho mọi member.
+- `recommendedDepartureAt` riêng cho từng member, được suy ra từ `scheduledAt - etaSeconds`.
+- Snapshot của `scheduledAt`, opening/weather context, requested/effective routing preference và travel mode đã dùng.
 - Phiên bản thuật toán và cấu hình tạo ra kết quả.
 
 ### 1.5. Phạm vi
@@ -81,7 +83,10 @@
 **[Tự đề xuất]** Tài liệu bao phủ:
 
 - Candidate generation và filtering.
-- Route Matrix cho phương tiện mặc định là xe máy.
+- Route Matrix theo travel mode của từng member (`TWO_WHEELER` hoặc `DRIVE`), mặc định xe máy.
+- Tùy chọn traffic-aware theo cấu hình deployment; không dùng `scheduledAt` làm `departureTime` trong giai đoạn này.
+- Đánh giá địa điểm có mở tại `scheduledAt`.
+- Weather context tại `scheduledAt`, với policy `OFF`, `WARN_ONLY` hoặc `FILTER_OUTDOOR`.
 - Member utility theo ETA, preference và chất lượng địa điểm.
 - Group ranking dựa trên Pareto/fairness.
 - Top-K explanation.
@@ -94,7 +99,9 @@
 
 - Dự đoán hành trình hoặc next-POI từ lịch sử GPS.
 - Tối ưu tuyến đường nhiều điểm dừng.
-- Recommendation theo thời tiết, lịch cá nhân hoặc phương tiện riêng của từng người.
+- Đồng bộ Google Calendar, FreeBusy, OAuth calendar scope hoặc recommendation theo lịch cá nhân ngoài `scheduledAt` của meetup.
+- Dự báo traffic tại thời điểm khởi hành tương lai. Giai đoạn này chỉ có traffic hiện tại khi deployment bật `TRAFFIC_AWARE`.
+- Travel mode ngoài `TWO_WHEELER` và `DRIVE`.
 - Reinforcement learning và cập nhật model theo thời gian thực.
 - Thay vote bằng quyết định tự động. Vote luôn diễn ra sau recommendation.
 - Dùng AI tạo sinh để quyết định thứ hạng. AI, nếu có, chỉ diễn đạt explanation từ dữ liệu đã tính.
@@ -122,7 +129,13 @@ Thông tin thuần túy về contract, quota hoặc trạng thái tính năng c�
 | Provider-side filter | Filter được đưa thẳng vào request gửi cho provider để provider trả về ít candidate hơn. | Với Text Search (New), gửi `includedType=cafe`, `strictTypeFiltering=true` và tùy chọn `openNow=true`. |
 | Residual filter | Filter nội bộ còn lại sau khi đã nhận candidate từ provider. | Loại place không có Place ID hoặc không phù hợp policy của Meetup. |
 | Constraint | Điều kiện địa điểm phải thỏa. | Địa điểm phải nằm trong bán kính được phép. |
-| Opening filter | Quy tắc lọc theo trạng thái mở cửa. V1 chỉ hỗ trợ không lọc hoặc mở tại thời điểm gửi request. | `OPEN_AT_REQUEST_TIME` gửi `openNow=true`; không dùng cho giờ meetup tương lai. |
+| Opening filter | Quy tắc lọc theo trạng thái mở cửa. | `OPEN_AT_REQUEST_TIME` dùng `openNow`; `OPEN_AT_SCHEDULED_TIME` đánh giá opening periods tại `scheduledAt`. |
+| `scheduledAt` | Thời điểm cả nhóm dự kiến gặp tại địa điểm. Đây không phải thời điểm từng người bắt đầu đi. | Meetup hẹn lúc 19:00 thì `scheduledAt=19:00`. |
+| Temporal context | Snapshot các dữ liệu phụ thuộc thời gian của một run. | `requestedAt`, `scheduledAt`, opening status và thời điểm weather forecast. |
+| `recommendedDepartureAt` | Thời điểm gợi ý một member nên bắt đầu đi, tính bằng giờ gặp trừ ETA. | Gặp 19:00, ETA 25 phút thì nên đi lúc 18:35. |
+| Scheduled opening evaluator | Module xác định candidate `OPEN`, `CLOSED` hoặc `UNKNOWN` tại `scheduledAt`. | Quán mở 18:00–22:00 được đánh `OPEN` cho meetup 19:00. |
+| Weather policy | Cách engine sử dụng weather context. | `WARN_ONLY` chỉ cảnh báo; `FILTER_OUTDOOR` có thể loại địa điểm chắc chắn ngoài trời khi forecast vượt ngưỡng. |
+| Outdoor exposure | Phân loại mức địa điểm phụ thuộc không gian ngoài trời. | Công viên là `OUTDOOR`; quán không đủ dữ liệu là `UNKNOWN`. |
 | Hard constraint | Điều kiện không đạt thì loại địa điểm ngay. | Place API xác nhận quán đã đóng vĩnh viễn. |
 | Soft penalty | Điểm phạt làm giảm thứ hạng nhưng không loại ngay. | Một thành viên chọn `avoid` cho karaoke nên quán karaoke bị giảm utility. |
 | Feature | Một giá trị đầu vào dùng để chấm điểm hoặc huấn luyện model. | ETA 12 phút, rating 4.3, preference `high`. |
@@ -154,6 +167,12 @@ Thông tin thuần túy về contract, quota hoặc trạng thái tính năng c�
 | Destination | Điểm kết thúc của route. | Tọa độ hoặc Place ID của quán. |
 | Route element | Một cặp origin–destination trong Route Matrix. | Route từ An đến quán A là một element. |
 | `TWO_WHEELER` | Travel mode của Google Routes cho xe hai bánh có động cơ. | Xe máy là `TWO_WHEELER`, không phải `BICYCLE`. |
+| `DRIVE` | Travel mode của Google Routes cho ô tô. | Một member chọn đi ô tô thì route của member đó dùng `DRIVE`. |
+| Routing preference | Tùy chọn cho biết Routes có dùng traffic hiện tại hay không. | `TRAFFIC_UNAWARE` ưu tiên latency thấp; `TRAFFIC_AWARE` xét traffic hiện tại. |
+| `TRAFFIC_AWARE` | Routing preference dùng live traffic với một số tối ưu để giảm latency. | ETA lúc 17:30 có thể dài hơn ETA không xét traffic. |
+| `TRAFFIC_UNAWARE` | Routing preference không xét live traffic. | Dùng khi muốn giảm tài nguyên/latency hoặc khi traffic provider không sẵn sàng. |
+| `staticDuration` | Duration của route không tính traffic. | `duration=1.800s`, `staticDuration=1.500s` cho thấy traffic làm ETA tăng 300 giây. |
+| `STALE_CONTEXT` | Cờ cho biết run cũ không còn khớp context meetup hiện tại. | Organizer đổi `scheduledAt`; kết quả cũ chỉ để audit và phải chạy recommendation mới. |
 | Recommendation run | Một lần pipeline được thực thi với input và version xác định. | Người tạo bấm “Tìm địa điểm” lúc 19:00 tạo một run. |
 | Impression | Sự kiện một candidate thật sự được hiển thị cho người dùng. | Quán A xuất hiện ở rank 2 trên màn hình. |
 | Feedback | Hành vi xảy ra sau khi recommendation được hiển thị. | Vote, đổi vote, chốt địa điểm, mở dẫn đường. |
@@ -182,6 +201,10 @@ Thông tin thuần túy về contract, quota hoặc trạng thái tính năng c�
 | `CandidateGenerator` | Module gọi active place provider strategy và phân trang trong budget. | Gọi Text Search cho category `coffee`. |
 | `CandidateMerger` | Module union và deduplicate raw candidates từ nhiều category/page của cùng provider. | Hai query cùng trả một quán thì chỉ giữ một canonical candidate. |
 | `ConstraintFilter` | Module áp dụng residual hard constraints ở backend. | Loại candidate ngoài exact radius. |
+| `ScheduledOpeningEvaluator` | Module đọc opening periods và timezone để đánh giá tại `scheduledAt`. | Đánh `UNKNOWN` khi thiếu hours hoặc timezone thay vì tự coi là đóng. |
+| `NormalizedOpeningHours` | Opening periods đã được adapter đổi về contract nội bộ, không còn field riêng của provider. | Một period ghi local open/close time và nguồn `CURRENT` hoặc `REGULAR`. |
+| `WeatherContextProvider` | Port lấy forecast cho candidate tại `scheduledAt`; provider cụ thể chưa được chốt. | Trả trạng thái forecast `AVAILABLE`, `UNAVAILABLE` hoặc `OUT_OF_RANGE`. |
+| `WeatherPolicyEvaluator` | Module áp dụng `OFF`, `WARN_ONLY` hoặc `FILTER_OUTDOOR` lên forecast đã chuẩn hóa. | Nếu hard filter làm rỗng tập candidate, tự hạ xuống `WARN_ONLY`. |
 | `RawCandidatePlace` | Candidate vừa được adapter chuẩn hóa nhưng chưa qua hard filter nội bộ. | Place có ID và tọa độ nhưng có thể nằm ngoài radius. |
 | `EligibleCandidate` | Candidate đã qua provider-side và residual hard constraints, sẵn sàng gửi tới Routes. | Quán đúng category, trong radius và không đóng vĩnh viễn. |
 | `RouteMatrixProvider` | Port tính route theo batch giữa member và candidate. | Tạo route cho 6 member × 20 quán. |
@@ -233,12 +256,18 @@ Thông tin thuần túy về contract, quota hoặc trạng thái tính năng c�
 2. **[Từ bài báo]** Group recommendation có thể gồm preference acquisition, recommendation generation, presentation/explanation và consensus negotiation [2, Mục 3.1, PDF tr. 5–7].
 3. **[Điều chỉnh]** MeetUp ánh xạ vote sang bước consensus sau recommendation. Vote không phải feature của chính run đang diễn ra.
 4. **[Tự đề xuất]** Preference `avoid` là soft penalty. Nó làm giảm utility nhưng không tự động loại candidate.
-5. **[Tự đề xuất]** Travel mode mặc định là xe máy, gửi `TWO_WHEELER` tới Route Matrix. Google định nghĩa đây là xe hai bánh có động cơ và phân biệt với xe đạp [5, mục “Available route matrix vehicle types”].
+5. **[Tự đề xuất]** Travel mode mặc định là xe máy (`TWO_WHEELER`); member có cấu hình hợp lệ có thể dùng `DRIVE`. Google định nghĩa `TWO_WHEELER` là xe hai bánh có động cơ và phân biệt với xe đạp [5, mục “Available route matrix vehicle types”].
 6. Route Matrix tính duration và distance cho mọi cặp origin–destination; số element bằng số origin nhân số destination [3, mục “Request limits”].
 7. **[Tự đề xuất]** Hệ thống không lưu lịch sử GPS. Recommendation run chỉ lưu snapshot feature đã giảm độ nhạy hoặc reference cần thiết để audit.
 8. **[Tự đề xuất]** Mọi score, threshold và model phải có version. Không được thay cấu hình production mà không tạo `configVersion` mới.
 9. **[Tự đề xuất]** Rule-based ranker là production baseline ngay cả sau khi có LTR. Khi model lỗi, hệ thống quay về baseline có version.
 10. **[Tự đề xuất]** Không dùng rating hoặc dữ liệu thiếu như hard constraint nếu provider không xác nhận rõ trạng thái.
+11. **[Tự đề xuất]** `scheduledAt` là thời điểm gặp. Run phải snapshot giá trị này; không diễn giải nó thành thời điểm khởi hành của mọi member.
+12. **[Tự đề xuất]** `recommendedDepartureAt` chỉ là phép suy ra từ ETA của run. Nó không phải lịch cá nhân và không tạo calendar event.
+13. **[Tự đề xuất]** `ROUTES_ROUTING_PREFERENCE` là cấu hình deployment được validate khi khởi động. Mobile không được bật/tắt traffic cho từng request.
+14. **[Tự đề xuất]** `TRAFFIC_AWARE` đã tác động vào `duration`; không cộng thêm congestion penalty vào utility ở phiên bản này để tránh tính traffic hai lần.
+15. **[Tự đề xuất]** Weather chỉ hard-filter khi forecast có sẵn, candidate chắc chắn `OUTDOOR`, và threshold có version bị vi phạm. `UNKNOWN`, provider lỗi hoặc forecast ngoài tầm không bị diễn giải thành thời tiết xấu.
+16. **[Tự đề xuất]** Calendar integration nằm ngoài phạm vi. Engine chỉ dùng `scheduledAt` đã có trong meetup.
 
 ## 4. Kiến trúc tổng thể
 
@@ -253,8 +282,10 @@ flowchart LR
 
     Orchestrator --> Context[Context Builder]
     Context --> Candidate[Candidate Generator]
-    Candidate --> Filter[Constraint Filter]
-    Filter --> Route[Route Matrix Provider]
+    Candidate --> Filter[Place Constraint Filter]
+    Filter --> Opening[Scheduled Opening Evaluator]
+    Opening --> Weather[Weather Enrichment / Filter]
+    Weather --> Route[Route Matrix by Travel Mode]
     Route --> Feature[Feature Builder]
     Feature --> Utility[Member Utility Scorer]
     Utility --> Ranker[Group Ranker / Ranking Strategy]
@@ -276,6 +307,8 @@ flowchart LR
     Evaluator --> Dashboard[Metrics Dashboard]
 
     Candidate --> Places[Google Places]
+    Opening --> Places
+    Weather --> WeatherProvider[Weather Provider Port]
     Route --> Routes[Google Routes]
     Context --> Redis[(Redis latest location)]
     Context --> Postgres[(PostgreSQL)]
@@ -288,7 +321,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     Start(["Người tạo bấm Tìm địa điểm"]) --> Auth["Kiểm tra quyền, meetup state và idempotency"]
-    Auth --> Context["Context Builder<br/>member hợp lệ, location còn hạn, preference, filters"]
+    Auth --> Context["Context Builder<br/>snapshot requestedAt + scheduledAt,<br/>member/location/preference/travel mode, policies"]
     Context --> EnoughMembers{"Đủ ít nhất 2 member<br/>và location hợp lệ?"}
     EnoughMembers -->|Không| InvalidContext["Đánh run failed và trả lỗi có lý do<br/>không tạo ranked result"]
     EnoughMembers -->|Có| Query["CandidateGenerator tạo query"]
@@ -299,12 +332,34 @@ flowchart TD
     Places -->|first-page lỗi sau retry| ProviderFailed["Đánh run failed<br/>PLACE_SEARCH_UNAVAILABLE"]
     Raw --> Merge["Union pages và category queries<br/>dedup bằng canonical candidate key"]
     Merge --> ResidualFilter["Backend residual hard filter<br/>required fields, exact radius, category, policy,<br/>business status nếu provider trả về"]
-    ResidualFilter --> EnoughCandidates{"Còn candidate?"}
+    ResidualFilter --> OpeningPolicy{"openingFilter là<br/>OPEN_AT_SCHEDULED_TIME?"}
+    OpeningPolicy -->|Không| WeatherEnrich["Weather enrichment tại scheduledAt"]
+    OpeningPolicy -->|Có| Opening["ScheduledOpeningEvaluator<br/>OPEN / CLOSED / UNKNOWN"]
+    Opening --> OpeningFilter["Loại CLOSED; giữ UNKNOWN + warning"]
+    OpeningFilter --> WeatherEnrich
+    WeatherEnrich --> WeatherPolicy{"weatherPolicy"}
+    WeatherPolicy -->|OFF hoặc provider unavailable| WeatherPass["Giữ candidate; ghi snapshot/warning cần thiết"]
+    WeatherPolicy -->|WARN_ONLY| WeatherWarn["Giữ candidate + weather warning"]
+    WeatherPolicy -->|FILTER_OUTDOOR| WeatherFilter["Chỉ loại khi forecast AVAILABLE,<br/>exposure=OUTDOOR và threshold versioned bị vi phạm"]
+    WeatherFilter --> WeatherEmpty{"Filter làm rỗng tập?"}
+    WeatherEmpty -->|Có| WeatherRelax["Hạ run xuống WARN_ONLY<br/>WEATHER_FILTER_RELAXED"]
+    WeatherEmpty -->|Không| EnoughCandidates
+    WeatherPass --> EnoughCandidates{"Còn candidate?"}
+    WeatherWarn --> EnoughCandidates
+    WeatherRelax --> EnoughCandidates
     EnoughCandidates -->|Không| NoCandidate["Đánh run failed<br/>NO_ELIGIBLE_CANDIDATES"]
-    EnoughCandidates -->|Có| Matrix["Google Routes ComputeRouteMatrix<br/>TWO_WHEELER, batch khi cần"]
-    Matrix -->|batch lỗi sau retry| RouteFailed["Đánh run failed<br/>ROUTE_MATRIX_UNAVAILABLE"]
-
-    Matrix --> RouteCheck["Kiểm tra route element<br/>và loại candidate không đủ route"]
+    EnoughCandidates -->|Có| ModeGroups["Nhóm member theo travelMode<br/>TWO_WHEELER / DRIVE"]
+    ModeGroups --> RoutingConfig["Đọc ROUTES_ROUTING_PREFERENCE đã validate<br/>TRAFFIC_UNAWARE / TRAFFIC_AWARE"]
+    RoutingConfig --> Matrix["Google Routes ComputeRouteMatrix<br/>batch riêng cho từng travelMode"]
+    Matrix --> MatrixOk{"Mọi batch thành công?"}
+    MatrixOk -->|Có| RouteCheck["Kiểm tra route element<br/>và loại candidate không đủ route"]
+    MatrixOk -->|Không| WasAware{"Requested preference<br/>là TRAFFIC_AWARE?"}
+    WasAware -->|Không| RouteFailed["Đánh run failed<br/>ROUTE_MATRIX_UNAVAILABLE"]
+    WasAware -->|Có| TrafficFallback["Bỏ matrix cũ; chạy lại toàn matrix<br/>bằng TRAFFIC_UNAWARE"]
+    TrafficFallback --> FallbackOk{"Fallback thành công?"}
+    FallbackOk -->|Không| RouteFailed
+    FallbackOk -->|Có| TrafficWarning["Ghi TRAFFIC_DATA_UNAVAILABLE<br/>effective=TRAFFIC_UNAWARE"]
+    TrafficWarning --> RouteCheck
     RouteCheck --> EnoughRoutes{"Còn candidate<br/>có đủ route?"}
     EnoughRoutes -->|Không| NoRoute["Đánh run failed<br/>NO_ROUTABLE_CANDIDATES"]
     EnoughRoutes -->|Có| EffectiveK["effectiveK bằng min của requestedK<br/>và routableCandidateCount"]
@@ -320,10 +375,13 @@ flowchart TD
     GroupMetrics --> Pareto["7.6 Pareto dominance<br/>U thành member rank rồi Pareto level"]
     Pareto --> MonteCarlo["7.7 Monte Carlo inclusion probability"]
     MonteCarlo --> Rank["Group Ranker<br/>full ranking và top-K"]
-    Rank --> Explain["Explanation Builder"]
-    Explain --> Persist["Persist run, snapshots,<br/>full ranking, versions"]
+    Rank --> Departure["Tính recommendedDepartureAt<br/>scheduledAt - etaSeconds cho từng member"]
+    Departure --> Explain["Explanation Builder"]
+    Explain --> Persist["Persist run, temporal/provider snapshots,<br/>full ranking, versions"]
     Persist -->|transaction lỗi| PersistFailed["Giữ run không COMPLETED<br/>trả lỗi retryable"]
-    Persist --> Response["Mobile nhận top-K,<br/>ETA và explanation"]
+    Persist --> Freshness{"scheduledAt hiện tại<br/>còn bằng snapshot?"}
+    Freshness -->|Không| Stale["Trả contextStatus=STALE_CONTEXT<br/>yêu cầu run mới"]
+    Freshness -->|Có| Response["Mobile nhận top-K, ETA,<br/>recommendedDepartureAt và explanation"]
 
     Response --> Impression["Impression: candidate thực sự được hiển thị"]
     Impression --> Feedback["Vote, đổi vote, chốt,<br/>navigation, favorite"]
@@ -347,7 +405,7 @@ flowchart TD
 
 **Điểm cần đọc đúng trong diagram:** `Raw candidates` là dữ liệu trả **từ Google Places về backend**, không phải danh sách trả cho mobile. Mobile chỉ nhận `top-K` ở node `Response`, sau toàn bộ filter, route, utility và ranking.
 
-**Provider boundary đã xác minh:** Candidate search và các filter `includedType`, `strictTypeFiltering`, `openNow` đều thuộc Google Places Text Search (New) [6]. Text Search chỉ nhận một `includedType`, nên nhiều category tạo nhiều query cùng provider rồi merge. `openNow` chỉ áp dụng tại thời điểm query. Kiểm tra bán kính tròn chính xác và policy nội bộ thuộc backend. Constraint dựa trên ETA thuộc Google Routes, là API khác với Google Places dù cùng nằm trong Google Maps Platform.
+**Provider boundary đã xác minh:** Candidate search và các filter `includedType`, `strictTypeFiltering`, `openNow` đều thuộc Google Places Text Search (New) [6]. Text Search chỉ nhận một `includedType`, nên nhiều category tạo nhiều query cùng provider rồi merge. `openNow` chỉ áp dụng tại thời điểm query. Đánh giá `OPEN_AT_SCHEDULED_TIME` dùng opening periods/timezone do Places trả về nhưng logic `OPEN/CLOSED/UNKNOWN` nằm trong backend [8]. Weather dùng một provider port riêng và không được trộn vào Places adapter. Kiểm tra bán kính tròn chính xác và policy nội bộ thuộc backend. ETA/traffic thuộc Google Routes, là API khác với Google Places dù cùng nằm trong Google Maps Platform [9][10].
 
 ### 4.3. Thành phần online
 
@@ -358,7 +416,10 @@ flowchart TD
 | `CandidateGenerator` | Tạo các request cho place provider, phân trang trong budget và trả raw candidates. Nó không quyết định ranking. | Search center, mapped category queries, radius, opening filter | `RawCandidatePlace[]` và provider request metadata. |
 | `CandidateMerger` | Union kết quả của nhiều category/page và deduplicate bằng canonical candidate key. | Nhiều `RawCandidatePlace[]` | Candidate duy nhất theo provider identity. |
 | `ConstraintFilter` | Áp dụng residual hard constraint mà provider không thể hoặc không nên quyết định. | Context và candidate đã merge | `EligibleCandidate[]` cùng lý do loại. |
-| `RouteMatrixProvider` | Tính ETA/distance cho member × candidate, chia batch nếu cần. | Origins, destinations, travel mode | `RouteFeature[]` và `RouteFailure[]`. |
+| `ScheduledOpeningEvaluator` | Đánh giá opening periods theo timezone địa điểm tại `scheduledAt`; không dùng `openNow` cho tương lai. | Candidate, `scheduledAt`, current/regular opening hours, timezone | `OPEN`, `CLOSED` hoặc `UNKNOWN` cùng evidence. |
+| `WeatherContextProvider` | Chuẩn hóa forecast tại candidate và `scheduledAt`; provider cụ thể chưa chốt. | Candidate coordinates và `scheduledAt` | Weather snapshot `AVAILABLE`, `UNAVAILABLE` hoặc `OUT_OF_RANGE`. |
+| `WeatherPolicyEvaluator` | Áp dụng `OFF`, `WARN_ONLY` hoặc `FILTER_OUTDOOR` trước Routes. | Candidate exposure, weather snapshot, threshold version | Candidate giữ/loại, warning và effective policy. |
+| `RouteMatrixProvider` | Tính ETA/distance theo từng nhóm travel mode, routing preference và batch. | Origins, destinations, `TWO_WHEELER`/`DRIVE`, routing preference | `RouteFeature[]`, `RouteFailure[]` và requested/effective provider options. |
 | `FeatureBuilder` | Chuẩn hóa dữ liệu thành feature dùng chung. | Context, place data, route matrix | `MemberPlaceFeature[]`. |
 | `MemberUtilityScorer` | Tính utility cho từng member–place. Model LTR group-level không cắm vào component này. | Feature và utility config | `MemberPlaceUtility[]`. |
 | `GroupRanker` | Chạy ranking strategy đã chọn. Baseline dùng utility matrix; LTR tương lai dùng group relevance score rồi qua fairness re-ranker có version. | Utility matrix, optional LTR score, strategy config | Full ranked candidates. |
@@ -388,6 +449,10 @@ interface PlaceCandidateProvider {
 interface RouteMatrixProvider {
   compute(request: RouteBatchRequest): Promise<RouteBatchResult>;
 }
+
+interface WeatherContextProvider {
+  forecast(request: WeatherForecastRequest): Promise<WeatherForecastResult>;
+}
 ```
 
 - Provider adapter chịu trách nhiệm mapping taxonomy, rating scale, status/error code và response field về contract nội bộ ở Mục 6.
@@ -395,6 +460,9 @@ interface RouteMatrixProvider {
 - Thay provider không được làm `MemberUtilityScorer` hoặc `GroupRanker` đọc field riêng của provider.
 - Multi-place-provider retrieval/merge trong cùng run chưa được hỗ trợ. Muốn thêm phải thiết kế canonical identity xuyên provider, source priority, rating normalization và conflict policy trước.
 - Provider timeout/retry/circuit-breaker là policy của adapter/orchestrator; provider không tự ghi database hoặc thay run state.
+- Opening data vẫn do active place provider trả về hoặc được enrich bằng Place Details của cùng provider identity. Không dùng place provider thứ hai để quyết định opening status trong cùng run nếu chưa có cross-provider identity contract.
+- Weather provider là enrichment provider độc lập. Nó không tạo candidate, không ghi place score và không thay ranking trực tiếp.
+- Nếu `TRAFFIC_AWARE` lỗi và policy cho phép fallback, orchestrator chạy lại **toàn bộ** matrix bằng `TRAFFIC_UNAWARE`; không trộn duration của hai routing preference trong cùng run.
 
 ## 5. Luồng online recommendation
 
@@ -407,23 +475,32 @@ sequenceDiagram
     participant RE as Recommendation Engine
     participant DB as PostgreSQL/Redis
     participant Places as Places Provider
+    participant Weather as Weather Provider
     participant Routes as Google Routes
 
     Organizer->>API: POST /meetups/{id}/recommendation-runs
-    API->>RE: requestId, meetupId, filters
-    RE->>DB: Load meetup, members, preferences, latest locations
-    DB-->>RE: RecommendationContext
+    API->>RE: requestId, meetupId, filters/policies
+    RE->>DB: Load meetup scheduledAt, members, preferences, latest locations
+    DB-->>RE: Temporal RecommendationContext
     loop Mỗi required category, phân trang trong budget
         RE->>Places: Text Search: one includedType + strict type + optional openNow
         Places-->>RE: Raw places + optional nextPageToken
     end
     RE->>RE: Union/dedup + exact-radius/category/policy filters
-    RE->>Routes: Batched ComputeRouteMatrix (TWO_WHEELER)
-    Routes-->>RE: duration/distance per element
+    RE->>RE: Evaluate opening at scheduledAt
+    opt weatherPolicy != OFF
+        RE->>Weather: Forecast by candidate + scheduledAt
+        Weather-->>RE: Normalized weather status
+        RE->>RE: Warn or filter definite OUTDOOR candidates
+    end
+    loop Mỗi travelMode: TWO_WHEELER / DRIVE
+        RE->>Routes: Batched ComputeRouteMatrix + routingPreference
+        Routes-->>RE: duration/staticDuration/distance per element
+    end
     RE->>RE: effectiveK = min(requestedK, routableCandidateCount)
     RE->>RE: Build features and member utilities
     RE->>RE: XPO-inspired group ranking
-    RE->>RE: Build explanations
+    RE->>RE: Compute recommendedDepartureAt + explanations
     RE->>DB: Persist run and full ranked set
     RE-->>API: top-K + runId + versions
     API-->>Organizer: Hiển thị recommendation
@@ -456,7 +533,9 @@ Output của bước này là `ValidatedRecommendationRequest`; các bước sau
 
 Mỗi `participantId` chỉ xuất hiện một lần. Member được sort tăng dần theo `participantId` trước khi tạo matrix và snapshot. Với cùng một tag, `meetup_input` ghi đè `profile_fallback`; nếu cả hai nguồn đều không có giá trị thì tag đó được xử lý bằng `p_missing` ở Mục 7.2.
 
-`scheduledAt` được lưu để audit và làm feature offline. Phiên bản đầu **không** suy đoán opening status ở thời điểm tương lai từ `scheduledAt`.
+`scheduledAt` là temporal snapshot bắt buộc của run. ContextBuilder cũng resolve `travelMode` từng member về `TWO_WHEELER` hoặc `DRIVE`; thiếu giá trị dùng `TWO_WHEELER`. Run không nhận `latestArrivalAt` và không đọc calendar.
+
+Nếu organizer đổi `scheduledAt` sau khi run hoàn tất, run cũ không bị sửa hoặc tính lại. API đọc kết quả so sánh meetup hiện tại với snapshot và trả `contextStatus=STALE_CONTEXT`; mobile phải yêu cầu run mới trước khi dùng kết quả để vote/chốt.
 
 #### Bước 3 — Tạo query và provider-side filter
 
@@ -493,7 +572,7 @@ Các constraint mà Text Search hỗ trợ và có ý nghĩa giống nghiệp v�
 - Type filter: **đã dùng** trong adapter hiện tại.
 - `openingFilter=OPEN_AT_REQUEST_TIME`: gửi `openNow=true`. Google định nghĩa đây là mở tại thời điểm query được gửi, không phải tại `scheduledAt` [6, mục `openNow`].
 - `openingFilter=ANY`: không gửi `openNow`; thiếu opening hours không bị coi là đóng.
-- `OPEN_AT_SCHEDULED_TIME` chưa được hỗ trợ trong phiên bản đầu.
+- `openingFilter=OPEN_AT_SCHEDULED_TIME`: không gửi `openNow`; yêu cầu field mask cho `currentOpeningHours`, `regularOpeningHours` và timezone/UTC offset cần thiết, rồi backend đánh giá tại `scheduledAt`. `currentOpeningHours` bao phủ bảy ngày kể từ ngày request và gồm special hours; `regularOpeningHours` chỉ là lịch điển hình [8, trường `currentOpeningHours`, `regularOpeningHours`].
 - Nếu mapping của một category có `supportsOpenAtRequestTime=false`, request kết hợp category đó với `OPEN_AT_REQUEST_TIME` bị từ chối bằng `UNSUPPORTED_OPENING_FILTER_FOR_CATEGORY`; không im lặng bỏ filter. Google nêu `openNow` không áp dụng cho một số nhóm query như hotel hoặc geopolitical [6, mục `openNow`].
 - Radius: code dùng `locationBias.circle`. Đây chỉ là bias, không phải hard restriction. Google ghi rõ kết quả có thể nằm ngoài vùng bias [6, mục `locationBias`].
 - Activity/category nội bộ phải đi qua `PlaceCategoryMapping`. Không truyền trực tiếp tag chưa được kiểm tra vào `includedType`.
@@ -503,6 +582,7 @@ Các constraint mà Text Search hỗ trợ và có ý nghĩa giống nghiệp v�
 | Một hoặc nhiều loại địa điểm bắt buộc | Một Text Search cho mỗi mapping: `includedType` + `strictTypeFiltering=true`; merge theo OR rồi backend validate response types. | Text Search chỉ nhận một `includedType`; nhiều category phải là nhiều query [6]. |
 | Bán kính tròn | Text Search dùng `locationBias.circle` để ưu tiên retrieval; backend tính khoảng cách đường chim bay và loại ngoài radius. | `locationBias` không bảo đảm kết quả nằm trong vòng tròn [6]. Text Search chỉ hỗ trợ hard `locationRestriction` dạng rectangle. |
 | Đang mở tại request time | Khi `openingFilter=OPEN_AT_REQUEST_TIME`, gửi `openNow=true`. | Cùng provider hỗ trợ [6]; không dùng để khẳng định mở tại lịch meetup tương lai. |
+| Mở tại `scheduledAt` | Không gửi `openNow`; `ScheduledOpeningEvaluator` chạy sau residual place filter. | Provider trả periods/timezone; backend mới biết `scheduledAt` của meetup và policy `UNKNOWN`. |
 | Place ID/location tồn tại | Residual filter. | Chỉ kiểm tra được sau khi provider trả candidate. |
 | Provider báo đóng vĩnh viễn | Residual filter. | Đây là thuộc tính của candidate trả về. |
 | Policy nội bộ, blacklist, deduplication | Residual filter. | Provider không biết chính sách MeetUp. |
@@ -544,23 +624,53 @@ Trong đó latitude/longitude đổi sang radian, `R = 6.371.000 m`. Giữ candi
 
 `avoid` không nằm trong bước này vì đã được chốt là soft penalty.
 
+#### Bước 5 — Opening tại `scheduledAt`
+
+**[Tự đề xuất]** Bước này chỉ chạy khi `openingFilter=OPEN_AT_SCHEDULED_TIME`. Nó nằm sau place hard constraints và trước weather/Routes để không tốn forecast hoặc route element cho candidate đã xác định đóng.
+
+1. Ưu tiên `currentOpeningHours` nếu `scheduledAt` nằm trong khoảng bảy ngày mà dữ liệu này bao phủ, vì field này có special hours [8].
+2. Nếu ngoài khoảng đó, dùng `regularOpeningHours` như lịch điển hình và ghi `OPENING_FROM_REGULAR_HOURS`. Đây không phải bảo đảm cho ngày lễ hoặc đóng cửa đột xuất.
+3. Chuyển `scheduledAt` sang local time của place bằng timezone/UTC offset do provider trả. Không dùng timezone của server hay mobile.
+4. Kết quả `OPEN`: giữ candidate. `CLOSED`: loại với `CLOSED_AT_SCHEDULED_TIME`. `UNKNOWN`: giữ candidate và thêm `OPENING_STATUS_UNKNOWN`.
+5. Thiếu hours, thiếu timezone, periods không parse được hoặc thời điểm nằm ngoài dữ liệu có thể xác định chắc chắn đều là `UNKNOWN`; không tự coi là `CLOSED`.
+
+`openNow` không được dùng trong bước này vì nó chỉ phản ánh thời điểm request [6].
+
+#### Bước 6 — Weather enrichment và policy
+
+**[Tự đề xuất]** Weather chạy sau opening filter và trước Route Matrix. Thứ tự này giảm số candidate phải gọi route nhưng vẫn bảo đảm weather không tham gia candidate retrieval của Places.
+
+- `OFF`: không gọi weather provider.
+- `WARN_ONLY`: lấy forecast tại `scheduledAt`, giữ candidate và tạo warning/explanation.
+- `FILTER_OUTDOOR`: chỉ loại khi `forecastStatus=AVAILABLE`, `outdoorExposure=OUTDOOR` và threshold có version bị vi phạm.
+- Candidate `INDOOR` hoặc `UNKNOWN`, forecast `UNAVAILABLE`/`OUT_OF_RANGE`, provider timeout/lỗi hoặc field thiếu đều được giữ. Ghi warning phù hợp; không diễn giải missing thành thời tiết xấu.
+- Nếu `FILTER_OUTDOOR` loại hết candidate, chạy lại policy trên cùng snapshot dưới dạng `WARN_ONLY`, giữ tập trước weather filter và ghi `WEATHER_FILTER_RELAXED`.
+
+Weather không tạo một thành phần utility riêng trong phiên bản này. Vì vậy cùng một candidate được giữ sẽ dùng utility 7.1–7.4 như cũ; weather chỉ quyết định eligibility/warning theo policy.
+
 #### Ghi chú sau Bước 4 — Có nên đổi sang Nearby Search (New)?
 
 Google Places Nearby Search (New) vẫn là cùng product/provider, nhưng là endpoint khác. Nó hỗ trợ `locationRestriction.circle`, tối đa 50 `includedTypes` và tối đa 20 kết quả cho một request [7, mục `locationRestriction`, `includedTypes`, `maxResultCount`]. Tài liệu endpoint không có `openNow` request filter.
 
 **[Tự đề xuất] Quyết định hiện tại:** chưa đổi adapter sang Nearby Search. Giữ Text Search (New), chạy một query cho mỗi category, phân trang trong budget và hậu kiểm exact radius. Text Search và Nearby Search là hai strategy thay thế nhau; phiên bản đầu không gọi đồng thời. Chỉ đánh giá chuyển sang Nearby Search khi cần một request nhiều types và circular restriction tại provider quan trọng hơn pagination và `OPEN_AT_REQUEST_TIME`.
 
-#### Bước 5 — Route Matrix
+#### Bước 7 — Route Matrix
 
 `ComputeRouteMatrix` trả distance và duration cho nhiều origin và destination [3, mục “Get a route matrix”]. Giới hạn thông thường là 625 element mỗi request; `TRAFFIC_AWARE_OPTIMAL` giới hạn 100 element. Tổng số address/Place ID origin và destination tối đa là 50 [3, mục “Request limits”].
 
-**[Tự đề xuất]** Engine tính:
+**[Tự đề xuất]** Engine nhóm member theo `travelMode`, rồi tính riêng cho từng nhóm:
 
 ```text
-elementCount = validMemberCount × eligibleCandidateCount
+elementCount(mode) = memberCount(mode) × eligibleCandidateCount
 ```
 
-Phiên bản đầu mã hóa origin và destination bằng `latLng`, không phụ thuộc Google Place ID. Element limit là 625, hoặc 100 nếu request dùng `TRAFFIC_AWARE_OPTIMAL` [3, mục “Request limits”]. Giới hạn tổng 50 áp dụng khi waypoint được gửi bằng address hoặc Place ID [3]; nếu adapter đổi encoding thì batch planner phải bật thêm constraint này.
+Phiên bản đầu mã hóa origin và destination bằng `latLng`, không phụ thuộc Google Place ID. `travelMode` chỉ nhận `TWO_WHEELER` hoặc `DRIVE`. Element limit là 625, hoặc 100 nếu request dùng `TRAFFIC_AWARE_OPTIMAL` [3, mục “Request limits”]. Giới hạn tổng 50 áp dụng khi waypoint được gửi bằng address hoặc Place ID [3]; nếu adapter đổi encoding thì batch planner phải bật thêm constraint này.
+
+`ROUTES_ROUTING_PREFERENCE` chỉ nhận `TRAFFIC_UNAWARE` hoặc `TRAFFIC_AWARE` và được validate khi process khởi động. Không set tương đương `TRAFFIC_UNAWARE`; `TRAFFIC_AWARE` dùng live traffic nhưng tối ưu latency hơn `TRAFFIC_AWARE_OPTIMAL` [9]. Mỗi run snapshot cả requested và effective value. Cache key bắt buộc có travel mode và effective routing preference.
+
+Engine **không** gửi `scheduledAt` vào `departureTime` trong giai đoạn này. Khi không có `departureTime`, route phản ánh request time; vì vậy `TRAFFIC_AWARE` là traffic hiện tại, không phải dự báo giao thông lúc member sẽ khởi hành [10]. Nếu một batch `TRAFFIC_AWARE` lỗi sau retry và fallback được bật, bỏ toàn bộ kết quả matrix đang có và chạy lại tất cả mode/batch bằng `TRAFFIC_UNAWARE`; ghi `TRAFFIC_DATA_UNAVAILABLE` và effective preference thực tế. Nếu fallback cũng lỗi thì run fail.
+
+`duration` là ETA dùng cho travel utility. `staticDuration` chỉ dùng cho explanation/metric congestion; không cộng penalty lần nữa. Google xác nhận `duration` xét traffic khi routing preference là traffic-aware, còn `staticDuration` không xét traffic [10].
 
 `RouteBatchPlanner` chia **cả origin và destination**. Nó duyệt các cặp số nguyên `(o,d)` thỏa `o >= 1`, `d >= 1`, `o × d <= elementLimit` và constraint waypoint encoding. Chọn cặp làm nhỏ nhất:
 
@@ -578,7 +688,15 @@ effectiveK = min(requestedK, routableCandidateCount)
 
 Nếu `effectiveK = 0`, trả `NO_ROUTABLE_CANDIDATES`. Nếu `effectiveK < requestedK`, tiếp tục ranking và trả warning `RESULT_COUNT_BELOW_REQUESTED_K`.
 
-#### Bước 6 — Feature và utility
+Sau route validation, tính cho từng member và candidate:
+
+```text
+recommendedDepartureAt(u,p) = scheduledAt - etaSeconds(u,p)
+```
+
+Đây là output giải thích/lập kế hoạch, không phải input utility và không được ghi ngược thành lịch cá nhân.
+
+#### Bước 8 — Feature và utility
 
 **[Điều chỉnh]** Survey mô tả utility values trong `[0,1]` như một dạng biểu diễn preference, với giá trị cao hơn thể hiện preference cao hơn [2, Mục 3.2.1, PDF tr. 8]. MeetUp chọn cùng miền giá trị, nhưng tự định nghĩa member–place utility từ ETA, preference và place quality.
 
@@ -596,11 +714,11 @@ Nếu `effectiveK = 0`, trả `NO_ROUTABLE_CANDIDATES`. Nếu `effectiveK < requ
 
 `FeatureBuilder` chịu trách nhiệm lấy và chuẩn hóa input cho 7.1–7.3. `MemberUtilityScorer` chạy 7.1–7.4. `GroupRanker` chạy 7.5–7.7 đúng một lần. Vì vậy, utility **không** được tính khi candidate vừa được Places trả về; lúc đó hệ thống chưa có ETA, route validity và đôi khi chưa có metadata cần thiết.
 
-#### Bước 7 — Group ranking
+#### Bước 9 — Group ranking
 
 **[Điều chỉnh]** Ranker tạo ranking riêng cho từng thành viên từ member utility, xác định Pareto level và dùng Monte Carlo weight vectors theo hướng NPO/XPO của [1, Mục 3, PDF tr. 3–4]. Chi tiết ở Mục 8.
 
-#### Bước 8 — Explanation
+#### Bước 10 — Explanation
 
 **[Từ bài báo]** Presentation/explanation giúp thành viên hiểu vì sao item được chọn; survey nêu ví dụ hiển thị prediction của từng người và cả nhóm [2, Mục 3.1, PDF tr. 6].
 
@@ -615,9 +733,9 @@ FAIR_PARETO_RANKED
 LTR_RANKED
 ```
 
-`facts` tối thiểu gồm rank, `effectiveK`, ETA mean/max, candidate least-misery utility, group utility, và Pareto level/inclusion probability khi strategy có dùng chúng. Mỗi fact ghi `unit` và `source` (`ROUTES`, `PLACES`, `ENGINE`). Client map `summaryCode` sang template đã review. Không được nói “gần nhất”, “công bằng nhất” hoặc “được mọi người thích” nếu snapshot không chứng minh đúng mệnh đề đó.
+`facts` tối thiểu gồm rank, `effectiveK`, ETA mean/max, `recommendedDepartureAt` từng member, candidate least-misery utility, group utility, opening/weather status và Pareto level/inclusion probability khi strategy có dùng chúng. Khi traffic-aware có dữ liệu, explanation có thể nêu chênh lệch `duration-staticDuration`, nhưng không gọi đó là “đường thoáng nhất” nếu engine không so sánh alternative routes. Mỗi fact ghi `unit` và `source` (`ROUTES`, `PLACES`, `WEATHER`, `ENGINE`). Client map `summaryCode` sang template đã review. Không được nói “gần nhất”, “công bằng nhất” hoặc “được mọi người thích” nếu snapshot không chứng minh đúng mệnh đề đó.
 
-#### Bước 9 — Persist và trả kết quả
+#### Bước 11 — Persist và trả kết quả
 
 **[Tự đề xuất]** Lưu full ranked candidate set trước khi trả top-K. Candidate/features/ranking và transition sang `COMPLETED` nằm trong cùng transaction. Nếu lưu thất bại, không trả kết quả thành công vì sẽ mất audit trail và feedback linkage. Nếu transaction đã commit nhưng HTTP response bị mất, retry cùng `requestId`/payload trả stored result theo Mục 11.4.
 
@@ -635,8 +753,10 @@ Mobile -> FindPlaceCandidatesUseCase -> Google Places -> candidates -> Mobile
 Mobile -> RecommendationOrchestrator
        -> CandidateGenerator/Google Places
        -> CandidateMerger + residual filters
-       -> Google Routes
+       -> scheduled opening + weather policy
+       -> Google Routes theo travel mode/routing preference
        -> utility + group ranking
+       -> recommendedDepartureAt + explanation
        -> persist run
        -> top-K -> Mobile
 ```
@@ -653,7 +773,8 @@ interface ValidatedRecommendationRequest {
   meetupId: string;
   topK: number;
   requiredCategories: string[]; // 1..maxRequiredCategories, semantics ANY/OR
-  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME';
+  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
+  weatherPolicy: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
   searchRadiusMeters: number;
   payloadHash: string;
 }
@@ -668,12 +789,14 @@ interface RecommendationContext {
   requestedAt: string;
   scheduledAt: string;
   topK: number;
-  travelMode: 'TWO_WHEELER';
+  requestedRoutingPreference: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
   searchRadiusMeters: number;
   requiredCategories: string[];
-  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME';
+  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
+  weatherPolicy: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
   members: Array<{
     participantId: string;
+    travelMode: 'TWO_WHEELER' | 'DRIVE';
     location: {
       latitude: number;
       longitude: number;
@@ -707,10 +830,19 @@ interface CandidateSearchRequest {
     textQuery: string;
     providerType: string;
   }>;
-  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME';
+  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
   candidateTargetCount: number;
   candidateMaxCount: number;
   providerCallBudget: number;
+}
+
+interface NormalizedOpeningHours {
+  source: 'CURRENT' | 'REGULAR';
+  periods: Array<{
+    openAtLocal: string;
+    closeAtLocal?: string; // thiếu close có thể biểu diễn 24/7 theo provider contract
+    exceptional?: boolean;
+  }>;
 }
 
 interface RawCandidatePlace {
@@ -726,6 +858,10 @@ interface RawCandidatePlace {
   rating0To5?: number;
   userRatingCount?: number;
   currentOpen?: boolean;
+  currentOpeningHours?: NormalizedOpeningHours;
+  regularOpeningHours?: NormalizedOpeningHours;
+  timeZoneId?: string;
+  utcOffsetMinutes?: number;
   businessStatus?: 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY' | 'UNKNOWN';
   sourceCategory: string;
   sourcePage: number;
@@ -734,10 +870,35 @@ interface RawCandidatePlace {
 interface EligibleCandidate extends RawCandidatePlace {
   distanceFromSearchCenterMeters: number;
   matchedRequiredCategories: string[];
+  outdoorExposure: 'INDOOR' | 'OUTDOOR' | 'UNKNOWN';
+  scheduledOpeningStatus?: 'OPEN' | 'CLOSED' | 'UNKNOWN';
+  weatherStatus?: 'AVAILABLE' | 'UNAVAILABLE' | 'OUT_OF_RANGE';
+}
+
+interface WeatherForecastRequest {
+  scheduledAt: string;
+  candidates: Array<{
+    canonicalCandidateKey: string;
+    latitude: number;
+    longitude: number;
+  }>;
+}
+
+interface WeatherForecastResult {
+  provider: string;
+  providerVersion: string;
+  items: Array<{
+    canonicalCandidateKey: string;
+    status: 'AVAILABLE' | 'UNAVAILABLE' | 'OUT_OF_RANGE';
+    observedFor?: string;
+    conditionCode?: string;
+    precipitationProbability?: number;
+    windSpeedMetersPerSecond?: number;
+  }>;
 }
 ```
 
-Field mask tối thiểu của Google adapter phải bao gồm ID, display name, location, types, business status và `nextPageToken` khi bật pagination. Nếu bật place quality thì thêm rating và `userRatingCount`; nếu cần hiển thị trạng thái hiện tại thì thêm current opening hours. Field mask làm thay đổi SKU/chi phí nên thuộc `providerRequestOptions` có version [6, mục “FieldMask”].
+Field mask tối thiểu của Google adapter phải bao gồm ID, display name, location, types, business status và `nextPageToken` khi bật pagination. Nếu bật place quality thì thêm rating và `userRatingCount`. Với `OPEN_AT_SCHEDULED_TIME`, thêm `currentOpeningHours`, `regularOpeningHours` và timezone/UTC offset cần thiết. Các opening fields thuộc SKU cao hơn; field mask làm thay đổi chi phí nên thuộc `providerRequestOptions` có version [6, mục “FieldMask”][8].
 
 Adapter của provider khác phải chuẩn hóa rating về `[0,5]`, category về tag nội bộ và business status về enum trên. Nếu không chuẩn hóa được trường tùy chọn, để `undefined`; utility dùng missing-data policy. Multi-provider merge trong cùng một run nằm ngoài phạm vi phiên bản đầu.
 
@@ -751,7 +912,9 @@ interface RouteBatchRequest {
     latitude: number;
     longitude: number;
   }>;
-  travelMode: 'TWO_WHEELER';
+  travelMode: 'TWO_WHEELER' | 'DRIVE';
+  routingPreference: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
+  // Không gửi departureTime trong giai đoạn hiện tại.
 }
 
 interface RouteBatchResult {
@@ -763,7 +926,10 @@ interface RouteFeature {
   participantId: string;
   canonicalCandidateKey: string;
   etaSeconds: number;
+  staticDurationSeconds?: number;
   distanceMeters: number;
+  travelMode: 'TWO_WHEELER' | 'DRIVE';
+  effectiveRoutingPreference: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
   status: 'OK';
 }
 
@@ -785,6 +951,8 @@ interface MemberPlaceFeature {
   canonicalCandidateKey: string;
   etaSeconds: number;
   distanceMeters: number;
+  travelMode: 'TWO_WHEELER' | 'DRIVE';
+  recommendedDepartureAt: string;
   matchedTags: Array<{
     tag: string;
     level: 'high' | 'normal' | 'avoid';
@@ -822,7 +990,10 @@ interface RankedPlace {
   memberResults: Array<{
     participantId: string;
     etaSeconds: number;
+    staticDurationSeconds?: number;
     distanceMeters: number;
+    travelMode: 'TWO_WHEELER' | 'DRIVE';
+    recommendedDepartureAt: string;
     travelUtility: number;
     preferenceUtility: number;
     placeQualityUtility: number;
@@ -835,7 +1006,7 @@ interface RankedPlace {
       key: string;
       value: string | number;
       unit?: 'SECOND' | 'METER' | 'UTILITY_0_1' | 'PROBABILITY_0_1' | 'COUNT';
-      source: 'ROUTES' | 'PLACES' | 'ENGINE';
+      source: 'ROUTES' | 'PLACES' | 'WEATHER' | 'ENGINE';
     }>;
     warnings: string[];
   };
@@ -855,6 +1026,11 @@ interface RankedPlace {
 - `canonicalCandidateKey` duy nhất trong một run.
 - Giá trị số dùng cho formula phải hữu hạn; config không hợp lệ làm run fail trước khi gọi provider.
 - Timestamp lưu ở UTC; UI tự chuyển múi giờ.
+- `scheduledAt` phải có trong snapshot của run thành công; `recommendedDepartureAt` phải đúng bằng `scheduledAt - etaSeconds` theo UTC cho từng member–candidate.
+- `OPEN_AT_SCHEDULED_TIME` chỉ loại `CLOSED`; `UNKNOWN` luôn được giữ và cảnh báo.
+- `FILTER_OUTDOOR` chỉ loại candidate có đủ ba điều kiện: forecast `AVAILABLE`, exposure `OUTDOOR`, threshold versioned bị vi phạm.
+- Mỗi run chỉ có một `effectiveRoutingPreference`. Nếu traffic fallback xảy ra, không giữ route element `TRAFFIC_AWARE` cũ.
+- Mọi member phải có travel mode hợp lệ; giá trị thiếu resolve thành `TWO_WHEELER`, giá trị ngoài enum làm context fail.
 
 ## 7. Công thức utility
 
@@ -1450,10 +1626,10 @@ Mỗi model version lưu:
 
 | Bảng | Mục đích | Trường quan trọng |
 |---|---|---|
-| `recommendation_runs` | Metadata một run. | `request_id`, `payload_hash`, `ranking_strategy`, `algorithm_version`, `config_version`, `feature_schema_version`, `model_version`, provider/mapping versions, `random_seed`, `requested_k`, `effective_k`, `status`, latency fields. |
+| `recommendation_runs` | Metadata một run. | `request_id`, `payload_hash`, `requested_at`, `scheduled_at_snapshot`, opening/weather policy, requested/effective routing preference, `ranking_strategy`, versions, `random_seed`, `requested_k`, `effective_k`, `status`, latency fields. |
 | `recommendation_candidates` | Toàn bộ candidate đã xét, kể cả không vào top-K. | `run_id`, `canonical_candidate_key`, `provider`, `provider_place_id`, `filter_status`, `filter_reason`, `final_rank`. |
-| `recommendation_member_features` | Feature/utility cho từng member–candidate. | ETA, distance, `T`, `P`, `Q`, `U`, route status. |
-| `recommendation_places` | Kết quả tổng hợp và explanation. | group utility, fairness, Pareto level, inclusion probability. |
+| `recommendation_member_features` | Feature/utility cho từng member–candidate. | ETA, static duration, distance, travel mode, `recommended_departure_at`, `T`, `P`, `Q`, `U`, route status. |
+| `recommendation_places` | Kết quả tổng hợp và explanation. | scheduled opening status/evidence, weather status/evidence, group utility, fairness, Pareto level, inclusion probability. |
 | `recommendation_impressions` | Candidate nào thực sự được hiển thị. | `event_id`, participant, canonical candidate key, rank, timestamp. |
 | `recommendation_feedback_events` | Event sau hiển thị. | `event_id`, event type, actor, canonical candidate key, timestamp, metadata đã lọc. |
 | `recommendation_algorithm_configs` | Cấu hình bất biến theo version. | weights, thresholds, sample count, checksum. |
@@ -1473,7 +1649,8 @@ Idempotency-Key: <requestId>
   "topK": 5,
   "filters": {
     "categories": ["coffee"],
-    "openingFilter": "OPEN_AT_REQUEST_TIME",
+    "openingFilter": "OPEN_AT_SCHEDULED_TIME",
+    "weatherPolicy": "WARN_ONLY",
     "radiusMeters": 5000
   }
 }
@@ -1507,6 +1684,12 @@ modelVersion (nullable)
 providerRequestOptions
 providerAdapterVersion
 categoryMappingVersion
+scheduledAtSnapshot
+openingEvaluatorVersion
+weatherProviderVersion / weatherThresholdVersion (nullable khi OFF)
+requestedRoutingPreference
+effectiveRoutingPreference
+memberTravelModes
 randomSeed
 candidateSnapshot
 ```
@@ -1528,6 +1711,7 @@ RUNNING -> FAILED
 - Retry cùng key/payload khi run `FAILED` trả lỗi đã lưu. Muốn chạy lại phải dùng `requestId` mới.
 - Ghi candidate/features/ranking và chuyển `RUNNING -> COMPLETED` trong cùng transaction. Nếu transaction fail, run không được đánh `COMPLETED`.
 - Nếu persist thành công nhưng HTTP response bị mất, retry idempotent trả lại kết quả đã persist.
+- Run đã hoàn tất là immutable. Khi `meetup.scheduledAt` khác `scheduled_at_snapshot`, API trả thêm `contextStatus=STALE_CONTEXT`; không tự đổi ranked data hay terminal state. Vote/chốt phải yêu cầu run mới theo rule nghiệp vụ đã duyệt.
 
 ## 12. Xử lý lỗi, hiệu năng và quyền riêng tư
 
@@ -1545,6 +1729,8 @@ Google tính phí Compute Route Matrix theo số element, tức origins × desti
 - Đặt timeout và circuit breaker cho provider.
 - Cache ngắn hạn chỉ khi origin cell, destination cell, travel mode và routing preference khớp; thêm departure bucket chỉ khi route request thực sự gửi departure time. Không dùng provider Place ID làm khóa bắt buộc để route provider không phụ thuộc place provider.
 - Không cache quá lâu vì ETA có thể đổi theo bối cảnh giao thông.
+- `TRAFFIC_AWARE` được bật/tắt bằng `ROUTES_ROUTING_PREFERENCE` ở deployment. Giá trị ngoài enum làm ứng dụng fail fast khi boot; không im lặng dùng mặc định sai.
+- Weather filter chạy trước Routes để candidate chắc chắn không phù hợp không tiêu tốn matrix element. `weatherPolicy=OFF` không gọi weather provider.
 
 ### 12.2. Lỗi từng element
 
@@ -1554,11 +1740,14 @@ Google có thể trả lỗi cho toàn response hoặc chỉ một số element 
 
 - Place provider: first-page query của bất kỳ required category nào lỗi sau retry thì run `failed`; page sau lỗi thì dừng pagination và ghi warning nếu đã có ít nhất `candidateTargetCount`, ngược lại run `failed`.
 - Route Matrix toàn request/batch lỗi: run chuyển `failed`, cho phép retry có backoff.
+- Với requested `TRAFFIC_AWARE`, lỗi traffic-aware sau retry có thể fallback **toàn matrix** sang `TRAFFIC_UNAWARE`; ghi warning và effective preference. Fallback lỗi thì run `failed`.
 - Một element lỗi: đánh `NO_ROUTE`.
 - Candidate có bất kỳ member `NO_ROUTE`: loại khỏi ranking và lưu lý do.
 - Nếu số candidate còn lại dưới `requestedK`: đặt `effectiveK` bằng số lượng thực có, tiếp tục ranking và trả warning; không tạo ETA giả.
 - Utility/config sinh giá trị không hữu hạn: run `failed` với `INVALID_ALGORITHM_CONFIG` hoặc `INVALID_FEATURE_VALUE`; không cho `NaN` đi vào sort.
 - Explanation lỗi: run `failed` trước persist kết quả thành công; không trả explanation được tạo một phần.
+- Opening evaluator thiếu/không parse được data: giữ candidate với `OPENING_STATUS_UNKNOWN`; chỉ evaluator xác định `CLOSED` mới hard-filter.
+- Weather provider lỗi/timeout/out-of-range: giữ candidate, ghi warning và effective policy; không fail run. Nếu `FILTER_OUTDOOR` làm rỗng candidate, hạ xuống `WARN_ONLY` và ghi `WEATHER_FILTER_RELAXED`.
 - Impression/feedback lỗi sau khi kết quả đã hiển thị: retry bằng `eventId`; không chạy lại recommendation.
 
 ### 12.3. Quyền riêng tư
@@ -1583,10 +1772,15 @@ Google có thể trả lỗi cho toàn response hoặc chỉ một số element 
 | Modular monolith trước | Dễ tích hợp với NestJS và transaction hiện tại. | Microservice recommendation riêng. | Chưa có bằng chứng về tải hoặc chu kỳ deploy cần tách. | Coupling runtime cao hơn, nhưng vận hành đơn giản hơn. |
 | Một active place provider strategy mỗi run | Tránh merge taxonomy, rating scale và identity chưa được định nghĩa. | Gọi nhiều place provider song song. | Chưa có canonical cross-provider identity và source weighting. | Ít khả năng fallback nguồn hơn; đổi provider vẫn thực hiện qua adapter contract. |
 | Text Search theo từng category trong v1 | Có pagination và `OPEN_AT_REQUEST_TIME`; phù hợp adapter hiện tại. | Nearby Search một request nhiều types. | Nearby tối đa 20 result/request và không có `openNow` request filter trong contract đã kiểm tra [7]. | Nhiều category làm tăng số provider call; cần budget và deterministic merge. |
-| Opening filter chỉ tại request time | Khớp chính xác semantics `openNow` của provider [6]. | Suy đoán mở cửa tại `scheduledAt`. | Cần regular hours, timezone và xử lý ngoại lệ; chưa có evaluator đã kiểm chứng. | Không hard-filter được opening status tương lai trong v1. |
+| Hỗ trợ `OPEN_AT_SCHEDULED_TIME` bằng evaluator backend | `scheduledAt` là giờ gặp; `openNow` không trả lời câu hỏi địa điểm có mở lúc đó hay không. Places có current/regular hours và timezone data [8]. | Dùng `openNow`; coi thiếu data là đóng. | Sai semantics hoặc loại nhầm candidate. | Tăng field cost và logic timezone; `regularOpeningHours` không bảo đảm special day ngoài cửa sổ current hours. |
 | Vote sau recommendation | Vote là quyết định trên danh sách đã tạo. | Dùng vote hiện tại để thay đổi ranking trong cùng run. | Tạo vòng lặp khó giải thích và không đúng flow sản phẩm đã chốt. | Recommendation không thích nghi trong cùng phiên. |
 | `avoid` là soft penalty | Vẫn có kết quả khi candidate ít hoặc preference xung đột. | Hard filter. | Một member có thể loại toàn bộ lựa chọn. | Có khả năng item bị `avoid` vẫn xuất hiện; UI phải giải thích. |
-| Xe máy mặc định (`TWO_WHEELER`) | Phù hợp bối cảnh sản phẩm đã chốt. | `DRIVE`, `WALK`, travel mode riêng từng người. | Chưa thuộc scope hiện tại. | Tính năng beta, cảnh báo bắt buộc và chi phí API cao hơn [4][5]. |
+| Travel mode từng member chỉ gồm `TWO_WHEELER`/`DRIVE`; thiếu thì mặc định xe máy | Thực tế nhóm có thể dùng hai phương tiện khác nhau nhưng vẫn giữ contract và batch hữu hạn. | Một mode cho cả nhóm; hỗ trợ mọi mode ngay. | Một mode kém chính xác; mọi mode làm scope/semantics tăng mạnh. | Nhiều route batch hơn; `TWO_WHEELER` vẫn beta và cần cảnh báo [4][5]. |
+| Traffic-aware là deployment config | Cho phép tắt để giảm latency/chi phí; Google phân biệt `TRAFFIC_UNAWARE` và `TRAFFIC_AWARE` [9]. | Cho mobile bật từng request; luôn bật. | Khó kiểm soát cost và làm run khó so sánh. | Cần snapshot requested/effective preference và fallback rõ ràng. |
+| Không gửi `scheduledAt` làm Routes `departureTime` ở giai đoạn này | `scheduledAt` là giờ đến, không phải giờ đi; Compute Route Matrix không có arrival-time semantics tương đương cho use case này. | Gửi thẳng `scheduledAt`; giải phương trình lặp ETA–departure. | Cách thứ nhất sai nghĩa; cách thứ hai là feature traffic tương lai riêng. | Traffic-aware hiện tại có thể không đại diện cho giờ meetup tương lai. |
+| Không thêm congestion penalty vào utility | Traffic-aware `duration` đã ảnh hưởng `T`; cộng penalty sẽ tính cùng tín hiệu hai lần. | Thêm score từ `duration-staticDuration`. | Chưa có bằng chứng cần trọng số riêng. | Congestion chỉ hiện trong explanation/metric, không có preference độc lập. |
+| Weather policy chạy trước Routes, mặc định an toàn là không loại khi thiếu dữ liệu | Tiết kiệm route element và tránh biến provider failure thành empty result. | Weather là utility; fail-closed. | Chưa có trọng số được kiểm chứng; fail-closed dễ loại sai. | Cần taxonomy outdoor và threshold có version; filter có cơ chế relax. |
+| Không tích hợp calendar | `scheduledAt` đã là thời điểm meetup cần cho engine. | Google/Outlook Calendar, FreeBusy, `latestArrivalAt`. | Chưa có nhu cầu, consent/OAuth và contract trong phạm vi hiện tại. | Không tự tìm slot rảnh hoặc dựa trên lịch cá nhân. |
 | Utility riêng từng member | Giữ khác biệt và hỗ trợ fairness. | Gộp location/preference thành một group profile trước. | Có thể che mất người bất lợi. | Tăng số feature và computation. |
 | XPO-inspired, không tuyên bố XPO nguyên bản | Dùng được ý tưởng Pareto trong khi dữ liệu MeetUp khác paper. | Triển khai nguyên XPO. | Paper giả định personal top-N/ground truth; MeetUp chưa có recommender cá nhân [1, Mục 3]. | Cần tự đánh giá lại, không được dùng kết quả MovieLens làm bằng chứng trực tiếp. |
 | Ba baseline song song | Có mốc so sánh và fallback. | Chỉ triển khai một công thức production. | Không biết cải tiến có thật sự tốt hơn. | Tốn thêm test và maintenance. |
@@ -1739,6 +1933,13 @@ Mỗi tử/mẫu đếm entity duy nhất trong evaluation window, không đếm
 | Stale-location violation | Số run dùng stale location | 0. |
 | Unauthorized-location access | Số truy cập location trái quyền | 0. |
 | Matrix elements per run | `members × candidates` | Theo dõi distribution và budget; chưa có ngưỡng cố định. |
+| Scheduled-opening unknown rate | Candidate dùng `OPEN_AT_SCHEDULED_TIME` nhưng evaluator trả `UNKNOWN` / candidate được đánh giá | Theo provider/category/time horizon; chưa đặt ngưỡng. |
+| Stale-context rate | Run được đọc khi `scheduledAt` hiện tại khác snapshot / run được đọc | Theo dõi; vote/chốt từ stale run phải bằng 0. |
+| Traffic fallback rate | Run requested `TRAFFIC_AWARE` nhưng effective `TRAFFIC_UNAWARE` / run requested traffic-aware | Theo dõi theo provider/status; chưa đặt ngưỡng. |
+| Traffic delta | `duration - staticDuration` theo route element có đủ hai giá trị | Chỉ metric/explanation; không cộng utility. |
+| Weather availability | Candidate có forecast `AVAILABLE` / candidate cần weather | Báo theo forecast horizon/provider; chưa đặt ngưỡng. |
+| Weather filter relaxation rate | Run phát `WEATHER_FILTER_RELAXED` / run dùng `FILTER_OUTDOOR` | Theo dõi để điều chỉnh taxonomy/threshold; chưa đặt ngưỡng. |
+| Departure-time consistency | Output có `recommendedDepartureAt = scheduledAt - ETA` / member result | 100%. |
 
 Các ngưỡng trên là **[Tự đề xuất]** cho giai đoạn đầu, không lấy từ [1]–[7]. Team phải điều chỉnh sau benchmark.
 
@@ -1767,6 +1968,27 @@ Mức “xấu đi quá mức” chưa được chốt và là câu hỏi mở.
 - Triển khai `min-sum`, `min-max`, `fair-pareto-v1`.
 - Lưu full candidate set, random seed và explanations.
 - Unit test bằng matrix nhỏ tính tay được.
+
+### Giai đoạn 1.1 — Temporal context và `scheduledAt`
+
+- Snapshot `scheduledAt` và trả `contextStatus=STALE_CONTEXT` khi meetup đổi thời gian.
+- Tính `recommendedDepartureAt` cho từng member–candidate.
+- Triển khai `ScheduledOpeningEvaluator` và `OPEN_AT_SCHEDULED_TIME` với `OPEN/CLOSED/UNKNOWN`.
+- Lưu opening evidence/evaluator version; không dùng `openNow` cho lịch tương lai.
+
+### Giai đoạn 1.2 — Traffic và travel mode
+
+- Validate `ROUTES_ROUTING_PREFERENCE` khi boot; snapshot requested/effective value.
+- Hỗ trợ `TWO_WHEELER`/`DRIVE` theo member, chia matrix theo mode.
+- Thêm `staticDuration`, traffic fallback toàn matrix và warning.
+- Không gửi `scheduledAt` làm `departureTime`; chưa làm future-traffic second pass.
+
+### Giai đoạn 1.3 — Weather context
+
+- Chốt provider adapter và forecast horizon trước khi bật ngoài `OFF`.
+- Triển khai `OFF`, `WARN_ONLY`, `FILTER_OUTDOOR` sau opening và trước Routes.
+- Version taxonomy outdoor/threshold; thêm `WEATHER_FILTER_RELAXED`.
+- Weather chưa tham gia utility; chỉ eligibility và explanation/warning.
 
 ### Giai đoạn 2 — Observability và feedback
 
@@ -1802,6 +2024,9 @@ Mức “xấu đi quá mức” chưa được chốt và là câu hỏi mở.
 6. **[Tự đề xuất]** Vote phản ánh lựa chọn trong danh sách đã hiển thị, không cho biết người dùng sẽ nghĩ gì về candidate chưa từng thấy.
 7. **[Tự đề xuất]** Organizer có quyền chốt nên final selection không nhất thiết phản ánh đồng thuận của mọi thành viên.
 8. **[Tự đề xuất]** Top-K nhỏ giúp UI đơn giản nhưng hạn chế quan sát preference và tạo exposure bias.
+9. **[Tự đề xuất]** `TRAFFIC_AWARE` không dự báo đúng traffic tại một meetup xa trong tương lai vì giai đoạn này không gửi `departureTime`.
+10. **[Tự đề xuất]** `regularOpeningHours` không phản ánh chắc chắn ngày lễ/ngoại lệ ngoài cửa sổ của `currentOpeningHours`.
+11. **[Tự đề xuất]** Weather provider, forecast horizon, outdoor taxonomy và threshold production chưa được chốt; policy phải giữ `OFF` cho đến khi có contract/version được duyệt.
 
 ### 16.2. Câu hỏi cần chốt
 
@@ -1810,12 +2035,15 @@ Mức “xấu đi quá mức” chưa được chốt và là câu hỏi mở.
 | `tauSeconds` và utility weights nên là bao nhiêu? | Quyết định độ nhạy ETA/preference. | Benchmark + validation trên feedback thật. |
 | Candidate count trước Route Matrix là bao nhiêu? | Ảnh hưởng chất lượng, latency và chi phí. | Load test 20/30/50 candidates. |
 | Có cho candidate thiếu opening hours vào top-K không? | Thiếu dữ liệu không đồng nghĩa đã đóng. | Product decision + theo dõi conversion. |
-| Khi nào hỗ trợ `OPEN_AT_SCHEDULED_TIME`? | `openNow` chỉ phản ánh thời điểm query, không phải lịch meetup tương lai. | Thiết kế evaluator từ regular hours + timezone + ngoại lệ trước khi thêm enum mới. |
+| Khi `scheduledAt` ngoài cửa sổ `currentOpeningHours`, có chấp nhận `regularOpeningHours` để hard-filter không? | Regular hours có thể sai vào ngày lễ hoặc đóng cửa đột xuất. | Hiện dùng regular hours nhưng gắn evidence/warning; Product duyệt có đổi thành `UNKNOWN` hay không. |
 | Route element lỗi có nên loại cả candidate lâu dài? | Có thể làm kết quả quá ít. | Thu thập tỷ lệ lỗi và thiết kế fallback có nhãn nếu cần. |
 | Khi nào bật diversity re-ranking? | Top-K cùng loại có thể kém hữu ích. | User test và metric category coverage. |
 | Định nghĩa label LTR cuối cùng là gì? | Vote, selection và navigation có ý nghĩa khác nhau. | So sánh nhiều label version offline. |
 | Ngưỡng dữ liệu tối thiểu để train là bao nhiêu? | Dữ liệu ít gây overfit và kết quả không ổn định. | Learning curve; chưa xác định được từ nguồn. |
-| Có hỗ trợ travel mode riêng từng member không? | Tăng chính xác nhưng làm matrix và UX phức tạp hơn. | Để roadmap sau khi xe máy mặc định ổn định. |
+| Travel mode của member được nhập/lưu qua API nào? | Route engine đã có contract `TWO_WHEELER`/`DRIVE`, nhưng nguồn ghi preference chưa được chốt trong tài liệu hiện có. | Chốt owner, DTO và persistence; cho đến đó ContextBuilder mặc định `TWO_WHEELER`. |
+| Weather provider, forecast horizon và threshold nào được duyệt? | Quyết định availability, cost và khi nào được hard-filter outdoor. | Adapter benchmark + Product/Tech Lead duyệt; trước đó production dùng `OFF`. |
+| Quy tắc phân loại `INDOOR/OUTDOOR/UNKNOWN` theo category nào? | Sai taxonomy có thể loại nhầm địa điểm. | Version mapping và test theo category; unknown không bị loại. |
+| Khi nào triển khai future-traffic second pass? | Traffic hiện tại có thể không đúng lúc meetup diễn ra. | Chỉ mở sau khi có thuật toán suy ra departure time, budget và benchmark; không gửi thẳng `scheduledAt`. |
 | Mức đánh đổi fairness–ETA nào product chấp nhận? | Không có strategy tốt tuyệt đối cho mọi nhóm. | User study và A/B test. |
 | LTR score kết hợp fairness bằng công thức nào? | Chưa có contract đủ để promote model khỏi shadow. | So sánh re-ranking strategies offline, chốt `ltrRankingStrategyVersion` rồi mới A/B. |
 | Có cần multi-place-provider retrieval không? | Merge nhiều nguồn cần canonical identity và conflict policy. | Chỉ mở scope sau khi một-provider pipeline có metric ổn định. |
@@ -1836,3 +2064,9 @@ Mức “xấu đi quá mức” chưa được chốt và là câu hỏi mở.
 [6] Google Maps Platform. “Text Search (New) — Places API (New).” Tài liệu chính thức, truy cập ngày 27/10/2026. [https://developers.google.com/maps/documentation/places/web-service/text-search](https://developers.google.com/maps/documentation/places/web-service/text-search).
 
 [7] Google Maps Platform. “Nearby Search (New) — Places API (New).” Tài liệu chính thức, truy cập ngày 27/10/2026. [https://developers.google.com/maps/documentation/places/web-service/nearby-search](https://developers.google.com/maps/documentation/places/web-service/nearby-search).
+
+[8] Google Maps Platform. “REST Resource: places — Places API (New)” và “Place Data Fields (New).” Tài liệu chính thức, truy cập ngày 30/10/2026. [Place resource](https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places), [data fields](https://developers.google.com/maps/documentation/places/web-service/data-fields).
+
+[9] Google Maps Platform. “RoutingPreference — Routes API.” Tài liệu chính thức, truy cập ngày 30/10/2026. [https://developers.google.com/maps/documentation/routes/reference/rest/v2/RoutingPreference](https://developers.google.com/maps/documentation/routes/reference/rest/v2/RoutingPreference).
+
+[10] Google Maps Platform. “Method: computeRouteMatrix — Routes API.” Tài liệu chính thức, truy cập ngày 30/10/2026. [https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRouteMatrix](https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRouteMatrix).
