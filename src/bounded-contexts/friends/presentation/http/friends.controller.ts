@@ -38,6 +38,7 @@ import {
 } from '../../application/dto/friends-request.dto';
 import { SearchUsersQuery } from '../../application/queries/search-users.query';
 import { ListFriendshipsQuery } from '../../application/queries/list-friendships.query';
+import { ResolvePublicQrProfileQuery } from '../../application/queries/resolve-public-qr-profile.query';
 import { SendFriendRequestUseCase } from '../../application/use-cases/send-friend-request.use-case';
 import { RespondFriendRequestUseCase } from '../../application/use-cases/respond-friend-request.use-case';
 import { UnfriendUseCase } from '../../application/use-cases/unfriend.use-case';
@@ -48,6 +49,7 @@ import {
   friendshipSchema,
   searchPageSchema,
   sendFriendRequestSchema,
+  publicQrProfileSchema,
 } from './friends.openapi';
 
 @ApiTags('Friends')
@@ -70,6 +72,7 @@ export class FriendsController {
     private readonly respondRequest: RespondFriendRequestUseCase,
     private readonly unfriendUseCase: UnfriendUseCase,
     private readonly publicHandle: ManagePublicHandleUseCase,
+    private readonly resolvePublicQrProfile: ResolvePublicQrProfileQuery,
   ) {}
 
   @Get('search')
@@ -127,6 +130,18 @@ export class FriendsController {
       offset: query.offset,
       limit: query.limit,
     });
+  }
+
+  @Get('qr-profiles/:publicHandle')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Resolve a stable public QR profile' })
+  @ApiOkResponse({ schema: publicQrProfileSchema })
+  @ApiNotFoundResponse({ description: 'Public profile is unavailable' })
+  resolveQrProfile(
+    @CurrentUser('id') actorId: string,
+    @Param('publicHandle') publicHandle: string,
+  ) {
+    return this.resolvePublicQrProfile.execute({ actorId, publicHandle });
   }
 
   @Post('public-handle/rotate')

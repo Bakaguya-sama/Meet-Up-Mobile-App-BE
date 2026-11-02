@@ -79,6 +79,20 @@ export const friendshipPageSchema = {
     },
   },
 };
+export const publicQrProfileSchema = {
+  type: 'object' as const,
+  required: ['publicHandle', 'displayName', 'avatarUrl', 'friendship'],
+  properties: {
+    publicHandle: { type: 'string' as const, minLength: 43, maxLength: 43 },
+    displayName: { type: 'string' as const },
+    avatarUrl: { type: 'string' as const, nullable: true },
+    friendship: {
+      type: 'string' as const,
+      enum: ['pending', 'accepted', 'rejected', 'blocked'],
+      nullable: true,
+    },
+  },
+};
 export const sendFriendRequestSchema = {
   type: 'object' as const,
   required: ['recipientId'],
