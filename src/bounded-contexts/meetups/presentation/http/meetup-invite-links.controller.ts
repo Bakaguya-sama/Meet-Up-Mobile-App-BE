@@ -24,6 +24,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -94,6 +95,7 @@ export class MeetupInviteLinksController {
   @ApiCreatedResponse({ schema: inviteLinkSchema })
   @ApiBadRequestResponse({ description: 'Expiry is invalid or past invitation deadline' })
   @ApiConflictResponse({ description: 'Meetup no longer accepts participants' })
+  @ApiTooManyRequestsResponse({ description: 'Invite link rate limit exceeded' })
   async create(
     @CurrentUser('id') actorId: string,
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
@@ -109,6 +111,7 @@ export class MeetupInviteLinksController {
   @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: 'Revoke a meetup invite link' })
   @ApiNoContentResponse({ description: 'Invite link revoked' })
+  @ApiTooManyRequestsResponse({ description: 'Invite link rate limit exceeded' })
   async revoke(
     @CurrentUser('id') actorId: string,
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
@@ -134,6 +137,7 @@ export class MeetupInviteLinkPreviewController {
   @ApiOperation({ summary: 'Preview a meetup invite without participant or location data' })
   @ApiOkResponse({ schema: inviteLinkPreviewSchema })
   @ApiNotFoundResponse({ description: 'Invite link is unavailable' })
+  @ApiTooManyRequestsResponse({ description: 'Invite link rate limit exceeded' })
   async preview(@Param('token') token: string, @Req() request: Request) {
     await assertInviteRateLimit(
       this.rateLimiter,
@@ -175,6 +179,7 @@ export class MeetupInviteLinkAcceptController {
     },
   })
   @ApiNotFoundResponse({ description: 'Invite link is unavailable' })
+  @ApiTooManyRequestsResponse({ description: 'Invite link rate limit exceeded' })
   async accept(
     @CurrentUser('id') actorId: string,
     @Param('token') token: string,
