@@ -17,6 +17,7 @@ export function configureApp(app: INestApplication): void {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      validationError: { target: false, value: false },
       exceptionFactory: (errors) =>
         new BadRequestException({
           statusCode: 400,
