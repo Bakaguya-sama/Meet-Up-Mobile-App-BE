@@ -15,4 +15,9 @@ export abstract class UserDirectory {
 
   /** Returns only active, non-deleted accounts. */
   abstract findActiveByIds(ids: string[]): Promise<DirectoryUser[]>;
+
+  /** Resolves only active accounts with an enabled stable public handle. */
+  abstract findActiveByPublicHandle(
+    publicHandle: string,
+  ): Promise<DirectoryUser | null>;
 }
