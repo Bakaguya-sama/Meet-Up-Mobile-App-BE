@@ -60,4 +60,39 @@ describe('OutboxWorkerService delivery', () => {
       lastError: 'Push notification delivery failed',
     });
   });
+
+  it('does not repeat the RecommendationReady side effect after delivery is recorded', async () => {
+    const ready = {
+      ...event,
+      id: '8bfc82cb-a0fa-488c-9ed4-870e7393ba16',
+      eventName: 'RecommendationReady.v1' as const,
+      destination: 'realtime' as const,
+      recipientIds: [],
+      payload: {
+        eventId: '8bfc82cb-a0fa-488c-9ed4-870e7393ba16',
+        eventName: 'RecommendationReady.v1' as const,
+        occurredAt: '2026-11-02T00:00:00.000Z',
+        meetupId: 'a86c2e79-4453-4b5f-81ee-3532265b4a73',
+        runId: 'cd2ed2c4-0dc2-4d55-a6a2-5a23e6125670',
+        placeIds: ['google-place-1'],
+        strategy: 'exact' as const,
+      },
+    };
+    repository.findOneBy.mockResolvedValueOnce({ ...ready, status: 'pending' });
+
+    await worker.deliver(ready.id, 1);
+
+    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+    expect(repository.update).toHaveBeenCalledWith(
+      ready.id,
+      expect.objectContaining({ status: 'delivered' }),
+    );
+
+    repository.findOneBy.mockResolvedValueOnce({
+      ...ready,
+      status: 'delivered',
+    });
+    await worker.deliver(ready.id, 2);
+    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+  });
 });

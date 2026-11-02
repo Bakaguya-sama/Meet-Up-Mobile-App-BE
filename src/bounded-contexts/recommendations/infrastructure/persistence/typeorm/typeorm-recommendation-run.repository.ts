@@ -6,12 +6,15 @@ import type {
   RecommendationCandidateSnapshot,
   RecommendationCompletion,
   RecommendationMemberFeatureSnapshot,
+  RecommendationPlaceSnapshot,
   RecommendationRun,
   RecommendationRunResult,
 } from '../../../domain/recommendation-run';
 import { RecommendationCandidateEntity } from './entities/recommendation-candidate.typeorm-entity';
 import { RecommendationRunEntity } from './entities/recommendation-run.typeorm-entity';
 import { RecommendationMemberFeatureEntity } from './entities/recommendation-member-feature.typeorm-entity';
+import { RecommendationPlaceEntity } from './entities/recommendation-place.typeorm-entity';
+import { TypeOrmTransactionalOutbox } from '../../../../../infrastructure/outbox/persistence/typeorm-outbox.port';
 
 @Injectable()
 export class TypeOrmRecommendationRunRepository implements RecommendationRunStore {
@@ -28,7 +31,7 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
   async create(run: RecommendationRun): Promise<RecommendationRunResult> {
     try {
       await this.dataSource.getRepository(RecommendationRunEntity).insert(run);
-      return { ...run, candidates: [], memberFeatures: [] };
+      return { ...run, candidates: [], memberFeatures: [], places: [] };
     } catch (error) {
       if (isUniqueViolation(error)) {
         const existing = await this.findByRequest(run.meetupId, run.requestId);
@@ -72,6 +75,9 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
           completion.memberFeatures,
         );
       }
+      if (completion.places.length) {
+        await manager.insert(RecommendationPlaceEntity, completion.places);
+      }
       await manager.update(RecommendationRunEntity, runId, {
         status: 'COMPLETED',
         completedAt,
@@ -81,6 +87,25 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
         routeBatchCount: completion.routeBatchCount,
         routeElementCount: completion.routeElementCount,
       });
+      const candidatesById = new Map(
+        completion.candidates.map((candidate) => [candidate.id, candidate]),
+      );
+      const topPlaceIds = completion.places
+        .filter((place) => place.rank <= completion.effectiveK)
+        .sort((left, right) => left.rank - right.rank)
+        .map((place) => candidatesById.get(place.candidateId)!.providerPlaceId);
+      await new TypeOrmTransactionalOutbox(manager).add(
+        {
+          eventId: completion.readyEventId,
+          eventName: 'RecommendationReady.v1',
+          occurredAt: completedAt.toISOString(),
+          meetupId: run.meetupId,
+          runId,
+          placeIds: topPlaceIds,
+          strategy: completion.routeBatchCount > 1 ? 'batched' : 'exact',
+        },
+        { destination: 'realtime' },
+      );
       return {
         ...toDomain(run),
         status: 'COMPLETED',
@@ -92,6 +117,7 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
         routeElementCount: completion.routeElementCount,
         candidates: completion.candidates.map(cloneCandidate),
         memberFeatures: completion.memberFeatures.map(cloneMemberFeature),
+        places: completion.places.map(clonePlace),
       };
     });
   }
@@ -117,7 +143,7 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
       .getRepository(RecommendationRunEntity)
       .findOne({
         where,
-        relations: { candidates: true, memberFeatures: true },
+        relations: { candidates: true, memberFeatures: true, places: true },
         order: {
           candidates: { finalRank: 'ASC', canonicalCandidateKey: 'ASC' },
           memberFeatures: {
@@ -131,6 +157,7 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
           ...toDomain(row),
           candidates: (row.candidates ?? []).map(toCandidate),
           memberFeatures: (row.memberFeatures ?? []).map(cloneMemberFeature),
+          places: (row.places ?? []).map(clonePlace),
         }
       : null;
   }
@@ -190,6 +217,17 @@ function cloneMemberFeature(feature: RecommendationMemberFeatureSnapshot) {
     matchedTags: feature.matchedTags.map((tag) => ({ ...tag })),
     missingFlags: [...feature.missingFlags],
     createdAt: new Date(feature.createdAt),
+  };
+}
+
+function clonePlace(place: RecommendationPlaceSnapshot) {
+  return {
+    ...place,
+    createdAt: new Date(place.createdAt),
+    explanation: structuredClone(place.explanation),
+    openingEvidence: place.openingEvidence
+      ? structuredClone(place.openingEvidence)
+      : null,
   };
 }
 

@@ -326,21 +326,28 @@
 
   Table recommendation_places {
     id uuid [pk]
-    recommendation_run_id uuid [not null]
-    place_snapshot_id uuid [not null]
+    run_id uuid [not null]
+    candidate_id uuid [not null]
+    canonical_candidate_key varchar(300) [not null]
     rank smallint [not null]
-    score numeric(12, 4) [not null]
-    avg_eta_seconds integer [not null]
-    max_eta_seconds integer [not null]
-    preference_penalty numeric(12, 4) [not null, default: 0]
-    rating_adjustment numeric(12, 4) [not null, default: 0]
-    rule_explanation varchar(1000)
+    group_utility double [not null]
+    candidate_least_misery_utility double [not null]
+    pareto_level integer [not null]
+    inclusion_probability double
+    avg_eta_seconds double [not null]
+    max_eta_seconds double [not null]
+    eta_range_seconds double [not null]
+    scheduled_opening_status varchar(20) [note: 'OPEN, CLOSED, UNKNOWN; null when scheduled opening policy is not used.']
+    opening_evidence jsonb
+    explanation jsonb [not null, note: 'Deterministic summaryCode, sourced/unit-tagged facts and warnings from the persisted snapshot.']
     created_at timestamptz [not null]
 
     Indexes {
-      (recommendation_run_id, rank) [unique]
-      (recommendation_run_id, place_snapshot_id) [unique]
+      (run_id, rank) [unique, name: 'uq_recommendation_places_run_rank']
+      (run_id, candidate_id) [unique, name: 'uq_recommendation_places_candidate']
     }
+
+    Note: 'Step 3 aggregate result snapshot. One row per fully ranked candidate; API projects only rank <= effective_k.'
   }
 
   Table recommendation_place_etas {
@@ -576,8 +583,8 @@
   Ref: recommendation_runs.id < recommendation_member_features.run_id [delete: cascade]
   Ref: recommendation_candidates.id < recommendation_member_features.candidate_id [delete: cascade]
   Ref: meetup_participants.id < recommendation_member_features.participant_id
-  Ref: recommendation_runs.id < recommendation_places.recommendation_run_id
-  Ref: place_snapshots.id < recommendation_places.place_snapshot_id
+  Ref: recommendation_runs.id < recommendation_places.run_id [delete: cascade]
+  Ref: recommendation_candidates.id < recommendation_places.candidate_id [delete: cascade]
   Ref: recommendation_places.id < recommendation_place_etas.recommendation_place_id
   Ref: meetup_participants.id < recommendation_place_etas.meetup_participant_id
   Ref: recommendation_places.id < meetup_sessions.chosen_recommendation_place_id

@@ -1,6 +1,7 @@
 import type { RecommendationRunStore } from '../ports/recommendation-run-store.port';
 import { RecommendationError } from '../../domain/recommendation.error';
 import { RecommendationRunFreshnessGuard } from '../public/recommendation-run-freshness.guard';
+import { presentRecommendationResult } from '../services/recommendation-result.presenter';
 
 export class GetRecommendationRunUseCase {
   constructor(
@@ -25,6 +26,6 @@ export class GetRecommendationRunUseCase {
         'Recommendation run is unavailable to this actor',
       );
     }
-    return this.freshness.toView(run);
+    return presentRecommendationResult(run, await this.freshness.status(run));
   }
 }

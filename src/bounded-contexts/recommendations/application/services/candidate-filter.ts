@@ -35,12 +35,32 @@ export interface EligibleCandidate extends RawCandidate {
   openingEvidence?: ScheduledOpeningEvidence;
 }
 
+export interface FilteredCandidateAudit {
+  candidate: EligibleCandidate;
+  reason: 'CLOSED_PERMANENTLY' | 'OUTSIDE_RADIUS' | 'CATEGORY_MISMATCH';
+}
+
+export interface CandidateFilterOutcome {
+  eligible: EligibleCandidate[];
+  filtered: FilteredCandidateAudit[];
+}
+
 export function filterCandidates(
   input: RawCandidate[],
   center: { latitude: number; longitude: number },
   radiusMeters: number,
   categories: string[],
 ): EligibleCandidate[] {
+  return filterCandidatesWithAudit(input, center, radiusMeters, categories)
+    .eligible;
+}
+
+export function filterCandidatesWithAudit(
+  input: RawCandidate[],
+  center: { latitude: number; longitude: number },
+  radiusMeters: number,
+  categories: string[],
+): CandidateFilterOutcome {
   const merged = new Map<
     string,
     RawCandidate & {
@@ -69,7 +89,7 @@ export function filterCandidates(
     current.pages.add(item.sourcePage);
     merged.set(key, current);
   }
-  return [...merged.entries()]
+  const normalized = [...merged.entries()]
     .map(([canonicalCandidateKey, item]) => ({
       ...item,
       canonicalCandidateKey,
@@ -79,15 +99,24 @@ export function filterCandidates(
       sourcePages: [...item.pages].sort((a, b) => a - b),
       normalizedTags: [...item.sources].sort(),
     }))
-    .filter(
-      (item) =>
-        item.businessStatus !== 'CLOSED_PERMANENTLY' &&
-        item.distanceFromSearchCenterMeters <= radiusMeters &&
-        item.matchedRequiredCategories.length > 0,
-    )
     .sort((a, b) =>
       a.canonicalCandidateKey.localeCompare(b.canonicalCandidateKey),
     );
+  const eligible: EligibleCandidate[] = [];
+  const filtered: FilteredCandidateAudit[] = [];
+  for (const candidate of normalized) {
+    const reason =
+      candidate.businessStatus === 'CLOSED_PERMANENTLY'
+        ? 'CLOSED_PERMANENTLY'
+        : candidate.distanceFromSearchCenterMeters > radiusMeters
+          ? 'OUTSIDE_RADIUS'
+          : candidate.matchedRequiredCategories.length === 0
+            ? 'CATEGORY_MISMATCH'
+            : null;
+    if (reason) filtered.push({ candidate, reason });
+    else eligible.push(candidate);
+  }
+  return { eligible, filtered };
 }
 
 function haversine(

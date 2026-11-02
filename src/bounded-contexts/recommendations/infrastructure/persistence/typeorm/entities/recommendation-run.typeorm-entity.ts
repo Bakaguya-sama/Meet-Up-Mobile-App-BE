@@ -14,6 +14,7 @@ import { MeetupEntity } from '../../../../../meetups/infrastructure/persistence/
 import type { RecommendationRunStatus } from '../../../../domain/recommendation-run';
 import { RecommendationCandidateEntity } from './recommendation-candidate.typeorm-entity';
 import { RecommendationMemberFeatureEntity } from './recommendation-member-feature.typeorm-entity';
+import { RecommendationPlaceEntity } from './recommendation-place.typeorm-entity';
 
 @Entity('recommendation_runs')
 @Unique('uq_recommendation_runs_request', ['meetupId', 'requestId'])
@@ -84,6 +85,8 @@ export class RecommendationRunEntity {
   candidates?: RecommendationCandidateEntity[];
   @OneToMany(() => RecommendationMemberFeatureEntity, (feature) => feature.run)
   memberFeatures?: RecommendationMemberFeatureEntity[];
+  @OneToMany(() => RecommendationPlaceEntity, (place) => place.run)
+  places?: RecommendationPlaceEntity[];
   @ManyToOne(() => MeetupEntity, { nullable: false })
   @JoinColumn({
     name: 'meetup_id',

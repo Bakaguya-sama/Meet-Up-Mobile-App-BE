@@ -69,6 +69,45 @@ export interface RecommendationCandidateSnapshot {
   openingEvidence: ScheduledOpeningEvidence | null;
 }
 
+export type RecommendationExplanationUnit =
+  'SECOND' | 'METER' | 'UTILITY_0_1' | 'PROBABILITY_0_1' | 'COUNT';
+
+export type RecommendationExplanationSource =
+  'ROUTES' | 'PLACES' | 'WEATHER' | 'ENGINE';
+
+export interface RecommendationExplanationFact {
+  key: string;
+  value: string | number;
+  unit?: RecommendationExplanationUnit;
+  source: RecommendationExplanationSource;
+}
+
+export interface RecommendationExplanation {
+  summaryCode:
+    'MIN_SUM_RANKED' | 'MIN_MAX_RANKED' | 'FAIR_PARETO_RANKED' | 'LTR_RANKED';
+  facts: RecommendationExplanationFact[];
+  warnings: string[];
+}
+
+export interface RecommendationPlaceSnapshot {
+  id: string;
+  runId: string;
+  candidateId: string;
+  canonicalCandidateKey: string;
+  rank: number;
+  groupUtility: number;
+  candidateLeastMiseryUtility: number;
+  paretoLevel: number;
+  inclusionProbability: number | null;
+  avgEtaSeconds: number;
+  maxEtaSeconds: number;
+  etaRangeSeconds: number;
+  scheduledOpeningStatus: ScheduledOpeningStatus | null;
+  openingEvidence: ScheduledOpeningEvidence | null;
+  explanation: RecommendationExplanation;
+  createdAt: Date;
+}
+
 export interface RecommendationMemberFeatureSnapshot {
   id: string;
   runId: string;
@@ -94,18 +133,34 @@ export interface RecommendationMemberFeatureSnapshot {
 export interface RecommendationCompletion {
   candidates: RecommendationCandidateSnapshot[];
   memberFeatures: RecommendationMemberFeatureSnapshot[];
+  places: RecommendationPlaceSnapshot[];
   effectiveK: number;
   warnings: string[];
   randomSeed: string;
   routeBatchCount: number;
   routeElementCount: number;
+  readyEventId: string;
 }
 
 export interface RecommendationRunResult extends RecommendationRun {
   candidates: RecommendationCandidateSnapshot[];
   memberFeatures: RecommendationMemberFeatureSnapshot[];
+  places: RecommendationPlaceSnapshot[];
 }
 
 export interface RecommendationRunView extends RecommendationRunResult {
   contextStatus: RecommendationContextStatus;
+}
+
+export interface RankedRecommendationResult extends RecommendationPlaceSnapshot {
+  candidate: RecommendationCandidateSnapshot;
+  memberResults: RecommendationMemberFeatureSnapshot[];
+}
+
+export interface RecommendationPublicView extends Omit<
+  RecommendationRunResult,
+  'candidates' | 'memberFeatures' | 'places'
+> {
+  contextStatus: RecommendationContextStatus;
+  results: RankedRecommendationResult[];
 }

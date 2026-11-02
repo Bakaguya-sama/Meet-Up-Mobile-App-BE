@@ -3,6 +3,7 @@ import { ScheduledOpeningEvaluator } from './scheduled-opening.evaluator';
 
 export interface ScheduledOpeningPolicyResult {
   candidates: EligibleCandidate[];
+  filtered: Array<{ candidate: EligibleCandidate; reason: 'SCHEDULED_CLOSED' }>;
   warnings: string[];
 }
 
@@ -12,18 +13,24 @@ export function applyScheduledOpeningPolicy(
   evaluator: ScheduledOpeningEvaluator,
 ): ScheduledOpeningPolicyResult {
   const warnings: string[] = [];
+  const filtered: ScheduledOpeningPolicyResult['filtered'] = [];
   const retained = candidates.flatMap((candidate) => {
     const evaluation = evaluator.evaluate(candidate, scheduledAt);
     warnings.push(...evaluation.warnings);
-    return evaluation.status === 'CLOSED'
-      ? []
-      : [
-          {
-            ...candidate,
-            scheduledOpeningStatus: evaluation.status,
-            openingEvidence: evaluation.evidence,
-          },
-        ];
+    const evaluated = {
+      ...candidate,
+      scheduledOpeningStatus: evaluation.status,
+      openingEvidence: evaluation.evidence,
+    };
+    if (evaluation.status === 'CLOSED') {
+      filtered.push({ candidate: evaluated, reason: 'SCHEDULED_CLOSED' });
+      return [];
+    }
+    return [evaluated];
   });
-  return { candidates: retained, warnings: [...new Set(warnings)] };
+  return {
+    candidates: retained,
+    filtered,
+    warnings: [...new Set(warnings)],
+  };
 }

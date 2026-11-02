@@ -1,13 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { RecommendationError } from '../../domain/recommendation.error';
-import type { RecommendationRun } from '../../domain/recommendation-run';
+import type {
+  RecommendationCandidateSnapshot,
+  RecommendationRun,
+} from '../../domain/recommendation-run';
 import type { CreateRecommendationRunRequest } from '../dto/recommendation-run.dto';
 import type { RecommendationRunStore } from '../ports/recommendation-run-store.port';
 import {
   RECOMMENDATION_CONFIG_DEV_V1,
   type RecommendationConfig,
 } from '../recommendation-config';
-import { filterCandidates } from '../services/candidate-filter';
+import {
+  filterCandidatesWithAudit,
+  type EligibleCandidate,
+} from '../services/candidate-filter';
 import { CandidateGenerator } from '../services/candidate-generator';
 import { RecommendationContextBuilder } from '../services/recommendation-context.builder';
 import { validateRecommendationRequest } from '../services/recommendation-request-validator';
@@ -23,6 +29,8 @@ import { PLACE_SEARCH_REQUEST_OPTIONS_VERSION } from '../ports/place-search.port
 import { RecommendationRunFreshnessGuard } from '../public/recommendation-run-freshness.guard';
 import type { RecommendationRunResult } from '../../domain/recommendation-run';
 import { applyScheduledOpeningPolicy } from '../services/scheduled-opening-policy';
+import { ExplanationBuilder } from '../services/explanation-builder';
+import { presentRecommendationResult } from '../services/recommendation-result.presenter';
 
 export class CreateRecommendationRunUseCase {
   constructor(
@@ -37,6 +45,7 @@ export class CreateRecommendationRunUseCase {
     private readonly featureBuilder: FeatureBuilder = new FeatureBuilder(),
     private readonly openingEvaluator: ScheduledOpeningEvaluator = new ScheduledOpeningEvaluator(),
     private readonly freshness?: RecommendationRunFreshnessGuard,
+    private readonly explanations: ExplanationBuilder = new ExplanationBuilder(),
   ) {}
 
   async execute(
@@ -105,7 +114,7 @@ export class CreateRecommendationRunUseCase {
         center: context.searchCenter,
         radiusMeters: request.searchRadiusMeters,
       });
-      const residualEligible = filterCandidates(
+      const residualOutcome = filterCandidatesWithAudit(
         raw,
         context.searchCenter,
         request.searchRadiusMeters,
@@ -114,11 +123,15 @@ export class CreateRecommendationRunUseCase {
       const openingPolicy =
         request.openingFilter === 'OPEN_AT_SCHEDULED_TIME'
           ? applyScheduledOpeningPolicy(
-              residualEligible,
+              residualOutcome.eligible,
               scheduledAt,
               this.openingEvaluator,
             )
-          : { candidates: residualEligible, warnings: [] };
+          : {
+              candidates: residualOutcome.eligible,
+              filtered: [],
+              warnings: [],
+            };
       const eligible = openingPolicy.candidates;
       if (!eligible.length) {
         throw new RecommendationError(
@@ -175,31 +188,84 @@ export class CreateRecommendationRunUseCase {
         ranking.map((value) => [value.canonicalCandidateKey, value]),
       );
       const completedAt = this.now();
+      const completionWarnings = [
+        ...new Set([...routeOutcome.warnings, ...openingPolicy.warnings]),
+      ];
       const candidatesByKey = new Map<string, string>();
-      const candidateSnapshots = routeOutcome.candidates.map((routable) => {
-        const candidate = eligibleByKey.get(routable.canonicalCandidateKey)!;
-        const ranked = rankByKey.get(routable.canonicalCandidateKey)!;
+      const candidateSnapshots: RecommendationCandidateSnapshot[] =
+        routeOutcome.candidates.map((routable) => {
+          const candidate = eligibleByKey.get(routable.canonicalCandidateKey)!;
+          const ranked = rankByKey.get(routable.canonicalCandidateKey)!;
+          const id = randomUUID();
+          candidatesByKey.set(candidate.canonicalCandidateKey, id);
+          return {
+            id,
+            runId: run.id,
+            canonicalCandidateKey: candidate.canonicalCandidateKey,
+            provider: candidate.provider,
+            providerPlaceId: candidate.providerPlaceId,
+            name: candidate.name,
+            latitude: candidate.latitude,
+            longitude: candidate.longitude,
+            providerTypes: [...candidate.providerTypes],
+            sourceCategories: [...candidate.sourceCategories],
+            sourcePages: [...candidate.sourcePages],
+            filterStatus: 'ELIGIBLE' as const,
+            filterReason: null,
+            createdAt: completedAt,
+            normalizedTags: [...candidate.normalizedTags],
+            rating0To5: candidate.rating0To5 ?? null,
+            userRatingCount: candidate.userRatingCount ?? null,
+            finalRank: ranked.finalRank,
+            groupUtility: ranked.groupUtility,
+            candidateLeastMiseryUtility: ranked.leastMiseryUtility,
+            paretoLevel: ranked.paretoLevel,
+            inclusionProbability: ranked.inclusionProbability,
+            avgEtaSeconds: ranked.avgEtaSeconds,
+            maxEtaSeconds: ranked.maxEtaSeconds,
+            etaRangeSeconds: ranked.etaRangeSeconds,
+            scheduledOpeningStatus: candidate.scheduledOpeningStatus ?? null,
+            openingEvidence: candidate.openingEvidence
+              ? structuredClone(candidate.openingEvidence)
+              : null,
+          };
+        });
+      const routableKeys = new Set(
+        routeOutcome.candidates.map(
+          (candidate) => candidate.canonicalCandidateKey,
+        ),
+      );
+      const filteredCandidates = [
+        ...residualOutcome.filtered,
+        ...openingPolicy.filtered,
+        ...eligible
+          .filter(
+            (candidate) => !routableKeys.has(candidate.canonicalCandidateKey),
+          )
+          .map((candidate) => ({ candidate, reason: 'NO_ROUTE' as const })),
+      ];
+      for (const audit of filteredCandidates) {
         const id = randomUUID();
-        candidatesByKey.set(candidate.canonicalCandidateKey, id);
+        candidatesByKey.set(audit.candidate.canonicalCandidateKey, id);
+        candidateSnapshots.push(
+          filteredSnapshot(
+            run.id,
+            id,
+            audit.candidate,
+            audit.reason,
+            completedAt,
+          ),
+        );
+      }
+      const places = ranking.map((ranked) => {
+        const candidate = eligibleByKey.get(ranked.canonicalCandidateKey)!;
+        const candidateId = candidatesByKey.get(ranked.canonicalCandidateKey)!;
         return {
-          id,
+          id: randomUUID(),
           runId: run.id,
-          canonicalCandidateKey: candidate.canonicalCandidateKey,
-          provider: candidate.provider,
-          providerPlaceId: candidate.providerPlaceId,
-          name: candidate.name,
-          latitude: candidate.latitude,
-          longitude: candidate.longitude,
-          providerTypes: [...candidate.providerTypes],
-          sourceCategories: [...candidate.sourceCategories],
-          sourcePages: [...candidate.sourcePages],
-          filterStatus: 'ELIGIBLE' as const,
-          filterReason: null,
-          createdAt: completedAt,
-          normalizedTags: [...candidate.normalizedTags],
-          rating0To5: candidate.rating0To5 ?? null,
-          userRatingCount: candidate.userRatingCount ?? null,
-          finalRank: ranked.finalRank,
+          candidateId,
+          canonicalCandidateKey: ranked.canonicalCandidateKey,
+          rank: ranked.finalRank,
           groupUtility: ranked.groupUtility,
           candidateLeastMiseryUtility: ranked.leastMiseryUtility,
           paretoLevel: ranked.paretoLevel,
@@ -211,6 +277,22 @@ export class CreateRecommendationRunUseCase {
           openingEvidence: candidate.openingEvidence
             ? structuredClone(candidate.openingEvidence)
             : null,
+          explanation: this.explanations.build(
+            run.rankingStrategy,
+            {
+              rank: ranked.finalRank,
+              groupUtility: ranked.groupUtility,
+              candidateLeastMiseryUtility: ranked.leastMiseryUtility,
+              paretoLevel: ranked.paretoLevel,
+              inclusionProbability: ranked.inclusionProbability,
+              avgEtaSeconds: ranked.avgEtaSeconds,
+              maxEtaSeconds: ranked.maxEtaSeconds,
+              scheduledOpeningStatus: candidate.scheduledOpeningStatus ?? null,
+            },
+            routeOutcome.effectiveK,
+            completionWarnings,
+          ),
+          createdAt: completedAt,
         };
       });
       const completed = await this.store.complete(
@@ -234,13 +316,13 @@ export class CreateRecommendationRunUseCase {
             routeStatus: 'OK' as const,
             createdAt: completedAt,
           })),
+          places,
           effectiveK: routeOutcome.effectiveK,
-          warnings: [
-            ...new Set([...routeOutcome.warnings, ...openingPolicy.warnings]),
-          ],
+          warnings: completionWarnings,
           randomSeed: seed,
           routeBatchCount: routeOutcome.batchCount,
           routeElementCount: routeOutcome.elementCount,
+          readyEventId: randomUUID(),
         },
         completedAt,
       );
@@ -261,8 +343,10 @@ export class CreateRecommendationRunUseCase {
 
   private present(run: RecommendationRunResult) {
     return this.freshness
-      ? this.freshness.toView(run)
-      : Promise.resolve({ ...run, contextStatus: 'CURRENT_CONTEXT' as const });
+      ? this.freshness
+          .status(run)
+          .then((status) => presentRecommendationResult(run, status))
+      : Promise.resolve(presentRecommendationResult(run, 'CURRENT_CONTEXT'));
   }
 
   private assertIdempotent(
@@ -295,4 +379,44 @@ export class CreateRecommendationRunUseCase {
       );
     }
   }
+}
+
+function filteredSnapshot(
+  runId: string,
+  id: string,
+  candidate: EligibleCandidate,
+  reason: string,
+  createdAt: Date,
+) {
+  return {
+    id,
+    runId,
+    canonicalCandidateKey: candidate.canonicalCandidateKey,
+    provider: candidate.provider,
+    providerPlaceId: candidate.providerPlaceId,
+    name: candidate.name,
+    latitude: candidate.latitude,
+    longitude: candidate.longitude,
+    providerTypes: [...candidate.providerTypes],
+    sourceCategories: [...candidate.sourceCategories],
+    sourcePages: [...candidate.sourcePages],
+    filterStatus: 'FILTERED' as const,
+    filterReason: reason,
+    createdAt,
+    normalizedTags: [...candidate.normalizedTags],
+    rating0To5: candidate.rating0To5 ?? null,
+    userRatingCount: candidate.userRatingCount ?? null,
+    finalRank: null,
+    groupUtility: null,
+    candidateLeastMiseryUtility: null,
+    paretoLevel: null,
+    inclusionProbability: null,
+    avgEtaSeconds: null,
+    maxEtaSeconds: null,
+    etaRangeSeconds: null,
+    scheduledOpeningStatus: candidate.scheduledOpeningStatus ?? null,
+    openingEvidence: candidate.openingEvidence
+      ? structuredClone(candidate.openingEvidence)
+      : null,
+  };
 }

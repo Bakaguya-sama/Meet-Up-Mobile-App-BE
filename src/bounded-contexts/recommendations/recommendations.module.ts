@@ -59,6 +59,9 @@ import {
 } from './application/ports/meetup-schedule.port';
 import { MeetupsScheduleAdapter } from './infrastructure/adapters/meetups-schedule.adapter';
 import { RecommendationRunFreshnessGuard } from './application/public/recommendation-run-freshness.guard';
+import { RecommendationPlaceEntity } from './infrastructure/persistence/typeorm/entities/recommendation-place.typeorm-entity';
+import { ExplanationBuilder } from './application/services/explanation-builder';
+import { OutboxEventTypeOrmEntity } from '../../infrastructure/outbox/persistence/outbox-event.typeorm-entity';
 
 @Module({
   imports: [
@@ -68,6 +71,8 @@ import { RecommendationRunFreshnessGuard } from './application/public/recommenda
       RecommendationRunEntity,
       RecommendationCandidateEntity,
       RecommendationMemberFeatureEntity,
+      RecommendationPlaceEntity,
+      OutboxEventTypeOrmEntity,
     ]),
   ],
   controllers: [RecommendationsController],
@@ -142,6 +147,7 @@ import { RecommendationRunFreshnessGuard } from './application/public/recommenda
       provide: ScheduledOpeningEvaluator,
       useFactory: () => new ScheduledOpeningEvaluator(),
     },
+    ExplanationBuilder,
     {
       provide: CreateRecommendationRunUseCase,
       useFactory: (
@@ -154,6 +160,7 @@ import { RecommendationRunFreshnessGuard } from './application/public/recommenda
         featureBuilder: FeatureBuilder,
         openingEvaluator: ScheduledOpeningEvaluator,
         freshness: RecommendationRunFreshnessGuard,
+        explanations: ExplanationBuilder,
       ) =>
         new CreateRecommendationRunUseCase(
           store,
@@ -167,6 +174,7 @@ import { RecommendationRunFreshnessGuard } from './application/public/recommenda
           featureBuilder,
           openingEvaluator,
           freshness,
+          explanations,
         ),
       inject: [
         RECOMMENDATION_RUN_STORE,
@@ -178,6 +186,7 @@ import { RecommendationRunFreshnessGuard } from './application/public/recommenda
         FeatureBuilder,
         ScheduledOpeningEvaluator,
         RecommendationRunFreshnessGuard,
+        ExplanationBuilder,
       ],
     },
     {

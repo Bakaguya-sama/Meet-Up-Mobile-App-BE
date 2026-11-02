@@ -6,7 +6,10 @@ import { ParticipantEntity } from '../src/bounded-contexts/meetups/infrastructur
 import { ParticipantPreferenceEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/participant-preference.typeorm-entity';
 import { TypeOrmMeetupRepository } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/typeorm-meetup-repository';
 import { MeetupScheduleReader } from '../src/bounded-contexts/meetups/application/public/meetup-schedule-reader';
-import type { RecommendationRun } from '../src/bounded-contexts/recommendations/domain/recommendation-run';
+import type {
+  RecommendationPlaceSnapshot,
+  RecommendationRun,
+} from '../src/bounded-contexts/recommendations/domain/recommendation-run';
 import { RecommendationCandidateEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-candidate.typeorm-entity';
 import { RecommendationRunEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-run.typeorm-entity';
 import { TypeOrmRecommendationRunRepository } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/typeorm-recommendation-run.repository';
@@ -20,6 +23,10 @@ import { AddRecommendationTemporalContext1792100000000 } from '../src/infrastruc
 import { CreateMeetupParticipantPreferencesTable1792070001000 } from '../src/infrastructure/database/migrations/1792070001000-create-meetup-participant-preferences-table';
 import { MeetupsScheduleAdapter } from '../src/bounded-contexts/recommendations/infrastructure/adapters/meetups-schedule.adapter';
 import { RecommendationRunFreshnessGuard } from '../src/bounded-contexts/recommendations/application/public/recommendation-run-freshness.guard';
+import { RecommendationPlaceEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-place.typeorm-entity';
+import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persistence/outbox-event.typeorm-entity';
+import { CreateOutboxEventsTable1760000006000 } from '../src/infrastructure/database/migrations/1760000006000-create-outbox-events-table';
+import { CreateRecommendationResults1792110000000 } from '../src/infrastructure/database/migrations/1792110000000-create-recommendation-results';
 
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -59,20 +66,25 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         RecommendationRunEntity,
         RecommendationCandidateEntity,
         RecommendationMemberFeatureEntity,
+        RecommendationPlaceEntity,
+        OutboxEventTypeOrmEntity,
       ],
       migrations: [
         CreateAuthTables1760000001000,
         CreateUserPreferencesTables1760000002000,
+        CreateOutboxEventsTable1760000006000,
         CreateMeetupsTables1792070000000,
         CreateMeetupParticipantPreferencesTable1792070001000,
         CreateRecommendationRunBaseline1792080000000,
         AddRecommendationRankingSnapshots1792090000000,
         AddRecommendationTemporalContext1792100000000,
+        CreateRecommendationResults1792110000000,
       ],
     }).initialize();
 
     await db.runMigrations();
     await assertTemporalSchema(db, schema);
+    await assertResultSchema(db, schema);
     const columns = await db.query<Array<{ column_name: string }>>(
       `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name IN ('recommendation_runs', 'recommendation_candidates')`,
       [schema],
@@ -93,23 +105,19 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
     await db.undoLastMigration();
     expect(
       await db.query(
-        `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'recommendation_runs' AND column_name = 'scheduled_at_snapshot'`,
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'recommendation_places'`,
         [schema],
       ),
     ).toEqual([]);
     expect(
       await db.query(
-        `SELECT column_name FROM information_schema.columns
-         WHERE table_schema = $1
-           AND (
-             table_name = 'recommendation_candidates'
-             AND column_name IN ('scheduled_opening_status', 'opening_evidence')
-           )`,
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'recommendation_runs' AND column_name = 'scheduled_at_snapshot'`,
         [schema],
       ),
-    ).toEqual([]);
+    ).toEqual([{ column_name: 'scheduled_at_snapshot' }]);
     await db.runMigrations();
     await assertTemporalSchema(db, schema);
+    await assertResultSchema(db, schema);
     expect(
       await db.query(
         `SELECT column_name FROM information_schema.columns
@@ -334,11 +342,13 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
             },
           ],
           memberFeatures: [],
+          places: [],
           effectiveK: 1,
           warnings: [],
           randomSeed: 'seed',
           routeBatchCount: 1,
           routeElementCount: 1,
+          readyEventId: randomUUID(),
         },
         new Date(),
       ),
@@ -353,6 +363,13 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
     const valid = run();
     await repository.create(valid);
     const validCandidateId = randomUUID();
+    const readyEventId = randomUUID();
+    const validPlace = place(
+      valid.id,
+      validCandidateId,
+      'google-places:cafe-1',
+      1,
+    );
     const completed = await repository.complete(
       valid.id,
       {
@@ -412,11 +429,13 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
             createdAt: new Date(),
           },
         ],
+        places: [validPlace],
         effectiveK: 1,
         warnings: ['RESULT_COUNT_BELOW_REQUESTED_K'],
         randomSeed: 'seed',
         routeBatchCount: 1,
         routeElementCount: 1,
+        readyEventId,
       },
       new Date(),
     );
@@ -427,6 +446,7 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
     });
     expect(completed.candidates).toHaveLength(1);
     expect(completed.memberFeatures).toHaveLength(1);
+    expect(completed.places).toEqual([validPlace]);
     expect(completed.memberFeatures[0].etaSeconds).toBe(1_500);
     const persisted = await repository.findById(meetupId, valid.id);
     expect(persisted).toMatchObject({
@@ -437,6 +457,28 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
       scheduledOpeningStatus: 'OPEN',
     });
     expect(persisted?.memberFeatures[0].etaSeconds).toBe(1_500);
+    expect(persisted?.places[0].explanation.facts).toEqual(
+      validPlace.explanation.facts,
+    );
+    const outboxRows = await db.query<
+      Array<{
+        event_name: string;
+        destination: string;
+        payload: Record<string, unknown>;
+      }>
+    >(
+      `SELECT event_name, destination, payload FROM outbox_events WHERE id = $1`,
+      [readyEventId],
+    );
+    expect(outboxRows).toHaveLength(1);
+    expect(outboxRows[0].event_name).toBe('RecommendationReady.v1');
+    expect(outboxRows[0].destination).toBe('realtime');
+    expect(outboxRows[0].payload).toMatchObject({
+      eventId: readyEventId,
+      meetupId,
+      runId: valid.id,
+      placeIds: ['cafe-1'],
+    });
 
     const freshness = new RecommendationRunFreshnessGuard(
       repository,
@@ -468,7 +510,176 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
       scheduledAtSnapshot: new Date('2026-10-30T19:00:00Z'),
     });
   });
+
+  it('rolls back persisted snapshots and ready event when the state transition fails', async () => {
+    const faulted = run();
+    const candidateId = randomUUID();
+    const eventId = randomUUID();
+    await repository.create(faulted);
+    await db.query(`
+      CREATE FUNCTION ${schema}.reject_recommendation_completion()
+      RETURNS trigger AS $$
+      BEGIN
+        IF NEW.status = 'COMPLETED' THEN
+          RAISE EXCEPTION 'injected completion transition failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      CREATE TRIGGER reject_recommendation_completion
+      BEFORE UPDATE ON recommendation_runs
+      FOR EACH ROW EXECUTE FUNCTION ${schema}.reject_recommendation_completion();
+    `);
+    try {
+      await expect(
+        repository.complete(
+          faulted.id,
+          {
+            candidates: [candidate(faulted.id, candidateId)],
+            memberFeatures: [
+              memberFeature(faulted.id, candidateId, participantId),
+            ],
+            places: [
+              place(faulted.id, candidateId, 'google-places:faulted', 1),
+            ],
+            effectiveK: 1,
+            warnings: [],
+            randomSeed: 'seed',
+            routeBatchCount: 1,
+            routeElementCount: 1,
+            readyEventId: eventId,
+          },
+          new Date(),
+        ),
+      ).rejects.toThrow('injected completion transition failure');
+    } finally {
+      await db.query(
+        'DROP TRIGGER reject_recommendation_completion ON recommendation_runs',
+      );
+      await db.query(
+        `DROP FUNCTION ${schema}.reject_recommendation_completion()`,
+      );
+    }
+    await expect(
+      repository.findById(meetupId, faulted.id),
+    ).resolves.toMatchObject({
+      status: 'RUNNING',
+      candidates: [],
+      memberFeatures: [],
+      places: [],
+    });
+    await expect(
+      db.query('SELECT id FROM outbox_events WHERE id = $1', [eventId]),
+    ).resolves.toEqual([]);
+  });
 });
+
+function candidate(runId: string, id: string) {
+  return {
+    id,
+    runId,
+    canonicalCandidateKey: 'google-places:faulted',
+    provider: 'google-places',
+    providerPlaceId: 'faulted',
+    name: 'Faulted',
+    latitude: 10.7,
+    longitude: 106.7,
+    providerTypes: ['cafe'],
+    sourceCategories: ['cafe'],
+    sourcePages: [1],
+    filterStatus: 'ELIGIBLE' as const,
+    filterReason: null,
+    createdAt: new Date(),
+    normalizedTags: ['cafe'],
+    rating0To5: 4,
+    userRatingCount: 10,
+    finalRank: 1,
+    groupUtility: 0.7,
+    candidateLeastMiseryUtility: 0.6,
+    paretoLevel: 1,
+    inclusionProbability: 1,
+    avgEtaSeconds: 300,
+    maxEtaSeconds: 300,
+    etaRangeSeconds: 0,
+    scheduledOpeningStatus: 'OPEN' as const,
+    openingEvidence: null,
+  };
+}
+
+function memberFeature(
+  runId: string,
+  candidateId: string,
+  participantId: string,
+) {
+  return {
+    id: randomUUID(),
+    runId,
+    candidateId,
+    participantId,
+    canonicalCandidateKey: 'google-places:faulted',
+    etaSeconds: 300,
+    distanceMeters: 1000,
+    matchedTags: [],
+    missingFlags: [],
+    travelUtility: 0.7,
+    preferenceUtility: 0.7,
+    placeQualityUtility: 0.7,
+    memberUtility: 0.7,
+    routeStatus: 'OK' as const,
+    createdAt: new Date(),
+  };
+}
+
+function place(
+  runId: string,
+  candidateId: string,
+  canonicalCandidateKey: string,
+  rank: number,
+): RecommendationPlaceSnapshot {
+  return {
+    id: randomUUID(),
+    runId,
+    candidateId,
+    canonicalCandidateKey,
+    rank,
+    groupUtility: 0.7,
+    candidateLeastMiseryUtility: 0.6,
+    paretoLevel: 1,
+    inclusionProbability: 1,
+    avgEtaSeconds: 300,
+    maxEtaSeconds: 300,
+    etaRangeSeconds: 0,
+    scheduledOpeningStatus: 'OPEN',
+    openingEvidence: null,
+    explanation: {
+      summaryCode: 'FAIR_PARETO_RANKED',
+      facts: [
+        { key: 'rank', value: rank, unit: 'COUNT', source: 'ENGINE' },
+        { key: 'avgEtaSeconds', value: 300, unit: 'SECOND', source: 'ROUTES' },
+      ],
+      warnings: [],
+    },
+    createdAt: new Date(),
+  };
+}
+
+async function assertResultSchema(db: DataSource, schema: string) {
+  const columns = await db.query<Array<{ column_name: string }>>(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'recommendation_places'`,
+    [schema],
+  );
+  expect(columns.map((row) => row.column_name)).toEqual(
+    expect.arrayContaining([
+      'run_id',
+      'candidate_id',
+      'rank',
+      'group_utility',
+      'candidate_least_misery_utility',
+      'explanation',
+    ]),
+  );
+}
 
 async function assertTemporalSchema(db: DataSource, schema: string) {
   const columns = await db.query<

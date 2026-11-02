@@ -154,8 +154,7 @@ function recommendationRunSchema(): Extract<
       'openingFilter',
       'openingEvaluatorVersion',
       'contextStatus',
-      'candidates',
-      'memberFeatures',
+      'results',
     ],
     properties: {
       id: { type: 'string', format: 'uuid' },
@@ -174,31 +173,108 @@ function recommendationRunSchema(): Extract<
         enum: ['CURRENT_CONTEXT', 'STALE_CONTEXT'],
       },
       warnings: { type: 'array', items: { type: 'string' } },
-      candidates: {
+      results: {
         type: 'array',
         items: {
           type: 'object',
+          required: [
+            'rank',
+            'avgEtaSeconds',
+            'maxEtaSeconds',
+            'groupUtility',
+            'candidateLeastMiseryUtility',
+            'candidate',
+            'memberResults',
+            'explanation',
+          ],
           properties: {
-            canonicalCandidateKey: { type: 'string' },
-            finalRank: { type: 'integer', nullable: true },
+            rank: { type: 'integer' },
+            avgEtaSeconds: { type: 'number' },
+            maxEtaSeconds: { type: 'number' },
+            etaRangeSeconds: { type: 'number' },
+            groupUtility: { type: 'number', minimum: 0, maximum: 1 },
+            candidateLeastMiseryUtility: {
+              type: 'number',
+              minimum: 0,
+              maximum: 1,
+            },
+            paretoLevel: { type: 'integer' },
+            inclusionProbability: {
+              type: 'number',
+              minimum: 0,
+              maximum: 1,
+              nullable: true,
+            },
             scheduledOpeningStatus: {
               type: 'string',
               enum: ['OPEN', 'CLOSED', 'UNKNOWN'],
               nullable: true,
             },
             openingEvidence: { type: 'object', nullable: true },
-          },
-        },
-      },
-      memberFeatures: {
-        type: 'array',
-        items: {
-          type: 'object',
-          required: ['participantId', 'canonicalCandidateKey', 'etaSeconds'],
-          properties: {
-            participantId: { type: 'string', format: 'uuid' },
-            canonicalCandidateKey: { type: 'string' },
-            etaSeconds: { type: 'number' },
+            candidate: {
+              type: 'object',
+              required: ['canonicalCandidateKey', 'providerPlaceId', 'name'],
+              properties: {
+                canonicalCandidateKey: { type: 'string' },
+                providerPlaceId: { type: 'string' },
+                name: { type: 'string' },
+              },
+            },
+            memberResults: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: [
+                  'participantId',
+                  'etaSeconds',
+                  'distanceMeters',
+                  'memberUtility',
+                  'routeStatus',
+                ],
+                properties: {
+                  participantId: { type: 'string', format: 'uuid' },
+                  etaSeconds: { type: 'number' },
+                  distanceMeters: { type: 'number' },
+                  memberUtility: { type: 'number' },
+                  routeStatus: { type: 'string', enum: ['OK'] },
+                },
+              },
+            },
+            explanation: {
+              type: 'object',
+              required: ['summaryCode', 'facts', 'warnings'],
+              properties: {
+                summaryCode: { type: 'string' },
+                facts: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    required: ['key', 'value', 'source'],
+                    properties: {
+                      key: { type: 'string' },
+                      value: {
+                        oneOf: [{ type: 'string' }, { type: 'number' }],
+                      },
+                      unit: {
+                        type: 'string',
+                        enum: [
+                          'SECOND',
+                          'METER',
+                          'UTILITY_0_1',
+                          'PROBABILITY_0_1',
+                          'COUNT',
+                        ],
+                      },
+                      source: {
+                        type: 'string',
+                        enum: ['ROUTES', 'PLACES', 'WEATHER', 'ENGINE'],
+                      },
+                    },
+                  },
+                },
+                warnings: { type: 'array', items: { type: 'string' } },
+              },
+            },
           },
         },
       },

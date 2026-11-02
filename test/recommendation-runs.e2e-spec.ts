@@ -49,15 +49,25 @@ interface RecommendationRunHttpBody {
   requestedAt: string;
   scheduledAtSnapshot: string;
   openingFilter: string;
-  candidates: Array<{
-    finalRank: number;
+  algorithmVersion: string;
+  configVersion: string;
+  featureSchemaVersion: string;
+  results: Array<{
+    rank: number;
     groupUtility: number;
+    candidateLeastMiseryUtility: number;
     avgEtaSeconds: number;
+    maxEtaSeconds: number;
     scheduledOpeningStatus: 'OPEN' | 'UNKNOWN' | null;
-  }>;
-  memberFeatures: Array<{
-    participantId: string;
-    etaSeconds: number;
+    candidate: { providerPlaceId: string; canonicalCandidateKey: string };
+    memberResults: Array<{
+      participantId: string;
+      etaSeconds: number;
+    }>;
+    explanation: {
+      summaryCode: string;
+      facts: Array<{ key: string; value: string | number; source: string }>;
+    };
   }>;
 }
 
@@ -75,7 +85,8 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     | 'noRoute'
     | 'scheduledOpen'
     | 'scheduledClosed'
-    | 'scheduledUnknown' = 'success';
+    | 'scheduledUnknown'
+    | 'multiple' = 'success';
   let routeRequestCount = 0;
   const placeRequestBodies: Array<Record<string, unknown>> = [];
   const placeFieldMasks: string[] = [];
@@ -146,41 +157,45 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
             places:
               googleMode === 'empty'
                 ? []
-                : [
-                    {
-                      id: 'cafe-1',
-                      displayName: { text: 'Cafe One' },
-                      types: ['cafe'],
-                      location: { latitude: 10.7, longitude: 106.7 },
-                      businessStatus: 'OPERATIONAL',
-                      ...(googleMode === 'scheduledUnknown'
-                        ? {}
-                        : googleMode === 'scheduledClosed'
+                : (googleMode === 'multiple'
+                    ? ['cafe-3', 'cafe-1', 'cafe-2']
+                    : ['cafe-1']
+                  ).map((id) => ({
+                    id,
+                    displayName: { text: `Cafe ${id}` },
+                    types: ['cafe'],
+                    location: {
+                      latitude: 10.7 + Number(id.at(-1)) * 0.0001,
+                      longitude: 106.7,
+                    },
+                    businessStatus: 'OPERATIONAL',
+                    ...(googleMode === 'scheduledUnknown'
+                      ? {}
+                      : googleMode === 'scheduledClosed'
+                        ? {
+                            utcOffsetMinutes: 0,
+                            regularOpeningHours: {
+                              periods: [
+                                {
+                                  open: { day: 0, hour: 1, minute: 0 },
+                                  close: { day: 0, hour: 2, minute: 0 },
+                                },
+                              ],
+                            },
+                          }
+                        : googleMode === 'scheduledOpen'
                           ? {
                               utcOffsetMinutes: 0,
                               regularOpeningHours: {
                                 periods: [
                                   {
-                                    open: { day: 0, hour: 1, minute: 0 },
-                                    close: { day: 0, hour: 2, minute: 0 },
+                                    open: { day: 0, hour: 0, minute: 0 },
                                   },
                                 ],
                               },
                             }
-                          : googleMode === 'scheduledOpen'
-                            ? {
-                                utcOffsetMinutes: 0,
-                                regularOpeningHours: {
-                                  periods: [
-                                    {
-                                      open: { day: 0, hour: 0, minute: 0 },
-                                    },
-                                  ],
-                                },
-                              }
-                            : { currentOpeningHours: { openNow: true } }),
-                    },
-                  ],
+                          : { currentOpeningHours: { openNow: true } }),
+                  })),
             ...(parsed.pageToken ? {} : {}),
           }),
         );
@@ -354,10 +369,10 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       routeElementCount: 2,
       contextStatus: 'CURRENT_CONTEXT',
     });
-    expect(createdBody.candidates).toHaveLength(1);
-    expect(createdBody.candidates[0]).toMatchObject({ finalRank: 1 });
-    expect(Number.isFinite(createdBody.candidates[0].groupUtility)).toBe(true);
-    expect(Number.isFinite(createdBody.candidates[0].avgEtaSeconds)).toBe(true);
+    expect(createdBody.results).toHaveLength(1);
+    expect(createdBody.results[0]).toMatchObject({ rank: 1 });
+    expect(Number.isFinite(createdBody.results[0].groupUtility)).toBe(true);
+    expect(Number.isFinite(createdBody.results[0].avgEtaSeconds)).toBe(true);
     expect(
       await db.query(
         'SELECT count(*)::int AS count FROM recommendation_member_features WHERE run_id = $1',
@@ -373,12 +388,28 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       .expect(200);
     const retriedBody = retried.body as RecommendationRunHttpBody;
     expect(retriedBody.id).toBe(createdBody.id);
+    expect(retriedBody.results).toEqual(createdBody.results);
+    expect(retriedBody.algorithmVersion).toBe(createdBody.algorithmVersion);
+    expect(retriedBody.configVersion).toBe(createdBody.configVersion);
+    expect(retriedBody.featureSchemaVersion).toBe(
+      createdBody.featureSchemaVersion,
+    );
     expect(
       await db.query(
         'SELECT count(*)::int AS count FROM recommendation_runs WHERE meetup_id = $1 AND request_id = $2',
         [meetupId, requestId],
       ),
     ).toEqual([{ count: 1 }]);
+    expect(
+      await db.query(
+        `SELECT
+           (SELECT count(*)::int FROM recommendation_candidates WHERE run_id = $1) AS candidates,
+           (SELECT count(*)::int FROM recommendation_member_features WHERE run_id = $1) AS features,
+           (SELECT count(*)::int FROM recommendation_places WHERE run_id = $1) AS places,
+           (SELECT count(*)::int FROM outbox_events WHERE event_name = 'RecommendationReady.v1' AND payload->>'runId' = $1::text) AS events`,
+        [createdBody.id],
+      ),
+    ).toEqual([{ candidates: 1, features: 2, places: 1, events: 1 }]);
 
     const fetched = await request(app.getHttpServer())
       .get(`/api/v1/meetups/${meetupId}/recommendation-runs/${createdBody.id}`)
@@ -426,14 +457,16 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       contextStatus: 'CURRENT_CONTEXT',
     });
     expect(result.warnings).toContain('OPENING_FROM_REGULAR_HOURS');
-    expect(result.candidates[0]).toMatchObject({
+    expect(result.results[0]).toMatchObject({
       scheduledOpeningStatus: 'OPEN',
     });
-    expect(result.memberFeatures).toHaveLength(2);
+    expect(result.results[0].memberResults).toHaveLength(2);
     expect(
-      result.memberFeatures.every((feature) => feature.etaSeconds === 1500),
+      result.results[0].memberResults.every(
+        (feature) => feature.etaSeconds === 1500,
+      ),
     ).toBe(true);
-    expect(result.memberFeatures[0]).not.toHaveProperty(
+    expect(result.results[0].memberResults[0]).not.toHaveProperty(
       'recommendedDepartureAt',
     );
     const rows = await db.query<
@@ -498,9 +531,9 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     const result = created.body as RecommendationRunHttpBody;
 
     expect(result.scheduledAtSnapshot).toBe('2030-01-02T00:10:00.000Z');
-    expect(result.memberFeatures.map((item) => item.etaSeconds)).toEqual([
-      1500, 1500,
-    ]);
+    expect(
+      result.results[0].memberResults.map((item) => item.etaSeconds),
+    ).toEqual([1500, 1500]);
   });
 
   it('filters CLOSED before Routes and keeps UNKNOWN with a warning', async () => {
@@ -532,7 +565,7 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     expect(unknownBody.warnings).toEqual(
       expect.arrayContaining(['OPENING_STATUS_UNKNOWN']),
     );
-    expect(unknownBody.candidates[0].scheduledOpeningStatus).toBe('UNKNOWN');
+    expect(unknownBody.results[0].scheduledOpeningStatus).toBe('UNKNOWN');
   });
 
   it('returns STALE_CONTEXT without mutating the snapshot and blocks decision guard', async () => {
@@ -548,7 +581,7 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       .send(scheduledBody())
       .expect(200);
     const original = created.body as RecommendationRunHttpBody;
-    const originalRanks = original.candidates.map((item) => item.finalRank);
+    const originalRanks = original.results.map((item) => item.rank);
 
     await db.query(
       'UPDATE meetup_sessions SET scheduled_at = $2 WHERE id = $1',
@@ -564,8 +597,8 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       scheduledAtSnapshot: '2030-01-01T19:00:00.000Z',
     });
     expect(
-      (stale.body as RecommendationRunHttpBody).candidates.map(
-        (item) => item.finalRank,
+      (stale.body as RecommendationRunHttpBody).results.map(
+        (item) => item.rank,
       ),
     ).toEqual(originalRanks);
     await expect(
@@ -609,8 +642,140 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
           [meetupId, requestId],
         ),
       ).toEqual([{ status: 'FAILED', failure_code: code }]);
+      const callsAfterFailure = placeRequestBodies.length;
+      await request(app.getHttpServer())
+        .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+        .set('Authorization', `Bearer ${await token()}`)
+        .set('Idempotency-Key', requestId)
+        .send(body())
+        .expect(status)
+        .expect(({ body: error }) => expect(error).toMatchObject({ code }));
+      expect(placeRequestBodies).toHaveLength(callsAfterFailure);
     },
   );
+
+  it('stores the full rank while returning only top-K with exact explanation facts', async () => {
+    googleMode = 'multiple';
+    const created = await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(body())
+      .expect(200);
+    const result = created.body as RecommendationRunHttpBody;
+    expect(result.results).toHaveLength(2);
+    expect(result.results.map((item) => item.rank)).toEqual([1, 2]);
+    expect(
+      result.results.every((item) => item.memberResults.length === 2),
+    ).toBe(true);
+    for (const item of result.results) {
+      expect(item.explanation.summaryCode).toBe('FAIR_PARETO_RANKED');
+      expect(item.explanation.facts).toEqual(
+        expect.arrayContaining([
+          { key: 'rank', value: item.rank, unit: 'COUNT', source: 'ENGINE' },
+          {
+            key: 'avgEtaSeconds',
+            value: item.avgEtaSeconds,
+            unit: 'SECOND',
+            source: 'ROUTES',
+          },
+          {
+            key: 'maxEtaSeconds',
+            value: item.maxEtaSeconds,
+            unit: 'SECOND',
+            source: 'ROUTES',
+          },
+        ]),
+      );
+    }
+    expect(
+      await db.query(
+        'SELECT count(*)::int AS count FROM recommendation_places WHERE run_id = $1',
+        [result.id],
+      ),
+    ).toEqual([{ count: 3 }]);
+  });
+
+  it('returns 409 for a retry while the stored run is RUNNING', async () => {
+    googleMode = 'success';
+    const authorization = `Bearer ${await token()}`;
+    const requestId = randomUUID();
+    const created = await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+      .set('Authorization', authorization)
+      .set('Idempotency-Key', requestId)
+      .send(body())
+      .expect(200);
+    const createdBody = created.body as RecommendationRunHttpBody;
+    await db.query(
+      "UPDATE recommendation_runs SET status = 'RUNNING' WHERE id = $1",
+      [createdBody.id],
+    );
+    try {
+      await request(app.getHttpServer())
+        .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+        .set('Authorization', authorization)
+        .set('Idempotency-Key', requestId)
+        .send(body())
+        .expect(409)
+        .expect(({ body: error }) =>
+          expect(error).toMatchObject({
+            code: 'RECOMMENDATION_RUN_IN_PROGRESS',
+          }),
+        );
+    } finally {
+      await db.query(
+        "UPDATE recommendation_runs SET status = 'COMPLETED' WHERE id = $1",
+        [createdBody.id],
+      );
+    }
+  });
+
+  it('rolls back snapshots and returns no success when completion transition fails', async () => {
+    const functionName = `reject_completion_${randomUUID().replaceAll('-', '')}`;
+    await db.query(`
+      CREATE FUNCTION ${functionName}() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.status = 'COMPLETED' THEN
+          RAISE EXCEPTION 'injected completion transition failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      CREATE TRIGGER ${functionName}
+      BEFORE UPDATE ON recommendation_runs
+      FOR EACH ROW EXECUTE FUNCTION ${functionName}();
+    `);
+    const requestId = randomUUID();
+    try {
+      googleMode = 'success';
+      await request(app.getHttpServer())
+        .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+        .set('Authorization', `Bearer ${await token()}`)
+        .set('Idempotency-Key', requestId)
+        .send(body())
+        .expect(503);
+    } finally {
+      await db.query(`DROP TRIGGER ${functionName} ON recommendation_runs`);
+      await db.query(`DROP FUNCTION ${functionName}()`);
+    }
+    const rows = await db.query<Array<{ id: string; status: string }>>(
+      'SELECT id, status FROM recommendation_runs WHERE request_id = $1',
+      [requestId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('FAILED');
+    expect(
+      await db.query(
+        `SELECT
+           (SELECT count(*)::int FROM recommendation_candidates WHERE run_id = $1) AS candidates,
+           (SELECT count(*)::int FROM recommendation_member_features WHERE run_id = $1) AS features,
+           (SELECT count(*)::int FROM recommendation_places WHERE run_id = $1) AS places,
+           (SELECT count(*)::int FROM outbox_events WHERE payload->>'runId' = $1::text) AS events`,
+        [rows[0].id],
+      ),
+    ).toEqual([{ candidates: 0, features: 0, places: 0, events: 0 }]);
+  });
 
   it('returns the documented validation error without creating a run', async () => {
     const requestId = randomUUID();
