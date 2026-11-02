@@ -233,10 +233,12 @@ Backend không sinh hoặc lưu bitmap QR; mobile mã hóa HTTPS universal/app l
 
 ```http
 GET  /api/v1/friends/qr-profiles/:publicHandle
+GET  /api/v1/friends/public-handle
 POST /api/v1/friends/public-handle/rotate
+DELETE /api/v1/friends/public-handle
 ```
 
-`public_handle` là cột `unique`, nullable ở `user_accounts`; không có bảng QR/profile riêng. Preview yêu cầu actor đăng nhập và chỉ trả `{ publicHandle, displayName, avatarUrl, friendship }`, không trả internal `userAccountId`. Chủ tài khoản có thể tắt/rotate handle; handle cũ không resolve sau rotate. Sau preview, mobile dùng `POST /api/v1/friends/requests` với `{ recipientPublicHandle: publicHandle }`; controller resolve handle qua public directory rồi gọi use case friendship hiện có. Scan không tự tạo friendship.
+`public_handle` là cột `unique`, nullable ở `user_accounts`; không có bảng QR/profile riêng. Mobile gọi `GET /public-handle` để khôi phục handle hiện tại khi mở màn hình QR; response là `{ publicHandle: string | null }`, không tự tạo/rotate handle và có `Cache-Control: no-store`. Preview yêu cầu actor đăng nhập và chỉ trả `{ publicHandle, displayName, avatarUrl, friendship }`, không trả internal `userAccountId`. Chủ tài khoản có thể tắt/rotate handle; handle cũ không resolve sau rotate. Sau preview, mobile dùng `POST /api/v1/friends/requests` với `{ recipientPublicHandle: publicHandle }`; controller resolve handle qua public directory rồi gọi use case friendship hiện có. Scan không tự tạo friendship.
 
 **QR tạm thời** dùng phiên Redis TTL:
 
