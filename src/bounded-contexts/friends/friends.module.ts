@@ -1,15 +1,20 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { FRIENDSHIP_STORE } from './application/ports/persistence/friendship-store.port';
 import type { FriendshipStorePort } from './application/ports/persistence/friendship-store.port';
 import { FRIEND_QR_SESSION_STORE } from './application/ports/persistence/friend-qr-session-store.port';
+import type {
+  FriendQrSessionStorePort,
+} from './application/ports/persistence/friend-qr-session-store.port';
 import { FRIEND_USER_DIRECTORY } from './application/ports/user-directory.port';
 import type { FriendUserDirectoryPort } from './application/ports/user-directory.port';
 import { ListFriendshipsQuery } from './application/queries/list-friendships.query';
 import { ResolvePublicQrProfileQuery } from './application/queries/resolve-public-qr-profile.query';
 import { SearchUsersQuery } from './application/queries/search-users.query';
 import { SendFriendRequestUseCase } from './application/use-cases/send-friend-request.use-case';
+import { CreateFriendQrSessionUseCase } from './application/use-cases/create-friend-qr-session.use-case';
 import { RespondFriendRequestUseCase } from './application/use-cases/respond-friend-request.use-case';
 import { UnfriendUseCase } from './application/use-cases/unfriend.use-case';
 import { AuthUserDirectoryAdapter } from './infrastructure/adapters/auth-user-directory.adapter';
@@ -33,6 +38,19 @@ import { PrivacySelectedFriendPurge } from '../auth/application/public/privacy-s
     {
       provide: FRIEND_QR_SESSION_STORE,
       useClass: RedisFriendQrSessionStore,
+    },
+    {
+      provide: CreateFriendQrSessionUseCase,
+      useFactory: (
+        store: FriendQrSessionStorePort,
+        config: ConfigService,
+      ) =>
+        new CreateFriendQrSessionUseCase(
+          store,
+          config.getOrThrow<number>('friendQr.sessionTtlSeconds'),
+          config.getOrThrow<string>('app.publicAppBaseUrl'),
+        ),
+      inject: [FRIEND_QR_SESSION_STORE, ConfigService],
     },
     { provide: FRIEND_USER_DIRECTORY, useClass: AuthUserDirectoryAdapter },
     {
