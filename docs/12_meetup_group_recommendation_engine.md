@@ -1621,6 +1621,8 @@ Mỗi model version lưu:
 | `recommendation_algorithm_configs` | Cấu hình bất biến theo version. | weights, thresholds, sample count, checksum. |
 | `recommendation_model_versions` | Registry metadata cho LTR. | state, artifact URI, feature schema, metrics. |
 
+Trong implementation BE-23, `recommendation_places` tham chiếu trực tiếp `recommendation_candidates` và chứa một row cho mỗi candidate đã được xếp full rank. `explanation` là JSONB có `summaryCode`, facts gắn `unit/source` và warnings. API chỉ project các row có `rank <= effective_k`; candidate bị filter hoặc thiếu route không có row `recommendation_places` và không thể lọt vào response.
+
 ### 11.2. API đề xuất
 
 #### Tạo recommendation run

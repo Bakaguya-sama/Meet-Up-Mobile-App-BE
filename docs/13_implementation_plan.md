@@ -334,7 +334,7 @@ Người xác nhận: owner theo sheet thực hiện; backend còn lại review 
 
 **Trạng thái: ✅ Hoàn tất (27/10/2026).** Repository/API, ContextBuilder privacy/location,
 Google pagination, DBML/entity/migration, migration cycle, integration/E2E và full quality gate
-đều đã có evidence chạy thật. Chi tiết kiểm toán: [`step1-tracker.md`](step1-tracker.md).
+đều đã có evidence chạy thật. Chi tiết kiểm toán: [`step1-tracker.md`](../../step1-tracker.md).
 
 **Mục tiêu.** Tạo run idempotent, context hợp lệ và tập `EligibleCandidate` đã qua provider-side filter, merge/dedup và residual hard constraint. [Nguồn: workbook — BE-14, BE-15; Doc 12 — Mục 4.2, 5.2 Bước 1–4]
 
@@ -499,7 +499,7 @@ Cách kiểm chứng:
 - Integration test Route adapter với response out-of-order, partial element failure, batch failure và quota/timeout.
 - Chạy bộ lệnh chuẩn ở Bước 0.
 
-**File tạo/sửa.** `route-matrix.port.ts`, `route-batch-planner.ts`, `route-matrix.service.ts`, `google-routes.adapter.ts`, `feature-builder.ts`, `member-utility.service.ts`, `group-ranker.service.ts`, `recommendation-config.ts`, `recommendation-context.builder.ts`, `create-recommendation-run.use-case.ts`, recommendation entities/repository/module, migration `1792090000000`, `06_database_schema.dbml`, unit/integration/E2E specs và `step2-tracker.md`.
+**File tạo/sửa.** `route-matrix.port.ts`, `route-batch-planner.ts`, `route-matrix.service.ts`, `google-routes.adapter.ts`, `feature-builder.ts`, `member-utility.service.ts`, `group-ranker.service.ts`, `recommendation-config.ts`, `recommendation-context.builder.ts`, `create-recommendation-run.use-case.ts`, recommendation entities/repository/module, migration `1792090000000`, `06_database_schema.dbml`, unit/integration/E2E specs và `Source/step2-tracker.md`.
 
 **[Giả định].** `q_missing=0.60`, `n_ref=999`, `monteCarloSamples=1000`, `utilityTieEpsilon=1e-6`, RNG `mulberry32-v1` chỉ là baseline dev/test có version. PostgreSQL/Redis kiểm chứng bằng compose trên host port `5433`/`6380`; cấu hình runtime mặc định không đổi.
 
@@ -513,7 +513,7 @@ Người xác nhận: Dev Backend 2; reviewer phải kiểm tra golden vector, k
 
 ### 5.4. Bước 2A — Temporal context và opening tại `scheduledAt`
 
-**Trạng thái: ✅ Hoàn tất (30/10/2026; contract ETA được điều chỉnh và kiểm chứng lại 02/11/2026).** Evidence kiểm toán chi tiết: [`step2a-tracker.md`](step2a-tracker.md).
+**Trạng thái: ✅ Hoàn tất (30/10/2026; contract ETA được điều chỉnh và kiểm chứng lại 02/11/2026).** Evidence kiểm toán chi tiết: [`step2a-tracker.md`](../../step2a-tracker.md).
 
 **Mục tiêu.** Đưa thời điểm gặp đã có trong meetup vào engine theo cách có thể audit: snapshot `scheduledAt`, đánh giá opening tại thời điểm gặp, trả ETA minh bạch cho từng member–candidate và phát hiện kết quả cũ khi thời gian meetup thay đổi. [Nguồn: workbook — BE-28; Doc 12 — Mục 4.2, 5.2 Bước 2 và Bước 5, 6, 11]
 
@@ -577,7 +577,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review meetup `scheduledAt` v
 
 - `src/bounded-contexts/recommendations/**`: temporal/opening contracts, evaluator/policy, freshness guard, use cases, Google/Meetup/TypeORM adapters, DTO/controller/module và test tương ứng.
 - `src/infrastructure/database/migrations/1792100000000-add-recommendation-temporal-context.ts`, `docs/06_database_schema.dbml`.
-- `test/recommendations.integration-spec.ts`, `test/recommendation-runs.e2e-spec.ts`, `docs/step2a-tracker.md`.
+- `test/recommendations.integration-spec.ts`, `test/recommendation-runs.e2e-spec.ts`, `Source/step2a-tracker.md`.
 
 **[Giả định].** Run legacy không có temporal snapshot gốc để khôi phục chính xác. Migration backfill `requested_at=created_at`, `scheduled_at_snapshot=meetup.scheduled_at` hiện tại, `opening_filter=ANY`, version `legacy-pre-temporal-v1`/`not-applied` và warning `LEGACY_TEMPORAL_CONTEXT_BACKFILL`; freshness guard luôn coi run legacy là stale để không dùng cho vote/chốt.
 
@@ -586,6 +586,8 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review meetup `scheduledAt` v
 **Bàn giao Bước 3.** Dùng nguyên persisted temporal/opening/ETA snapshot để dựng explanation/result, không tính lại từ provider. Mọi luồng quyết định phải gọi freshness guard; run legacy luôn stale. Không sửa full ranking của completed run khi meetup đổi `scheduledAt`.
 
 ### 5.5. Bước 3 — Explanation, persistence và API kết quả
+
+**Trạng thái: ✅ Hoàn tất (02/11/2026).** Evidence kiểm toán chi tiết: [`step3-tracker.md`](../../step3-tracker.md).
 
 **Mục tiêu.** Persist atomically full run và trả top-K có explanation bám đúng feature/ranking/temporal snapshot. [Nguồn: workbook — BE-23; Doc 12 — Mục 5.2 Bước 10–11, Mục 11]
 
@@ -597,13 +599,13 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review meetup `scheduledAt` v
 
 **Checklist triển khai**
 
-- [ ] Tạo rule-based `ExplanationBuilder`; `summaryCode` theo strategy và facts từ snapshot thật, có unit/source. [Nguồn: Doc 12 — Mục 5.2 Bước 10, 6.6]
-- [ ] Không dùng claim “gần nhất”, “công bằng nhất”, “mọi người thích” nếu facts không chứng minh. [Nguồn: Doc 12 — Mục 5.2 Bước 10]
-- [ ] Persist run, candidate/filter reason, member feature/utility, full rank, seed, versions và explanation theo schema được duyệt. [Nguồn: workbook — BE-23; Doc 12 — Mục 11.1, 11.3]
-- [ ] Chuyển `RUNNING -> COMPLETED` trong cùng transaction với candidate/features/ranking; transaction lỗi không trả success. [Nguồn: Doc 12 — Mục 11.4]
-- [ ] POST tạo run trả sau khi commit; GET trả stored result; retry same key/payload trả lại cùng result. [Nguồn: Doc 12 — Mục 11.2, 11.4]
-- [ ] Ghi `RecommendationReady.v1` qua outbox sau commit với contract đã version. [Nguồn: workbook — BE-23; `11_backend_integration_handoff.md` — Mục 4]
-- [ ] Response chỉ chứa top-K nhưng database giữ full rank để replay; không trả raw provider order. [Nguồn: Doc 12 — Mục 5.3, 11.1]
+- [x] Tạo rule-based `ExplanationBuilder`; `summaryCode` theo strategy và facts từ snapshot thật, có unit/source — `explanation-builder.ts` và 5 unit cases pass. [Nguồn: Doc 12 — Mục 5.2 Bước 10, 6.6]
+- [x] Không dùng claim “gần nhất”, “công bằng nhất”, “mọi người thích” nếu facts không chứng minh — forbidden-claim unit test và added-line grep 0 finding. [Nguồn: Doc 12 — Mục 5.2 Bước 10]
+- [x] Persist run, candidate/filter reason, member feature/utility, full rank, seed, versions và explanation theo schema được duyệt — migration `1792110000000`, DBML, entities/repository và integration assertions pass. [Nguồn: workbook — BE-23; Doc 12 — Mục 11.1, 11.3]
+- [x] Chuyển `RUNNING -> COMPLETED` trong cùng transaction với candidate/features/ranking; transaction lỗi không trả success — trigger fault-injection integration/E2E pass. [Nguồn: Doc 12 — Mục 11.4]
+- [x] POST tạo run trả sau khi commit; GET trả stored result; retry same key/payload trả lại cùng result — HTTP E2E pass. [Nguồn: Doc 12 — Mục 11.2, 11.4]
+- [x] Ghi `RecommendationReady.v1` qua outbox sau commit với contract đã version — atomic outbox integration test và worker retry unit test pass. [Nguồn: workbook — BE-23; `11_backend_integration_handoff.md` — Mục 4]
+- [x] Response chỉ chứa top-K nhưng database giữ full rank để replay; không trả raw provider order — 3 persisted places/2 HTTP results E2E pass. [Nguồn: Doc 12 — Mục 5.3, 11.1]
 
 **Đầu vào cần có**
 
@@ -627,15 +629,23 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review meetup `scheduledAt` v
 
 Điều kiện bắt buộc:
 
-- [ ] Mỗi top-K item có rank, ETA mean/max, member results, group/least-misery utility và explanation facts đúng snapshot.
-- [ ] Full rank được lưu; top-K không chứa candidate filtered/no-route.
-- [ ] Inject lỗi giữa persist và state transition: run không ở `COMPLETED` và client không nhận success.
-- [ ] Mất HTTP response sau commit rồi retry: trả cùng `runId`, result và versions; không duplicate rows/event.
-- [ ] `RUNNING` retry trả 409 `RECOMMENDATION_RUN_IN_PROGRESS`; failed retry trả lỗi đã lưu theo Doc 12.
-- [ ] `RecommendationReady.v1` chỉ phát sau commit và consumer retry không tạo side effect trùng.
-- [ ] Migration cycle, lint/unit/integration/E2E/build pass.
+- [x] Mỗi top-K item có rank, ETA mean/max, member results, group/least-misery utility và explanation facts đúng snapshot — `recommendation-runs.e2e-spec.ts` exact-fact assertions pass.
+- [x] Full rank được lưu; top-K không chứa candidate filtered/no-route — result projection unit test và 3-full/2-top-K E2E pass.
+- [x] Inject lỗi giữa persist và state transition: run không ở `COMPLETED` và client không nhận success — PostgreSQL trigger fault test rollback về `RUNNING` ở repository, HTTP trả 503 và terminal `FAILED` ở orchestrator.
+- [x] Mất HTTP response sau commit rồi retry: trả cùng `runId`, result và versions; không duplicate rows/event — idempotent retry E2E count assertions pass.
+- [x] `RUNNING` retry trả 409 `RECOMMENDATION_RUN_IN_PROGRESS`; failed retry trả lỗi đã lưu theo Doc 12 — E2E pass và không gọi lại provider.
+- [x] `RecommendationReady.v1` chỉ phát sau commit và consumer retry không tạo side effect trùng — rollback/commit integration assertions và delivered-event worker unit test pass.
+- [x] Migration cycle, lint/unit/integration/E2E/build pass — PostgreSQL Step 3 `up/down/up`; final gate: build/lint/typecheck exit 0, unit 48/48 suite (211), integration 2/2 (15), E2E 6/6 (60).
 
 Cách kiểm chứng: transaction integration tests với fault injection; E2E POST/GET/retry; query database kiểm tra full count và terminal state; chạy bộ lệnh chuẩn.
+
+**File tạo/sửa.** `explanation-builder.ts` và spec; `recommendation-result.presenter.ts` và spec; recommendation run domain/use cases/controller/module; candidate/opening audit services; `recommendation-place.typeorm-entity.ts`; recommendation run entity/repository; migration `1792110000000-create-recommendation-results.ts`; `06_database_schema.dbml`; outbox worker spec; integration/E2E specs; `11_backend_integration_handoff.md`; Doc 12; `Source/10_realtime_event_contracts.md`; `Source/step3-tracker.md`.
+
+**[Giả định].** `recommendation_places` tham chiếu trực tiếp candidate snapshot hiện có và lưu một row cho mỗi candidate trong full rank; không nhân bản qua `place_snapshots`. Event `strategy` giữ contract v1 và chỉ phát `exact`/`batched`, không phát `clustered`. Numeric retention không được tự đặt và vẫn thuộc Bước 5/Q13.
+
+**Vấn đề cần quyết định.** Không có blocker cho Bước 3. TTL theo loại run, lịch cleanup và approver Product + Security/Privacy vẫn chưa chốt, không được bật cleanup production trước quyết định Bước 5/Q13.
+
+**Bàn giao Bước 3A.** Dùng `recommendation_places`/explanation snapshot hiện có để bổ sung fact traffic/weather; không thay lại rank/result đã hoàn tất. Khi thêm routing preference, static duration, travel mode hoặc weather evidence phải evolve append-only, snapshot version tương ứng và giữ response top-K từ stored full rank. Không gửi `scheduledAt` làm departure time.
 
 Tiêu chí không đạt: explanation không truy vết được fact; completed run thiếu full rank/version/seed; event phát trước commit; retry tạo run mới; schema đi ngược target của Mục 7.1, Q6 hoặc tự đặt retention chưa được duyệt.
 

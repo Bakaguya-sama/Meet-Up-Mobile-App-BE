@@ -67,10 +67,13 @@ Event phải có `eventId`, `eventName` versioned và `occurredAt`. Không đưa
 |---|---|---|---|
 | `MeetupMemberChanged.v1` | Backend 1 / BE-08 | Backend 2 Socket/location | `eventId`, `meetupId`, `userId`, `membershipStatus`, `occurredAt` |
 | `PreferenceUpdated.v1` | Backend 1 / BE-09 | Backend 2 recommendation | `eventId`, `meetupId`, `participantId`, `occurredAt` |
+| `RecommendationReady.v1` | Backend 2 / BE-23 | Mobile/Socket, Backend 1 vote flow | `eventId`, `meetupId`, `runId`, ordered top-K `placeIds`, route execution `strategy` (`exact` or `batched`), `occurredAt` |
 | `VoteUpdated.v1` | Backend 1 / BE-10 | Backend 2 Socket | `eventId`, `meetupId`, `placeId`, `voteCount`, `occurredAt` |
 | `MeetupFinalized.v1` | Backend 1 / BE-10 | Backend 2 Socket + FCM | `eventId`, `meetupId`, `placeId`, `scheduledAt`, `occurredAt` |
 
 Backend 1 ghi event vào `outbox_events` bằng `OutboxPort` trong cùng transaction persist Meetup/Vote. Worker chỉ dispatch sau commit; consumer phải xử lý idempotent theo `eventId`.
+
+Backend 2 áp dụng cùng transaction boundary cho `RecommendationReady.v1`: row outbox chỉ commit cùng `recommendation_places` và trạng thái `COMPLETED`. `placeIds` là provider place id theo rank top-K, không phải raw provider order và payload không chứa tọa độ member. Consumer dùng `eventId` để bỏ qua delivery lặp.
 
 ## 5. Luồng FCM chung
 
@@ -112,6 +115,7 @@ Không gửi title/body/token/GPS qua integration event; title/body hiện đư�
 | 2026-10-15 | Backend 1 | BE-03 hoàn thành vòng đời Meetup và thành viên, kết nối MeetupLocationAdapter, phát realtime & push outbox events | Backend 2 có thể join/read location theo active meetup | Sẵn sàng |
 | 2026-10-19 | Backend 1 / Backend 2 | BR-07/21: sau hạn mời khóa sửa thông tin và quản lý thành viên của organizer; thành viên vẫn rời/sửa preference trước khi chốt. Preference meetup thay toàn bộ profile, chỉ tag đã chọn được tính; danh sách rỗng trở về profile. Mời lại giữ preference cũ. | Backend 2 recommendation phải dùng `MeetupPreferenceReader`, không tự bổ sung tag thiếu từ profile hoặc gán `normal`; mobile phân biệt profile gợi ý và tag đã xác nhận. | Cần kiểm tra tích hợp khi triển khai recommendation |
 | 2026-10-26 | Backend 2 | BE-13: candidate search dùng `MeetupCandidateSearchPort` và `MeetupLocationPort`, Google Places API (New), chưa có ETA/ranking/recommendationMode. | Backend 1 giữ public reader của Meetup; mobile gọi endpoint candidate và không gửi tọa độ tâm tìm kiếm. | Sẵn sàng, cần cấu hình Google Places |
+| 2026-11-02 | Backend 2 | BE-23: recommendation-run POST/GET trả persisted top-K có per-member ETA/explanation; full rank nằm trong DB và phát `RecommendationReady.v1` qua outbox. | Mobile dùng `results`, không dùng candidate-only order; consumer realtime dedup theo `eventId`; vote giữ `runId` cho bước tích hợp sau. | Sẵn sàng |
 
 ## 8. BE-13 — Lấy địa điểm ứng viên
 
@@ -179,3 +183,20 @@ Response thành công:
 - Location hết TTL, privacy không cho phép hoặc không có location làm request thất bại an toàn.
 - Google response thiếu ID/tên/tọa độ bị loại; field không cần thiết không được yêu cầu.
 - Google timeout/lỗi không làm thay đổi state Meetup.
+
+## 9. BE-23 — Recommendation result
+
+Mobile production dùng hai endpoint đồng bộ sau:
+
+```http
+POST /api/v1/meetups/:meetupId/recommendation-runs
+Idempotency-Key: <requestId UUID v4>
+
+GET /api/v1/meetups/:meetupId/recommendation-runs/:runId
+```
+
+POST chỉ trả `200` sau khi candidate, member feature, full rank, explanation, trạng thái `COMPLETED` và outbox row đã commit. GET chỉ đọc snapshot đã lưu; không gọi lại Google hoặc tính lại ranking. Cả hai trả `results` theo rank và chỉ chứa tối đa `effectiveK`; không trả mảng candidate/member-feature nội bộ hay raw provider order.
+
+Mỗi `results[]` có `rank`, `avgEtaSeconds`, `maxEtaSeconds`, `groupUtility`, `candidateLeastMiseryUtility`, `candidate`, `memberResults[]` và `explanation`. `memberResults[].etaSeconds` là thời lượng để UI giúp participant tự căn giờ đi. `explanation.facts[]` có `key`, `value`, `unit` khi áp dụng và `source` (`ROUTES`, `PLACES`, `WEATHER`, `ENGINE`).
+
+Retry cùng key/payload của run `COMPLETED` trả đúng run và result đã lưu, không thêm row/event. Run `RUNNING` trả `409 RECOMMENDATION_RUN_IN_PROGRESS`; run `FAILED` trả lại failure code đã lưu. Nếu `scheduledAt` hiện tại khác snapshot, GET trả `STALE_CONTEXT` nhưng không sửa kết quả cũ.
