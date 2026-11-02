@@ -43,6 +43,7 @@ import { PrivacySelectedFriendPurge } from './application/public/privacy-selecte
 import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.adapter';
 import { ProfilePreferenceReader } from './application/public/profile-preference-reader';
 import { TypeOrmProfilePreferenceReader } from './infrastructure/adapters/profile-preference-reader.adapter';
+import { ManagePublicHandleUseCase } from './application/use-cases/manage-public-handle.use-case';
 
 @Module({
   imports: [
@@ -165,6 +166,11 @@ import { TypeOrmProfilePreferenceReader } from './infrastructure/adapters/profil
       inject: [AUTH_UNIT_OF_WORK],
     },
     {
+      provide: ManagePublicHandleUseCase,
+      useFactory: (uow: AuthUnitOfWork) => new ManagePublicHandleUseCase(uow),
+      inject: [AUTH_UNIT_OF_WORK],
+    },
+    {
       provide: ProfilePreferenceReader,
       useClass: TypeOrmProfilePreferenceReader,
     },
@@ -181,6 +187,7 @@ import { TypeOrmProfilePreferenceReader } from './infrastructure/adapters/profil
     AccessTokenGuard,
     RolesGuard,
     UpdateProfileUseCase,
+    ManagePublicHandleUseCase,
     SaveUserPreferenceUseCase,
     GetUserPreferenceUseCase,
     GetActivityTagsUseCase,

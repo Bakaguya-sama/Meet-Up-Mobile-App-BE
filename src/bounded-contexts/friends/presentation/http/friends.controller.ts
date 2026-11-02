@@ -41,6 +41,7 @@ import { ListFriendshipsQuery } from '../../application/queries/list-friendships
 import { SendFriendRequestUseCase } from '../../application/use-cases/send-friend-request.use-case';
 import { RespondFriendRequestUseCase } from '../../application/use-cases/respond-friend-request.use-case';
 import { UnfriendUseCase } from '../../application/use-cases/unfriend.use-case';
+import { ManagePublicHandleUseCase } from '../../../auth/application/use-cases/manage-public-handle.use-case';
 import {
   ApiFriendPage,
   friendshipPageSchema,
@@ -68,6 +69,7 @@ export class FriendsController {
     private readonly sendRequest: SendFriendRequestUseCase,
     private readonly respondRequest: RespondFriendRequestUseCase,
     private readonly unfriendUseCase: UnfriendUseCase,
+    private readonly publicHandle: ManagePublicHandleUseCase,
   ) {}
 
   @Get('search')
@@ -125,6 +127,36 @@ export class FriendsController {
       offset: query.offset,
       limit: query.limit,
     });
+  }
+
+  @Post('public-handle/rotate')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Rotate the authenticated user’s stable QR handle',
+  })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      required: ['publicHandle'],
+      properties: {
+        publicHandle: { type: 'string', minLength: 43, maxLength: 43 },
+      },
+    },
+  })
+  rotatePublicHandle(@CurrentUser('id') actorId: string) {
+    return this.publicHandle.rotate(actorId);
+  }
+
+  @Delete('public-handle')
+  @HttpCode(204)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Disable the authenticated user’s stable QR handle',
+  })
+  @ApiNoContentResponse({ description: 'Public handle disabled' })
+  async disablePublicHandle(@CurrentUser('id') actorId: string) {
+    await this.publicHandle.disable(actorId);
   }
 
   @Post('requests')
