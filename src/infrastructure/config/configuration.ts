@@ -4,7 +4,11 @@ export const configuration = () => ({
     port: Number(process.env.PORT ?? 3000),
     apiPrefix: process.env.API_PREFIX ?? 'api/v1',
     swaggerEnabled: process.env.SWAGGER_ENABLED !== 'false',
-    publicAppBaseUrl: process.env.PUBLIC_APP_BASE_URL,
+    publicAppBaseUrl:
+      process.env.PUBLIC_APP_BASE_URL ??
+      (process.env.NODE_ENV === 'test'
+        ? 'https://app.example.invalid'
+        : undefined),
   },
   database: {
     url: process.env.DATABASE_URL,

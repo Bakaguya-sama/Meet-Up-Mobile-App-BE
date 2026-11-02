@@ -1,4 +1,4 @@
-import { Injectable, TooManyRequestsException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { RedisService } from './redis.service';
 
@@ -36,11 +36,14 @@ export class RedisRateLimiter {
       ),
     );
     if (count > limit) {
-      throw new TooManyRequestsException({
-        statusCode: 429,
-        code: 'RATE_LIMITED',
-        message: 'Too many requests',
-      });
+      throw new HttpException(
+        {
+          statusCode: 429,
+          code: 'RATE_LIMITED',
+          message: 'Too many requests',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
   }
 }

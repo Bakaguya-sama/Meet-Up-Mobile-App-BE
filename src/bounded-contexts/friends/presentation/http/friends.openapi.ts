@@ -1,5 +1,8 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiQuery } from '@nestjs/swagger';
+import type { ApiResponseSchemaHost } from '@nestjs/swagger';
+
+type SchemaObject = ApiResponseSchemaHost['schema'];
 
 const uuid = { type: 'string' as const, format: 'uuid' };
 const timestamp = { type: 'string' as const, format: 'date-time' };
@@ -93,21 +96,21 @@ export const publicQrProfileSchema = {
     },
   },
 };
-export const sendFriendRequestSchema = {
-  type: 'object' as const,
+export const sendFriendRequestSchema: SchemaObject = {
+  type: 'object',
   oneOf: [
     {
-      type: 'object' as const,
+      type: 'object',
       required: ['recipientId'],
       properties: { recipientId: uuid },
       additionalProperties: false,
     },
     {
-      type: 'object' as const,
+      type: 'object',
       required: ['recipientPublicHandle'],
       properties: {
         recipientPublicHandle: {
-          type: 'string' as const,
+          type: 'string',
           minLength: 43,
           maxLength: 43,
           pattern: '^[A-Za-z0-9_-]{43}$',
@@ -116,11 +119,11 @@ export const sendFriendRequestSchema = {
       additionalProperties: false,
     },
     {
-      type: 'object' as const,
+      type: 'object',
       required: ['qrSessionToken'],
       properties: {
         qrSessionToken: {
-          type: 'string' as const,
+          type: 'string',
           minLength: 43,
           maxLength: 43,
           pattern: '^[A-Za-z0-9_-]{43}$',

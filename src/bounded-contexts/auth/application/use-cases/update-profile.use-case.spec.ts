@@ -35,7 +35,9 @@ describe('UpdateProfileUseCase', () => {
               Promise.resolve(id === 'user-123' ? mockAccount : null),
             ),
             findAccountByEmail: jest.fn(() => Promise.resolve(null)),
-            lockAccount: jest.fn(() => Promise.resolve(null)),
+            lockAccount: jest.fn((id: string) =>
+              Promise.resolve(id === 'user-123' ? mockAccount : null),
+            ),
             saveAccount: jest.fn((acc: UserAccount) => {
               savedAccount = acc;
               return Promise.resolve();

@@ -34,6 +34,7 @@ export class OutboxDispatcher {
           'MeetupFinished.v1',
           'MeetupMemberChanged.v1',
           'PreferenceUpdated.v1',
+          'MeetupInviteLinkAccepted.v1',
         ].includes(event.eventName) &&
         recipientIds.length > 0
       ) {

@@ -11,6 +11,9 @@ export class CreateFriendQrSessionUseCase {
 
   async execute(ownerId: string) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      // Set the advertised deadline before Redis starts the TTL. Returning a
+      // later timestamp could make the QR appear valid after Redis expires it.
+      const expiresAt = new Date(Date.now() + this.sessionTtlSeconds * 1000);
       const token = FriendQrSessionToken.issue();
       const sessionId = randomUUID();
       const stored = await this.store.create({
@@ -25,7 +28,7 @@ export class CreateFriendQrSessionUseCase {
       return {
         sessionId,
         qrUrl: `${baseUrl}/friends/qr-sessions/${token.rawToken}`,
-        expiresAt: new Date(Date.now() + this.sessionTtlSeconds * 1000),
+        expiresAt,
       };
     }
     throw new Error('Could not allocate a unique friend QR session');
