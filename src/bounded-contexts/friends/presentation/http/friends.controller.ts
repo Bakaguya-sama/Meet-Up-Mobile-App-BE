@@ -341,6 +341,9 @@ export class FriendsController {
   @ApiConflictResponse({
     description: 'This pair already has a friendship or request',
   })
+  @ApiTooManyRequestsResponse({
+    description: 'QR friend request rate limit exceeded',
+  })
   async send(
     @CurrentUser('id') actorId: string,
     @Body() input: SendFriendRequest,
