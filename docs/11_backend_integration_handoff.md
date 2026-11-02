@@ -222,7 +222,7 @@ DELETE /api/v1/meetups/:meetupId/invite-links/:linkId
 - `POST` body là `{ "expiresAt": "ISO-8601", "revokePrevious": false }`; `expiresAt` phải ở tương lai và không vượt `invitationDeadlineAt`. `revokePrevious` mặc định `false`. Khi `true`, transaction thu hồi **mọi** link hiệu lực của meetup rồi tạo link mới; đây là rotate chính thức, không có endpoint rotate riêng.
 - Token là opaque random secret entropy cao. Response create trả `{ id, inviteUrl, expiresAt, revokedAt: null }`; `inviteUrl`/raw token chỉ xuất hiện đúng lần này. PostgreSQL chỉ lưu `token_hash`, `meetup_id`, `created_by_id`, `expires_at`, `revoked_at`, `use_count`, timestamps và audit metadata cần thiết.
 - Một link hiệu lực được nhiều actor khác nhau accept. `use_count` chỉ tăng khi actor lần đầu trở thành `accepted` qua link đó; retry/cùng actor đã accepted trả membership hiện có, không tăng count hoặc phát event mới. Preview công khai chỉ trả `{ title, scheduledAt, expiresAt }`; không trả participant list, location hoặc preference. Accept yêu cầu JWT và kiểm state/deadline ở thời điểm commit.
-- Rate limit theo token/IP/account; lỗi token dùng contract chống enumeration. Event `MeetupInviteLinkAccepted.v1` phát sau commit; không đặt raw token trong outbox/log/event.
+- Rate limit theo token/IP/account; lỗi token dùng contract chống enumeration.
 - Event `MeetupInviteLinkAccepted.v1` phát sau commit; không đặt raw token trong outbox/log/event.
 
 ## 11. QR kết bạn hybrid
