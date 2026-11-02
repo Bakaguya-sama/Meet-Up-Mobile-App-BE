@@ -7,6 +7,11 @@ const environmentSchema = Joi.object({
   PORT: Joi.number().port().default(3000),
   API_PREFIX: Joi.string().default('api/v1'),
   SWAGGER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
+  PUBLIC_APP_BASE_URL: Joi.when('NODE_ENV', {
+    is: 'test',
+    then: Joi.string().allow('').optional(),
+    otherwise: Joi.string().uri({ scheme: ['https'] }).required(),
+  }),
   JWT_ACCESS_SECRET: Joi.string()
     .min(32)
     .invalid('replace-with-a-long-random-secret')
