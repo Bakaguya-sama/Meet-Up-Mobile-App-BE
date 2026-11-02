@@ -15,6 +15,14 @@ import { RouteMatrixService } from '../services/route-matrix.service';
 import { MemberUtilityService } from '../services/member-utility.service';
 import { GroupRankerService } from '../services/group-ranker.service';
 import { FeatureBuilder } from '../services/feature-builder';
+import {
+  SCHEDULED_OPENING_EVALUATOR_VERSION,
+  ScheduledOpeningEvaluator,
+} from '../services/scheduled-opening.evaluator';
+import { PLACE_SEARCH_REQUEST_OPTIONS_VERSION } from '../ports/place-search.port';
+import { RecommendationRunFreshnessGuard } from '../public/recommendation-run-freshness.guard';
+import type { RecommendationRunResult } from '../../domain/recommendation-run';
+import { applyScheduledOpeningPolicy } from '../services/scheduled-opening-policy';
 
 export class CreateRecommendationRunUseCase {
   constructor(
@@ -27,6 +35,8 @@ export class CreateRecommendationRunUseCase {
     private readonly utilities?: MemberUtilityService,
     private readonly ranker?: GroupRankerService,
     private readonly featureBuilder: FeatureBuilder = new FeatureBuilder(),
+    private readonly openingEvaluator: ScheduledOpeningEvaluator = new ScheduledOpeningEvaluator(),
+    private readonly freshness?: RecommendationRunFreshnessGuard,
   ) {}
 
   async execute(
@@ -41,10 +51,21 @@ export class CreateRecommendationRunUseCase {
     );
     if (existing) {
       this.assertIdempotent(existing, actorId, request.payloadHash);
-      return existing;
+      return this.present(existing);
     }
     const context = await this.contexts.build(actorId, request.meetupId);
     const createdAt = this.now();
+    const requestedAt = new Date(context.requestedAt);
+    const scheduledAt = new Date(context.scheduledAt);
+    if (
+      !Number.isFinite(requestedAt.getTime()) ||
+      !Number.isFinite(scheduledAt.getTime())
+    ) {
+      throw new RecommendationError(
+        'INVALID_RECOMMENDATION_CONTEXT',
+        'Meetup temporal context is invalid',
+      );
+    }
     const run: RecommendationRun = {
       id: randomUUID(),
       meetupId: request.meetupId,
@@ -59,6 +80,11 @@ export class CreateRecommendationRunUseCase {
       configVersion: this.config.version,
       featureSchemaVersion: 'recommendation-features-v1',
       providerMappingVersion: this.config.providerMappingVersion,
+      providerRequestOptionsVersion: PLACE_SEARCH_REQUEST_OPTIONS_VERSION,
+      openingFilter: request.openingFilter,
+      openingEvaluatorVersion: SCHEDULED_OPENING_EVALUATOR_VERSION,
+      requestedAt,
+      scheduledAtSnapshot: scheduledAt,
       createdAt,
       completedAt: null,
       effectiveK: null,
@@ -70,7 +96,7 @@ export class CreateRecommendationRunUseCase {
     const persisted = await this.store.create(run);
     if (persisted.id !== run.id) {
       this.assertIdempotent(persisted, actorId, request.payloadHash);
-      return persisted;
+      return this.present(persisted);
     }
     try {
       const raw = await this.candidates.generate({
@@ -79,12 +105,21 @@ export class CreateRecommendationRunUseCase {
         center: context.searchCenter,
         radiusMeters: request.searchRadiusMeters,
       });
-      const eligible = filterCandidates(
+      const residualEligible = filterCandidates(
         raw,
         context.searchCenter,
         request.searchRadiusMeters,
         request.requiredCategories,
       );
+      const openingPolicy =
+        request.openingFilter === 'OPEN_AT_SCHEDULED_TIME'
+          ? applyScheduledOpeningPolicy(
+              residualEligible,
+              scheduledAt,
+              this.openingEvaluator,
+            )
+          : { candidates: residualEligible, warnings: [] };
+      const eligible = openingPolicy.candidates;
       if (!eligible.length) {
         throw new RecommendationError(
           'NO_ELIGIBLE_CANDIDATES',
@@ -172,9 +207,13 @@ export class CreateRecommendationRunUseCase {
           avgEtaSeconds: ranked.avgEtaSeconds,
           maxEtaSeconds: ranked.maxEtaSeconds,
           etaRangeSeconds: ranked.etaRangeSeconds,
+          scheduledOpeningStatus: candidate.scheduledOpeningStatus ?? null,
+          openingEvidence: candidate.openingEvidence
+            ? structuredClone(candidate.openingEvidence)
+            : null,
         };
       });
-      return await this.store.complete(
+      const completed = await this.store.complete(
         run.id,
         {
           candidates: candidateSnapshots,
@@ -196,13 +235,16 @@ export class CreateRecommendationRunUseCase {
             createdAt: completedAt,
           })),
           effectiveK: routeOutcome.effectiveK,
-          warnings: routeOutcome.warnings,
+          warnings: [
+            ...new Set([...routeOutcome.warnings, ...openingPolicy.warnings]),
+          ],
           randomSeed: seed,
           routeBatchCount: routeOutcome.batchCount,
           routeElementCount: routeOutcome.elementCount,
         },
         completedAt,
       );
+      return this.present(completed);
     } catch (error) {
       const code =
         error instanceof RecommendationError
@@ -215,6 +257,12 @@ export class CreateRecommendationRunUseCase {
         'Place search failed',
       );
     }
+  }
+
+  private present(run: RecommendationRunResult) {
+    return this.freshness
+      ? this.freshness.toView(run)
+      : Promise.resolve({ ...run, contextStatus: 'CURRENT_CONTEXT' as const });
   }
 
   private assertIdempotent(

@@ -1,4 +1,13 @@
+import type {
+  RecommendationContextStatus,
+  ScheduledOpeningEvidence,
+  ScheduledOpeningStatus,
+} from './temporal-context';
+
 export type RecommendationRunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+export const LEGACY_TEMPORAL_PROVIDER_OPTIONS_VERSION =
+  'legacy-pre-temporal-v1';
 
 export interface RecommendationRun {
   id: string;
@@ -14,6 +23,11 @@ export interface RecommendationRun {
   configVersion: string;
   featureSchemaVersion: string;
   providerMappingVersion: string;
+  providerRequestOptionsVersion: string;
+  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
+  openingEvaluatorVersion: string;
+  requestedAt: Date;
+  scheduledAtSnapshot: Date;
   createdAt: Date;
   completedAt: Date | null;
   effectiveK: number | null;
@@ -51,6 +65,8 @@ export interface RecommendationCandidateSnapshot {
   avgEtaSeconds: number | null;
   maxEtaSeconds: number | null;
   etaRangeSeconds: number | null;
+  scheduledOpeningStatus: ScheduledOpeningStatus | null;
+  openingEvidence: ScheduledOpeningEvidence | null;
 }
 
 export interface RecommendationMemberFeatureSnapshot {
@@ -87,4 +103,9 @@ export interface RecommendationCompletion {
 
 export interface RecommendationRunResult extends RecommendationRun {
   candidates: RecommendationCandidateSnapshot[];
+  memberFeatures: RecommendationMemberFeatureSnapshot[];
+}
+
+export interface RecommendationRunView extends RecommendationRunResult {
+  contextStatus: RecommendationContextStatus;
 }

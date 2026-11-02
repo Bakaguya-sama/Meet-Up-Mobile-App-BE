@@ -115,7 +115,7 @@ Phân bố theo sprint: S1 có 3 function; S2 có 4; S3 có 3; S4 có 7; S5 có 
 - Recommendation dùng một active place provider và một route provider cho mỗi run; provider được che sau adapter. [Nguồn: Doc 12 — Mục 4.5, 13]
 - Vote chỉ xảy ra sau recommendation và không rerank cùng run. [Nguồn: workbook — BE-10; Doc 12 — Mục 3, 9]
 - Travel mode mặc định là `TWO_WHEELER`; `avoid` là soft penalty. [Nguồn: workbook — `Giới thiệu`, BE-16–BE-17; Doc 12 — Mục 3, 7]
-- `scheduledAt` là temporal snapshot của run; opening/weather được đánh giá tại thời điểm này. `recommendedDepartureAt=scheduledAt-ETA`; calendar integration không thuộc scope. [Nguồn: workbook — BE-28, BE-30; Doc 12 — Mục 3, 5.2 Bước 2, 5–7]
+- `scheduledAt` là temporal snapshot của run; opening/weather được đánh giá tại thời điểm này. API trả `etaSeconds` cho từng member–candidate; không suy diễn/lưu giờ khởi hành hoặc tích hợp calendar. [Nguồn: workbook — BE-28, BE-30; Doc 12 — Mục 3, 5.2 Bước 2, 5–7]
 - Traffic được điều khiển bằng config deployment `ROUTES_ROUTING_PREFERENCE`; chỉ `TRAFFIC_UNAWARE`/`TRAFFIC_AWARE`, không truyền `scheduledAt` làm `departureTime`. [Nguồn: workbook — BE-29; Doc 12 — Mục 5.2 Bước 7, 13]
 
 ## 3. Giả định và rủi ro
@@ -513,7 +513,9 @@ Người xác nhận: Dev Backend 2; reviewer phải kiểm tra golden vector, k
 
 ### 5.4. Bước 2A — Temporal context và opening tại `scheduledAt`
 
-**Mục tiêu.** Đưa thời điểm gặp đã có trong meetup vào engine theo cách có thể audit: snapshot `scheduledAt`, đánh giá opening tại thời điểm gặp, tính giờ nên khởi hành và phát hiện kết quả cũ khi thời gian meetup thay đổi. [Nguồn: workbook — BE-28; Doc 12 — Mục 4.2, 5.2 Bước 2 và Bước 5, 6, 11]
+**Trạng thái: ✅ Hoàn tất (30/10/2026; contract ETA được điều chỉnh và kiểm chứng lại 02/11/2026).** Evidence kiểm toán chi tiết: [`step2a-tracker.md`](step2a-tracker.md).
+
+**Mục tiêu.** Đưa thời điểm gặp đã có trong meetup vào engine theo cách có thể audit: snapshot `scheduledAt`, đánh giá opening tại thời điểm gặp, trả ETA minh bạch cho từng member–candidate và phát hiện kết quả cũ khi thời gian meetup thay đổi. [Nguồn: workbook — BE-28; Doc 12 — Mục 4.2, 5.2 Bước 2 và Bước 5, 6, 11]
 
 **Function thuộc bước**
 
@@ -523,12 +525,12 @@ Người xác nhận: Dev Backend 2; reviewer phải kiểm tra golden vector, k
 
 **Checklist triển khai**
 
-- [ ] Snapshot `requestedAt` và `scheduledAt` vào run; `scheduledAt` không nhận lại từ client nếu meetup đã là nguồn canonical. [Nguồn: Doc 12 — Mục 5.2 Bước 2, 6.2]
-- [ ] Thêm `OPEN_AT_SCHEDULED_TIME`; không gửi `openNow`, yêu cầu opening hours/timezone có version và chạy `ScheduledOpeningEvaluator`. [Nguồn: Doc 12 — Mục 5.2 Bước 3, Bước 5]
-- [ ] Evaluator trả `OPEN/CLOSED/UNKNOWN`; chỉ loại `CLOSED`, giữ `UNKNOWN` với warning/evidence. Ưu tiên current hours trong cửa sổ hỗ trợ, fallback regular hours phải có cờ. [Nguồn: Doc 12 — Mục 5.2 Bước 5]
-- [ ] Tính `recommendedDepartureAt(u,p)=scheduledAt-etaSeconds(u,p)` sau route validation; không đưa giá trị này vào utility hoặc calendar. [Nguồn: Doc 12 — Mục 5.2 Bước 7]
-- [ ] Run đã hoàn tất immutable; GET so sánh `scheduledAt` hiện tại với snapshot và trả `contextStatus=STALE_CONTEXT` khi khác. Stale result không được dùng để vote/chốt; phải tạo run mới. [Nguồn: Doc 12 — Mục 4.2, 11.4]
-- [ ] Persist evaluator version, opening evidence/status và scheduled snapshot bằng migration append-only; cập nhật DBML/API contract. [Nguồn: Doc 12 — Mục 11.1, 11.3]
+- [x] Snapshot `requestedAt` và `scheduledAt` vào run; `scheduledAt` không nhận lại từ client nếu meetup đã là nguồn canonical — `CreateRecommendationRunUseCase`, request DTO và E2E rejection test. [Nguồn: Doc 12 — Mục 5.2 Bước 2, 6.2]
+- [x] Thêm `OPEN_AT_SCHEDULED_TIME`; không gửi `openNow`, yêu cầu opening hours/timezone có version và chạy `ScheduledOpeningEvaluator` — Google adapter contract spec và evaluator specs. [Nguồn: Doc 12 — Mục 5.2 Bước 3, Bước 5]
+- [x] Evaluator trả `OPEN/CLOSED/UNKNOWN`; chỉ loại `CLOSED`, giữ `UNKNOWN` với warning/evidence. Ưu tiên current hours trong cửa sổ hỗ trợ, fallback regular hours có evidence riêng — unit và E2E pass. [Nguồn: Doc 12 — Mục 5.2 Bước 5]
+- [x] Persist và trả `etaSeconds` cho từng member–candidate sau route validation; không suy diễn/lưu giờ khởi hành và không tích hợp calendar — repository/API/E2E test pass. [Nguồn: Doc 12 — Mục 5.2 Bước 7]
+- [x] Run đã hoàn tất immutable; GET so sánh `scheduledAt` hiện tại với snapshot và trả `contextStatus=STALE_CONTEXT` khi khác; shared decision guard chặn stale run — freshness guard unit/integration/E2E pass. [Nguồn: Doc 12 — Mục 4.2, 11.4]
+- [x] Persist evaluator version, opening evidence/status và scheduled snapshot bằng migration append-only; DBML, entities, repository và API contract đã đồng bộ — migration/repository integration pass. [Nguồn: Doc 12 — Mục 11.1, 11.3]
 
 **Đầu vào cần có**
 
@@ -537,7 +539,7 @@ Người xác nhận: Dev Backend 2; reviewer phải kiểm tra golden vector, k
 
 **Đầu ra/deliverable**
 
-- Temporal context contract, `ScheduledOpeningEvaluator`, DTO/schema migration, `recommendedDepartureAt` và stale-context guard.
+- Temporal context contract, `ScheduledOpeningEvaluator`, DTO/schema migration, ETA per-member và stale-context guard.
 - Unit tests cho timezone/overnight/24h/missing; integration/E2E cho filter và thay đổi `scheduledAt`.
 
 **Phụ thuộc và song song**
@@ -550,18 +552,38 @@ Người xác nhận: Dev Backend 2; reviewer phải kiểm tra golden vector, k
 
 Điều kiện bắt buộc:
 
-- [ ] `OPEN_AT_SCHEDULED_TIME` không gửi `openNow`; fixture open/closed/overnight/24h trả đúng `OPEN/CLOSED` theo timezone địa điểm.
-- [ ] Thiếu/invalid hours hoặc timezone trả `UNKNOWN`, candidate vẫn còn và có `OPENING_STATUS_UNKNOWN`.
-- [ ] Candidate `CLOSED` bị loại trước weather/Routes mới; `OPEN` được giữ.
-- [ ] Với `scheduledAt=19:00Z`, ETA 1.500 giây, output đúng `recommendedDepartureAt=18:35Z`; test qua biên ngày vẫn đúng.
-- [ ] Đổi `scheduledAt` sau completed run làm GET trả `STALE_CONTEXT`; ranked snapshot không bị sửa và stale run bị chặn ở vote/chốt.
-- [ ] Migration cycle, lint/unit/integration/E2E/build pass.
+- [x] `OPEN_AT_SCHEDULED_TIME` không gửi `openNow`; fixture open/closed/overnight/24h trả đúng `OPEN/CLOSED` theo timezone địa điểm — adapter/evaluator unit specs pass.
+- [x] Thiếu/invalid hours hoặc timezone trả `UNKNOWN`, candidate vẫn còn và có `OPENING_STATUS_UNKNOWN` — evaluator, policy và E2E specs pass.
+- [x] Candidate `CLOSED` bị loại trước weather/Routes mới; `OPEN` được giữ — pipeline unit/E2E assertions pass và route request không chứa candidate đã đóng.
+- [x] ETA từng member được persist/return đúng; output, DBML, entity và migration không chứa giờ khởi hành suy diễn — repository/API/E2E specs pass.
+- [x] Đổi `scheduledAt` sau completed run làm GET trả `STALE_CONTEXT`; ranked snapshot không bị sửa và stale run bị chặn ở vote/chốt — freshness integration/E2E specs pass.
+- [x] Migration cycle, lint/unit/integration/E2E/build pass — migration `up → down → up` trên PostgreSQL 18; lint/build/typecheck exit 0; unit `47/47` suites, `208/208` tests; integration hai lượt `2/2`, `14/14`; E2E hai lượt `6/6`, `57/57`.
 
 Cách kiểm chứng: unit test evaluator bằng fixed clock và timezone fixtures; provider contract test field mask; E2E tạo run, đổi `scheduledAt`, GET/vote; query database đối chiếu snapshot/evidence; chạy bộ lệnh chuẩn.
 
-Tiêu chí không đạt: dùng timezone server; dùng `openNow` để suy ra giờ tương lai; coi missing là closed; sửa run cũ khi meetup đổi giờ; `recommendedDepartureAt` lệch ETA hoặc tham gia utility.
+Tiêu chí không đạt: dùng timezone server; dùng `openNow` để suy ra giờ tương lai; coi missing là closed; sửa run cũ khi meetup đổi giờ; suy diễn/lưu giờ khởi hành thay vì trả ETA minh bạch.
 
 Người xác nhận: Dev Backend 2; Dev Backend 1 review meetup `scheduledAt` và vote/finalize guard.
+
+**Bằng chứng đóng gate cập nhật ngày 02/11/2026**
+
+- `npm run lint`, `npm run build`, `npm run typecheck` đều exit `0`.
+- `npm test -- --runInBand`: `46/46` suites, `203/203` tests pass sau khi bỏ contract giờ khởi hành suy diễn.
+- `npm run test:integration` chạy hai lần liên tiếp trên PostgreSQL 18 thật: mỗi lần `2/2` suites, `14/14` tests pass; test recommendation chứng minh schema, legacy backfill và migration `up → down → up`.
+- `npm run test:e2e -- --runInBand` chạy hai lần liên tiếp qua HTTP app thật, PostgreSQL 18 và Memurai 8.1.240; Google chỉ mock tại HTTP boundary: mỗi lần `6/6` suites, `57/57` tests pass.
+- Audit source trong phạm vi sửa đổi không có `TODO|FIXME|not implemented|skip|xit|it.skip|only(`; `git diff --check` exit `0`.
+
+**Danh sách file chính**
+
+- `src/bounded-contexts/recommendations/**`: temporal/opening contracts, evaluator/policy, freshness guard, use cases, Google/Meetup/TypeORM adapters, DTO/controller/module và test tương ứng.
+- `src/infrastructure/database/migrations/1792100000000-add-recommendation-temporal-context.ts`, `docs/06_database_schema.dbml`.
+- `test/recommendations.integration-spec.ts`, `test/recommendation-runs.e2e-spec.ts`, `docs/step2a-tracker.md`.
+
+**[Giả định].** Run legacy không có temporal snapshot gốc để khôi phục chính xác. Migration backfill `requested_at=created_at`, `scheduled_at_snapshot=meetup.scheduled_at` hiện tại, `opening_filter=ANY`, version `legacy-pre-temporal-v1`/`not-applied` và warning `LEGACY_TEMPORAL_CONTEXT_BACKFILL`; freshness guard luôn coi run legacy là stale để không dùng cho vote/chốt.
+
+**Vấn đề cần quyết định.** Không có blocker cho Bước 2A. Câu hỏi product hiện hữu về độ chính xác regular hours trong ngày lễ vẫn giữ nguyên; implementation tuân theo contract đã chốt: fallback regular hours phải có warning/evidence và không biến dữ liệu thiếu thành `CLOSED`.
+
+**Bàn giao Bước 3.** Dùng nguyên persisted temporal/opening/ETA snapshot để dựng explanation/result, không tính lại từ provider. Mọi luồng quyết định phải gọi freshness guard; run legacy luôn stale. Không sửa full ranking của completed run khi meetup đổi `scheduledAt`.
 
 ### 5.5. Bước 3 — Explanation, persistence và API kết quả
 
@@ -605,7 +627,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review meetup `scheduledAt` v
 
 Điều kiện bắt buộc:
 
-- [ ] Mỗi top-K item có rank, ETA mean/max, `recommendedDepartureAt`, member results, group/least-misery utility và explanation facts đúng snapshot.
+- [ ] Mỗi top-K item có rank, ETA mean/max, member results, group/least-misery utility và explanation facts đúng snapshot.
 - [ ] Full rank được lưu; top-K không chứa candidate filtered/no-route.
 - [ ] Inject lỗi giữa persist và state transition: run không ở `COMPLETED` và client không nhận success.
 - [ ] Mất HTTP response sau commit rồi retry: trả cùng `runId`, result và versions; không duplicate rows/event.
@@ -753,7 +775,7 @@ Người xác nhận: Dev Backend 1; Dev Backend 2 review Socket/outbox và `run
 - [ ] Feedback collection lỗi sau display được retry bằng eventId và không chạy lại recommendation. [Nguồn: workbook — BE-24; Doc 12 — Mục 12.2]
 - [ ] BE-21 xuất metric latency/error/cost/coverage theo stage/provider/version; structured log redacted. [Nguồn: workbook — BE-21; Doc 12 — Mục 12.1, 14.4]
 - [ ] Replay dùng candidate/feature/config/seed snapshot đã lưu, không gọi Places/Routes; so full rank và explanation facts. [Nguồn: workbook — BE-21; Doc 12 — Mục 12.4]
-- [ ] Metric bổ sung gồm opening unknown, stale context, traffic fallback/delta, weather availability/filter relaxation và departure-time consistency; replay không gọi weather provider. [Nguồn: Doc 12 — Mục 14.4]
+- [ ] Metric bổ sung gồm opening unknown, stale context, traffic fallback/delta và weather availability/filter relaxation; replay không gọi weather provider. [Nguồn: Doc 12 — Mục 14.4]
 - [ ] BE-21 triển khai `RecommendationSnapshotRetentionJob` đọc **retention policy có version đã được phê duyệt**; chọn run đủ điều kiện theo trạng thái/thời điểm, sắp xếp ổn định `(created_at, id)` và xử lý theo batch hữu hạn. Job xóa từ aggregate root `recommendation_runs`; FK cascade chịu trách nhiệm xóa `recommendation_candidates`, `recommendation_member_features` và snapshot con, không xóa rời từng feature/candidate. [Nguồn: Doc 12 — Mục 11.1, 11.3; Q6, Q13]
 - [ ] Retention policy phân loại tối thiểu `FAILED`, completed chưa sử dụng, đã shown/vote/selected và run cần cho replay/evaluation/export/legal hold. Run có vote/final selection hoặc đang được giữ cho replay/evaluation/export không được cleanup trước khi policy tương ứng cho phép. Không suy diễn một TTL chung cho mọi loại run. [Nguồn: Doc 12 — Mục 9, 10, 12.4; Q13]
 - [ ] Cleanup có dry-run, retry idempotent, chống hai worker xử lý trùng, tiếp tục an toàn sau lỗi giữa batch và không giữ transaction/lock cho toàn bộ backlog. Structured audit/metric tối thiểu gồm số run scanned/deleted/protected/failed, duration và oldest eligible age; không log exact coordinates hoặc raw member-feature payload. [Nguồn: Doc 12 — Mục 12.1, 14.4; Q13]
@@ -989,7 +1011,7 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-25 | Offline dataset và evaluation | Chưa thực hiện | Dev Backend 2 | Bước 7 | Time-split dataset + report |
 | BE-26 | Learning-to-rank và model lifecycle | Chưa thực hiện | Dev Backend 2 | Bước 8 | Shadow-first model lifecycle |
 | BE-27 | AI explanation mở rộng (tùy chọn) | Chưa thực hiện | Dev Backend 2 | Bước 6 | Optional safe AI + fallback |
-| BE-28 | Temporal context và opening tại scheduledAt | Chưa thực hiện | Dev Backend 2 | Bước 2A | Temporal snapshot, opening status, departure time, stale guard |
+| BE-28 | Temporal context và opening tại scheduledAt | Đã thực hiện | Dev Backend 2 | Bước 2A | Temporal snapshot, opening status, ETA per-member, stale guard |
 | BE-29 | Traffic-aware và travel mode theo thành viên | Chưa thực hiện | Dev Backend 2 | Bước 3A | Configurable traffic + mode-aware complete matrix |
 | BE-30 | Weather context và outdoor filtering | Chưa thực hiện | Dev Backend 2 | Bước 3A | Versioned weather policy before Routes |
 
@@ -1012,7 +1034,7 @@ Các quyết định tại Mục 7.1 là baseline để triển khai. Mục 7.2 
 | Q7 | BE-27 là **optional Planned**. Rule-based explanation của BE-23 là release gate. AI chỉ được đưa vào release khi còn capacity hoặc có yêu cầu product riêng; AI không chặn recommendation/vote. | Doc 12 ưu tiên explanation deterministic dựa trên fact; AI chỉ diễn đạt, có fallback và không đổi rank. [Nguồn: workbook — BE-27; Doc 12 — Mục 1.5, 5.2 Bước 10, 13] | Capacity plan ghi BE-27 là optional; nếu không chọn, không tạo AI provider/config; nếu chọn phải qua exit gate Bước 6. |
 | Q11 | Với `OPEN_AT_REQUEST_TIME`, gửi `openNow=true` cho Places. Nếu provider trả candidate nhưng thiếu opening data, giữ candidate với `OPENING_STATUS_UNKNOWN` và warning/explanation; không tự loại chỉ vì dữ liệu thiếu. Candidate provider xác nhận đóng vĩnh viễn hoặc vi phạm policy vẫn bị loại. | Dữ liệu thiếu không đồng nghĩa địa điểm đóng; Doc 12 cấm biến rating/dữ liệu thiếu thành hard constraint. [Nguồn: Doc 12 — Mục 3, 5.2 Bước 3–4, 16.2] | BE-15 residual filter/explanation phải phân biệt `UNKNOWN` với `CLOSED`; test missing opening-hours không loại candidate. |
 | Q12 | Thứ tự canonical: (1) workbook backend cho inventory/owner/status; (2) Doc 12 cho engine đích; (3) handoff cho BE-13 hiện hành đến khi run API thay thế; (4) DBML cho schema đang tồn tại, không là schema engine đích; (5) `Project Documents/*` và `Source/13_backend2_roadmap.md` phải gắn `Superseded` hoặc bỏ khỏi chỉ mục triển khai. | Các bản cũ mâu thuẫn về budget, cluster, BE ID/point, formula và API. Thứ tự này ngăn reviewer dùng acceptance criteria cũ. [Nguồn: workbook; Doc 12; handoff; DBML; `Project Documents/*`; roadmap] | Cập nhật README/index và banner deprecation; PR liên quan contract/schema/algorithm phải cập nhật nguồn canonical tương ứng. |
-| Q14 | `scheduledAt` là giờ gặp và là temporal snapshot bắt buộc. Engine tính `recommendedDepartureAt=scheduledAt-ETA`; không thêm `latestArrivalAt`, calendar API hoặc calendar OAuth. | Meetup đã có thời điểm gặp; calendar mở rộng scope consent/scheduling không cần thiết. [Nguồn: workbook — BE-28; Doc 12 — Mục 3, 5.2 Bước 2/7, 13] | BE-28 persist snapshot/departure; đổi `scheduledAt` làm run cũ `STALE_CONTEXT` và cần run mới. |
+| Q14 | `scheduledAt` là giờ gặp và là temporal snapshot bắt buộc. Engine trả `etaSeconds` theo từng member–candidate; không suy diễn/lưu giờ khởi hành, không thêm `latestArrivalAt`, calendar API hoặc calendar OAuth. | ETA là dữ liệu route thực tế và trực quan cho UI; giờ khởi hành suy diễn không xét buffer hay traffic tương lai. [Nguồn: workbook — BE-28; Doc 12 — Mục 3, 5.2 Bước 2/7, 13; quyết định Product 02/11/2026] | BE-28 persist snapshot/ETA; đổi `scheduledAt` làm run cũ `STALE_CONTEXT` và cần run mới. |
 | Q15 | `OPEN_AT_SCHEDULED_TIME` chạy trong backend bằng opening periods/timezone. Chỉ `CLOSED` bị loại; `UNKNOWN` được giữ và cảnh báo. | `openNow` chỉ đúng ở request time; missing không đồng nghĩa closed. [Nguồn: workbook — BE-28; Doc 12 — Mục 5.2 Bước 3/5] | BE-28 thêm evaluator/evidence/version; không dùng timezone server. |
 | Q16 | Traffic là deployment config `ROUTES_ROUTING_PREFERENCE`, chỉ nhận `TRAFFIC_UNAWARE` hoặc `TRAFFIC_AWARE`, validate lúc boot. Không truyền `scheduledAt` làm `departureTime`; không thêm congestion penalty. | Cho phép kiểm soát tài nguyên; `duration` traffic-aware đã đi vào travel utility. [Nguồn: workbook — BE-29; Doc 12 — Mục 5.2 Bước 7, 13] | BE-29 snapshot requested/effective value; fallback phải chạy lại toàn matrix unaware và cảnh báo. |
 | Q17 | Travel mode theo member chỉ hỗ trợ `TWO_WHEELER`/`DRIVE`; thiếu dùng xe máy. Matrix được nhóm theo mode nhưng candidate vẫn phải có route cho mọi member. | Tăng tính thực tế mà không mở mọi mode; giữ fairness invariant. [Nguồn: workbook — BE-29; Doc 12 — Mục 5.2 Bước 2/7, 6.4] | BE-29 batch/join theo mode; nguồn API/persistence của preference vẫn phải chốt tại Mục 7.2. |

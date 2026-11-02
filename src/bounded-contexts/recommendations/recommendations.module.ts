@@ -6,6 +6,7 @@ import { MeetupLocationReader } from '../locations/application/public/meetup-loc
 import { MeetupsModule } from '../meetups/meetups.module';
 import { MeetupCandidateSearchReader } from '../meetups/application/public/meetup-candidate-search-reader';
 import { MeetupPreferenceReader } from '../meetups/application/public/meetup-preference-reader';
+import { MeetupScheduleReader } from '../meetups/application/public/meetup-schedule-reader';
 import {
   MEETUP_CANDIDATE_SEARCH,
   type MeetupCandidateSearchPort,
@@ -51,6 +52,13 @@ import { MemberUtilityService } from './application/services/member-utility.serv
 import { GroupRankerService } from './application/services/group-ranker.service';
 import { RecommendationMemberFeatureEntity } from './infrastructure/persistence/typeorm/entities/recommendation-member-feature.typeorm-entity';
 import { FeatureBuilder } from './application/services/feature-builder';
+import { ScheduledOpeningEvaluator } from './application/services/scheduled-opening.evaluator';
+import {
+  MEETUP_SCHEDULE,
+  type MeetupSchedulePort,
+} from './application/ports/meetup-schedule.port';
+import { MeetupsScheduleAdapter } from './infrastructure/adapters/meetups-schedule.adapter';
+import { RecommendationRunFreshnessGuard } from './application/public/recommendation-run-freshness.guard';
 
 @Module({
   imports: [
@@ -73,6 +81,12 @@ import { FeatureBuilder } from './application/services/feature-builder';
     {
       provide: RECOMMENDATION_RUN_STORE,
       useClass: TypeOrmRecommendationRunRepository,
+    },
+    {
+      provide: MEETUP_SCHEDULE,
+      useFactory: (reader: MeetupScheduleReader) =>
+        new MeetupsScheduleAdapter(reader),
+      inject: [MeetupScheduleReader],
     },
     {
       provide: MEETUP_PREFERENCE,
@@ -125,6 +139,10 @@ import { FeatureBuilder } from './application/services/feature-builder';
       useFactory: () => new FeatureBuilder(),
     },
     {
+      provide: ScheduledOpeningEvaluator,
+      useFactory: () => new ScheduledOpeningEvaluator(),
+    },
+    {
       provide: CreateRecommendationRunUseCase,
       useFactory: (
         store: RecommendationRunStore,
@@ -134,6 +152,8 @@ import { FeatureBuilder } from './application/services/feature-builder';
         utilities: MemberUtilityService,
         ranker: GroupRankerService,
         featureBuilder: FeatureBuilder,
+        openingEvaluator: ScheduledOpeningEvaluator,
+        freshness: RecommendationRunFreshnessGuard,
       ) =>
         new CreateRecommendationRunUseCase(
           store,
@@ -145,6 +165,8 @@ import { FeatureBuilder } from './application/services/feature-builder';
           utilities,
           ranker,
           featureBuilder,
+          openingEvaluator,
+          freshness,
         ),
       inject: [
         RECOMMENDATION_RUN_STORE,
@@ -154,13 +176,25 @@ import { FeatureBuilder } from './application/services/feature-builder';
         MemberUtilityService,
         GroupRankerService,
         FeatureBuilder,
+        ScheduledOpeningEvaluator,
+        RecommendationRunFreshnessGuard,
       ],
     },
     {
+      provide: RecommendationRunFreshnessGuard,
+      useFactory: (
+        store: RecommendationRunStore,
+        schedules: MeetupSchedulePort,
+      ) => new RecommendationRunFreshnessGuard(store, schedules),
+      inject: [RECOMMENDATION_RUN_STORE, MEETUP_SCHEDULE],
+    },
+    {
       provide: GetRecommendationRunUseCase,
-      useFactory: (store: RecommendationRunStore) =>
-        new GetRecommendationRunUseCase(store),
-      inject: [RECOMMENDATION_RUN_STORE],
+      useFactory: (
+        store: RecommendationRunStore,
+        freshness: RecommendationRunFreshnessGuard,
+      ) => new GetRecommendationRunUseCase(store, freshness),
+      inject: [RECOMMENDATION_RUN_STORE, RecommendationRunFreshnessGuard],
     },
     {
       provide: MEETUP_LOCATION,
@@ -184,5 +218,6 @@ import { FeatureBuilder } from './application/services/feature-builder';
       inject: [MEETUP_CANDIDATE_SEARCH, MEETUP_LOCATION, PLACE_SEARCH],
     },
   ],
+  exports: [RecommendationRunFreshnessGuard],
 })
 export class RecommendationsModule {}

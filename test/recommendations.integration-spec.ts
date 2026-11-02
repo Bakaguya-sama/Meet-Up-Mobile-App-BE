@@ -3,15 +3,23 @@ import { DataSource } from 'typeorm';
 import { UserAccountEntity } from '../src/bounded-contexts/auth/infrastructure/persistence/typeorm/entities/user-account.typeorm-entity';
 import { MeetupEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/meetup.typeorm-entity';
 import { ParticipantEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/participant.typeorm-entity';
+import { ParticipantPreferenceEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/participant-preference.typeorm-entity';
+import { TypeOrmMeetupRepository } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/typeorm-meetup-repository';
+import { MeetupScheduleReader } from '../src/bounded-contexts/meetups/application/public/meetup-schedule-reader';
 import type { RecommendationRun } from '../src/bounded-contexts/recommendations/domain/recommendation-run';
 import { RecommendationCandidateEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-candidate.typeorm-entity';
 import { RecommendationRunEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-run.typeorm-entity';
 import { TypeOrmRecommendationRunRepository } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/typeorm-recommendation-run.repository';
 import { CreateAuthTables1760000001000 } from '../src/infrastructure/database/migrations/1760000001000-create-auth-tables';
+import { CreateUserPreferencesTables1760000002000 } from '../src/infrastructure/database/migrations/1760000002000-create-user-preferences-tables';
 import { CreateMeetupsTables1792070000000 } from '../src/infrastructure/database/migrations/1792070000000-create-meetups-tables';
 import { CreateRecommendationRunBaseline1792080000000 } from '../src/infrastructure/database/migrations/1792080000000-create-recommendation-run-baseline';
 import { AddRecommendationRankingSnapshots1792090000000 } from '../src/infrastructure/database/migrations/1792090000000-add-recommendation-ranking-snapshots';
 import { RecommendationMemberFeatureEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-member-feature.typeorm-entity';
+import { AddRecommendationTemporalContext1792100000000 } from '../src/infrastructure/database/migrations/1792100000000-add-recommendation-temporal-context';
+import { CreateMeetupParticipantPreferencesTable1792070001000 } from '../src/infrastructure/database/migrations/1792070001000-create-meetup-participant-preferences-table';
+import { MeetupsScheduleAdapter } from '../src/bounded-contexts/recommendations/infrastructure/adapters/meetups-schedule.adapter';
+import { RecommendationRunFreshnessGuard } from '../src/bounded-contexts/recommendations/application/public/recommendation-run-freshness.guard';
 
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -47,19 +55,24 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         UserAccountEntity,
         MeetupEntity,
         ParticipantEntity,
+        ParticipantPreferenceEntity,
         RecommendationRunEntity,
         RecommendationCandidateEntity,
         RecommendationMemberFeatureEntity,
       ],
       migrations: [
         CreateAuthTables1760000001000,
+        CreateUserPreferencesTables1760000002000,
         CreateMeetupsTables1792070000000,
+        CreateMeetupParticipantPreferencesTable1792070001000,
         CreateRecommendationRunBaseline1792080000000,
         AddRecommendationRankingSnapshots1792090000000,
+        AddRecommendationTemporalContext1792100000000,
       ],
     }).initialize();
 
     await db.runMigrations();
+    await assertTemporalSchema(db, schema);
     const columns = await db.query<Array<{ column_name: string }>>(
       `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name IN ('recommendation_runs', 'recommendation_candidates')`,
       [schema],
@@ -73,22 +86,46 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         'source_pages',
         'effective_k',
         'final_rank',
+        'scheduled_at_snapshot',
+        'scheduled_opening_status',
       ]),
     );
     await db.undoLastMigration();
     expect(
-      await db.query(`SELECT to_regclass($1) AS name`, [
-        `${schema}.recommendation_member_features`,
-      ]),
-    ).toEqual([{ name: null }]);
+      await db.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'recommendation_runs' AND column_name = 'scheduled_at_snapshot'`,
+        [schema],
+      ),
+    ).toEqual([]);
+    expect(
+      await db.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = $1
+           AND (
+             table_name = 'recommendation_candidates'
+             AND column_name IN ('scheduled_opening_status', 'opening_evidence')
+           )`,
+        [schema],
+      ),
+    ).toEqual([]);
     await db.runMigrations();
+    await assertTemporalSchema(db, schema);
+    expect(
+      await db.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = $1
+           AND table_name = 'recommendation_member_features'
+           AND column_name = 'recommended_departure_at'`,
+        [schema],
+      ),
+    ).toEqual([]);
 
     await db.query(
       `INSERT INTO user_accounts (id, email, display_name, created_at, updated_at) VALUES ($1, $2, 'Actor', NOW(), NOW())`,
       [actorId, `${actorId}@test.invalid`],
     );
     await db.query(
-      `INSERT INTO meetup_sessions (id, organizer_id, title, scheduled_at, invitation_deadline_at, search_radius_m, place_type, recommendation_mode, status, created_at, updated_at) VALUES ($1, $2, 'Test', NOW() + interval '2 hours', NOW() + interval '1 hour', 1000, 'cafe', 'balanced', 'inviting', NOW(), NOW())`,
+      `INSERT INTO meetup_sessions (id, organizer_id, title, scheduled_at, invitation_deadline_at, search_radius_m, place_type, recommendation_mode, status, created_at, updated_at) VALUES ($1, $2, 'Test', '2026-10-30T19:00:00Z', '2026-10-30T18:00:00Z', 1000, 'cafe', 'balanced', 'inviting', NOW(), NOW())`,
       [meetupId, actorId],
     );
     await db.query(
@@ -121,6 +158,12 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
       configVersion: 'recommendation-config-dev-v1',
       featureSchemaVersion: 'recommendation-features-v1',
       providerMappingVersion: 'google-place-category-map-v1',
+      providerRequestOptionsVersion:
+        'google-places-text-search-v2-scheduled-opening',
+      openingFilter: 'OPEN_AT_SCHEDULED_TIME',
+      openingEvaluatorVersion: 'scheduled-opening-evaluator-v1',
+      requestedAt: new Date('2026-10-30T10:00:00Z'),
+      scheduledAtSnapshot: new Date('2026-10-30T19:00:00Z'),
       createdAt: new Date(),
       completedAt: null,
       effectiveK: null,
@@ -141,6 +184,109 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
     await expect(
       repository.create({ ...first, id: randomUUID() }),
     ).resolves.toMatchObject({ id: first.id });
+  });
+
+  it('backfills pre-temporal runs as explicitly legacy and stale-safe', async () => {
+    const legacySchema = `recommendation_legacy_${randomUUID().replaceAll('-', '')}`;
+    let legacyDb: DataSource | undefined;
+    try {
+      await bootstrap.query(`CREATE SCHEMA "${legacySchema}"`);
+      legacyDb = await new DataSource({
+        type: 'postgres',
+        url: databaseUrl,
+        schema: legacySchema,
+        extra: { options: `-c search_path=${legacySchema},public` },
+        ssl: databaseUrl?.includes('sslmode=require'),
+        synchronize: false,
+        entities: [],
+        migrations: [
+          CreateAuthTables1760000001000,
+          CreateMeetupsTables1792070000000,
+          CreateRecommendationRunBaseline1792080000000,
+          AddRecommendationRankingSnapshots1792090000000,
+        ],
+      }).initialize();
+      await legacyDb.runMigrations();
+      const legacyActorId = randomUUID();
+      const legacyMeetupId = randomUUID();
+      const legacyRunId = randomUUID();
+      await legacyDb.query(
+        `INSERT INTO user_accounts (id, email, display_name, created_at, updated_at)
+         VALUES ($1, $2, 'Legacy Actor', '2026-10-29T09:00:00Z', '2026-10-29T09:00:00Z')`,
+        [legacyActorId, `${legacyActorId}@test.invalid`],
+      );
+      await legacyDb.query(
+        `INSERT INTO meetup_sessions
+          (id, organizer_id, title, scheduled_at, invitation_deadline_at,
+           search_radius_m, place_type, recommendation_mode, status,
+           created_at, updated_at)
+         VALUES
+          ($1, $2, 'Legacy', '2026-10-30T19:00:00Z',
+           '2026-10-30T18:00:00Z', 1000, 'cafe', 'balanced', 'inviting',
+           '2026-10-29T09:00:00Z', '2026-10-29T09:00:00Z')`,
+        [legacyMeetupId, legacyActorId],
+      );
+      await legacyDb.query(
+        `INSERT INTO recommendation_runs
+          (id, meetup_id, request_id, payload_hash, requested_by_id, requested_k,
+           status, ranking_strategy, algorithm_version, config_version,
+           feature_schema_version, provider_mapping_version, created_at)
+         VALUES
+          ($1, $2, $3, $4, $5, 1, 'RUNNING', 'min-sum', 'algorithm-v1',
+           'config-v1', 'features-v1', 'mapping-v1', '2026-10-29T10:00:00Z')`,
+        [
+          legacyRunId,
+          legacyMeetupId,
+          randomUUID(),
+          'a'.repeat(64),
+          legacyActorId,
+        ],
+      );
+      const runner = legacyDb.createQueryRunner();
+      await runner.connect();
+      try {
+        await new AddRecommendationTemporalContext1792100000000().up(runner);
+      } finally {
+        await runner.release();
+      }
+      await expect(
+        legacyDb.query(
+          `SELECT provider_request_options_version, opening_filter,
+                  opening_evaluator_version, requested_at,
+                  scheduled_at_snapshot, warnings
+             FROM recommendation_runs
+            WHERE id = $1`,
+          [legacyRunId],
+        ),
+      ).resolves.toEqual([
+        {
+          provider_request_options_version: 'legacy-pre-temporal-v1',
+          opening_filter: 'ANY',
+          opening_evaluator_version: 'not-applied',
+          requested_at: new Date('2026-10-29T10:00:00Z'),
+          scheduled_at_snapshot: new Date('2026-10-30T19:00:00Z'),
+          warnings: ['LEGACY_TEMPORAL_CONTEXT_BACKFILL'],
+        },
+      ]);
+      const cycleRunner = legacyDb.createQueryRunner();
+      await cycleRunner.connect();
+      try {
+        const migration = new AddRecommendationTemporalContext1792100000000();
+        await migration.down(cycleRunner);
+        await migration.up(cycleRunner);
+      } finally {
+        await cycleRunner.release();
+      }
+      await expect(
+        legacyDb.query(
+          'SELECT warnings FROM recommendation_runs WHERE id = $1',
+          [legacyRunId],
+        ),
+      ).resolves.toEqual([{ warnings: ['LEGACY_TEMPORAL_CONTEXT_BACKFILL'] }]);
+    } finally {
+      if (legacyDb?.isInitialized) await legacyDb.destroy();
+      await bootstrap.query(`DROP SCHEMA IF EXISTS "${legacySchema}" CASCADE`);
+    }
   });
 
   it('commits candidates atomically and enforces database constraints', async () => {
@@ -177,6 +323,14 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
               avgEtaSeconds: 300,
               maxEtaSeconds: 300,
               etaRangeSeconds: 0,
+              scheduledOpeningStatus: 'OPEN',
+              openingEvidence: {
+                evaluatorVersion: 'scheduled-opening-evaluator-v1',
+                source: 'REGULAR',
+                evaluatedLocalDateTime: '2026-10-31T02:00',
+                utcOffsetMinutes: 420,
+                fallbackToRegularHours: true,
+              },
             },
           ],
           memberFeatures: [],
@@ -198,12 +352,13 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
 
     const valid = run();
     await repository.create(valid);
+    const validCandidateId = randomUUID();
     const completed = await repository.complete(
       valid.id,
       {
         candidates: [
           {
-            id: randomUUID(),
+            id: validCandidateId,
             runId: valid.id,
             canonicalCandidateKey: 'google-places:cafe-1',
             provider: 'google-places',
@@ -228,9 +383,35 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
             avgEtaSeconds: 300,
             maxEtaSeconds: 300,
             etaRangeSeconds: 0,
+            scheduledOpeningStatus: 'OPEN',
+            openingEvidence: {
+              evaluatorVersion: 'scheduled-opening-evaluator-v1',
+              source: 'REGULAR',
+              evaluatedLocalDateTime: '2026-10-31T02:00',
+              utcOffsetMinutes: 420,
+              fallbackToRegularHours: true,
+            },
           },
         ],
-        memberFeatures: [],
+        memberFeatures: [
+          {
+            id: randomUUID(),
+            runId: valid.id,
+            candidateId: validCandidateId,
+            participantId,
+            canonicalCandidateKey: 'google-places:cafe-1',
+            etaSeconds: 1500,
+            distanceMeters: 1000,
+            matchedTags: [],
+            missingFlags: [],
+            travelUtility: 0.5,
+            preferenceUtility: 0.5,
+            placeQualityUtility: 0.5,
+            memberUtility: 0.5,
+            routeStatus: 'OK',
+            createdAt: new Date(),
+          },
+        ],
         effectiveK: 1,
         warnings: ['RESULT_COUNT_BELOW_REQUESTED_K'],
         randomSeed: 'seed',
@@ -245,5 +426,131 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
       warnings: ['RESULT_COUNT_BELOW_REQUESTED_K'],
     });
     expect(completed.candidates).toHaveLength(1);
+    expect(completed.memberFeatures).toHaveLength(1);
+    expect(completed.memberFeatures[0].etaSeconds).toBe(1_500);
+    const persisted = await repository.findById(meetupId, valid.id);
+    expect(persisted).toMatchObject({
+      scheduledAtSnapshot: new Date('2026-10-30T19:00:00Z'),
+      openingFilter: 'OPEN_AT_SCHEDULED_TIME',
+    });
+    expect(persisted?.candidates[0]).toMatchObject({
+      scheduledOpeningStatus: 'OPEN',
+    });
+    expect(persisted?.memberFeatures[0].etaSeconds).toBe(1_500);
+
+    const freshness = new RecommendationRunFreshnessGuard(
+      repository,
+      new MeetupsScheduleAdapter(
+        new MeetupScheduleReader(new TypeOrmMeetupRepository(db)),
+      ),
+    );
+    await expect(freshness.status(persisted!)).resolves.toBe('CURRENT_CONTEXT');
+    await expect(
+      freshness.status({
+        ...persisted!,
+        providerRequestOptionsVersion: 'legacy-pre-temporal-v1',
+      }),
+    ).resolves.toBe('STALE_CONTEXT');
+    await db.query(
+      `UPDATE meetup_sessions
+          SET scheduled_at = '2026-10-30T20:00:00Z'
+        WHERE id = $1`,
+      [meetupId],
+    );
+    await expect(freshness.status(persisted!)).resolves.toBe('STALE_CONTEXT');
+    await expect(
+      freshness.assertFreshForDecision(meetupId, valid.id),
+    ).rejects.toMatchObject({ code: 'RECOMMENDATION_STALE_CONTEXT' });
+    await expect(
+      repository.findById(meetupId, valid.id),
+    ).resolves.toMatchObject({
+      status: 'COMPLETED',
+      scheduledAtSnapshot: new Date('2026-10-30T19:00:00Z'),
+    });
   });
 });
+
+async function assertTemporalSchema(db: DataSource, schema: string) {
+  const columns = await db.query<
+    Array<{
+      table_name: string;
+      column_name: string;
+      data_type: string;
+      is_nullable: 'YES' | 'NO';
+    }>
+  >(
+    `SELECT table_name, column_name, data_type, is_nullable
+       FROM information_schema.columns
+      WHERE table_schema = $1
+        AND (
+          (table_name = 'recommendation_runs' AND column_name IN (
+            'provider_request_options_version', 'opening_filter',
+            'opening_evaluator_version', 'requested_at', 'scheduled_at_snapshot'
+          ))
+          OR (table_name = 'recommendation_candidates' AND column_name IN (
+            'scheduled_opening_status', 'opening_evidence'
+          ))
+        )
+      ORDER BY table_name, column_name`,
+    [schema],
+  );
+  expect(columns).toEqual([
+    {
+      table_name: 'recommendation_candidates',
+      column_name: 'opening_evidence',
+      data_type: 'jsonb',
+      is_nullable: 'YES',
+    },
+    {
+      table_name: 'recommendation_candidates',
+      column_name: 'scheduled_opening_status',
+      data_type: 'character varying',
+      is_nullable: 'YES',
+    },
+    {
+      table_name: 'recommendation_runs',
+      column_name: 'opening_evaluator_version',
+      data_type: 'character varying',
+      is_nullable: 'NO',
+    },
+    {
+      table_name: 'recommendation_runs',
+      column_name: 'opening_filter',
+      data_type: 'character varying',
+      is_nullable: 'NO',
+    },
+    {
+      table_name: 'recommendation_runs',
+      column_name: 'provider_request_options_version',
+      data_type: 'character varying',
+      is_nullable: 'NO',
+    },
+    {
+      table_name: 'recommendation_runs',
+      column_name: 'requested_at',
+      data_type: 'timestamp with time zone',
+      is_nullable: 'NO',
+    },
+    {
+      table_name: 'recommendation_runs',
+      column_name: 'scheduled_at_snapshot',
+      data_type: 'timestamp with time zone',
+      is_nullable: 'NO',
+    },
+  ]);
+  const constraints = await db.query<Array<{ conname: string }>>(
+    `SELECT conname
+       FROM pg_constraint
+      WHERE connamespace = $1::regnamespace
+        AND conname IN (
+          'chk_recommendation_runs_opening_filter',
+          'chk_recommendation_candidates_scheduled_opening'
+        )
+      ORDER BY conname`,
+    [schema],
+  );
+  expect(constraints).toEqual([
+    { conname: 'chk_recommendation_candidates_scheduled_opening' },
+    { conname: 'chk_recommendation_runs_opening_filter' },
+  ]);
+}

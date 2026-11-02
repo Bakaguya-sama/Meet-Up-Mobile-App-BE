@@ -72,7 +72,6 @@
 - Các feature chính được dùng để xếp hạng.
 - Lý do giải thích dạng có cấu trúc.
 - Cờ dữ liệu thiếu và warning khi kết quả ít hơn `requestedK`. Candidate top-K luôn có route hợp lệ cho mọi member.
-- `recommendedDepartureAt` riêng cho từng member, được suy ra từ `scheduledAt - etaSeconds`.
 - Snapshot của `scheduledAt`, opening/weather context, requested/effective routing preference và travel mode đã dùng.
 - Phiên bản thuật toán và cấu hình tạo ra kết quả.
 
@@ -132,7 +131,6 @@ Thông tin thuần túy về contract, quota hoặc trạng thái tính năng c�
 | Opening filter | Quy tắc lọc theo trạng thái mở cửa. | `OPEN_AT_REQUEST_TIME` dùng `openNow`; `OPEN_AT_SCHEDULED_TIME` đánh giá opening periods tại `scheduledAt`. |
 | `scheduledAt` | Thời điểm cả nhóm dự kiến gặp tại địa điểm. Đây không phải thời điểm từng người bắt đầu đi. | Meetup hẹn lúc 19:00 thì `scheduledAt=19:00`. |
 | Temporal context | Snapshot các dữ liệu phụ thuộc thời gian của một run. | `requestedAt`, `scheduledAt`, opening status và thời điểm weather forecast. |
-| `recommendedDepartureAt` | Thời điểm gợi ý một member nên bắt đầu đi, tính bằng giờ gặp trừ ETA. | Gặp 19:00, ETA 25 phút thì nên đi lúc 18:35. |
 | Scheduled opening evaluator | Module xác định candidate `OPEN`, `CLOSED` hoặc `UNKNOWN` tại `scheduledAt`. | Quán mở 18:00–22:00 được đánh `OPEN` cho meetup 19:00. |
 | Weather policy | Cách engine sử dụng weather context. | `WARN_ONLY` chỉ cảnh báo; `FILTER_OUTDOOR` có thể loại địa điểm chắc chắn ngoài trời khi forecast vượt ngưỡng. |
 | Outdoor exposure | Phân loại mức địa điểm phụ thuộc không gian ngoài trời. | Công viên là `OUTDOOR`; quán không đủ dữ liệu là `UNKNOWN`. |
@@ -263,11 +261,10 @@ Thông tin thuần túy về contract, quota hoặc trạng thái tính năng c�
 9. **[Tự đề xuất]** Rule-based ranker là production baseline ngay cả sau khi có LTR. Khi model lỗi, hệ thống quay về baseline có version.
 10. **[Tự đề xuất]** Không dùng rating hoặc dữ liệu thiếu như hard constraint nếu provider không xác nhận rõ trạng thái.
 11. **[Tự đề xuất]** `scheduledAt` là thời điểm gặp. Run phải snapshot giá trị này; không diễn giải nó thành thời điểm khởi hành của mọi member.
-12. **[Tự đề xuất]** `recommendedDepartureAt` chỉ là phép suy ra từ ETA của run. Nó không phải lịch cá nhân và không tạo calendar event.
-13. **[Tự đề xuất]** `ROUTES_ROUTING_PREFERENCE` là cấu hình deployment được validate khi khởi động. Mobile không được bật/tắt traffic cho từng request.
-14. **[Tự đề xuất]** `TRAFFIC_AWARE` đã tác động vào `duration`; không cộng thêm congestion penalty vào utility ở phiên bản này để tránh tính traffic hai lần.
-15. **[Tự đề xuất]** Weather chỉ hard-filter khi forecast có sẵn, candidate chắc chắn `OUTDOOR`, và threshold có version bị vi phạm. `UNKNOWN`, provider lỗi hoặc forecast ngoài tầm không bị diễn giải thành thời tiết xấu.
-16. **[Tự đề xuất]** Calendar integration nằm ngoài phạm vi. Engine chỉ dùng `scheduledAt` đã có trong meetup.
+12. **[Tự đề xuất]** `ROUTES_ROUTING_PREFERENCE` là cấu hình deployment được validate khi khởi động. Mobile không được bật/tắt traffic cho từng request.
+13. **[Tự đề xuất]** `TRAFFIC_AWARE` đã tác động vào `duration`; không cộng thêm congestion penalty vào utility ở phiên bản này để tránh tính traffic hai lần.
+14. **[Tự đề xuất]** Weather chỉ hard-filter khi forecast có sẵn, candidate chắc chắn `OUTDOOR`, và threshold có version bị vi phạm. `UNKNOWN`, provider lỗi hoặc forecast ngoài tầm không bị diễn giải thành thời tiết xấu.
+15. **[Tự đề xuất]** Calendar integration nằm ngoài phạm vi. Engine chỉ dùng `scheduledAt` đã có trong meetup; UI nhận `etaSeconds` để hiển thị thời gian di chuyển.
 
 ## 4. Kiến trúc tổng thể
 
@@ -375,13 +372,12 @@ flowchart TD
     GroupMetrics --> Pareto["7.6 Pareto dominance<br/>U thành member rank rồi Pareto level"]
     Pareto --> MonteCarlo["7.7 Monte Carlo inclusion probability"]
     MonteCarlo --> Rank["Group Ranker<br/>full ranking và top-K"]
-    Rank --> Departure["Tính recommendedDepartureAt<br/>scheduledAt - etaSeconds cho từng member"]
-    Departure --> Explain["Explanation Builder"]
+    Rank --> Explain["Explanation Builder"]
     Explain --> Persist["Persist run, temporal/provider snapshots,<br/>full ranking, versions"]
     Persist -->|transaction lỗi| PersistFailed["Giữ run không COMPLETED<br/>trả lỗi retryable"]
     Persist --> Freshness{"scheduledAt hiện tại<br/>còn bằng snapshot?"}
     Freshness -->|Không| Stale["Trả contextStatus=STALE_CONTEXT<br/>yêu cầu run mới"]
-    Freshness -->|Có| Response["Mobile nhận top-K, ETA,<br/>recommendedDepartureAt và explanation"]
+    Freshness -->|Có| Response["Mobile nhận top-K, ETA và explanation"]
 
     Response --> Impression["Impression: candidate thực sự được hiển thị"]
     Impression --> Feedback["Vote, đổi vote, chốt,<br/>navigation, favorite"]
@@ -500,7 +496,7 @@ sequenceDiagram
     RE->>RE: effectiveK = min(requestedK, routableCandidateCount)
     RE->>RE: Build features and member utilities
     RE->>RE: XPO-inspired group ranking
-    RE->>RE: Compute recommendedDepartureAt + explanations
+    RE->>RE: Build explanations from ETA and ranking snapshots
     RE->>DB: Persist run and full ranked set
     RE-->>API: top-K + runId + versions
     API-->>Organizer: Hiển thị recommendation
@@ -688,14 +684,6 @@ effectiveK = min(requestedK, routableCandidateCount)
 
 Nếu `effectiveK = 0`, trả `NO_ROUTABLE_CANDIDATES`. Nếu `effectiveK < requestedK`, tiếp tục ranking và trả warning `RESULT_COUNT_BELOW_REQUESTED_K`.
 
-Sau route validation, tính cho từng member và candidate:
-
-```text
-recommendedDepartureAt(u,p) = scheduledAt - etaSeconds(u,p)
-```
-
-Đây là output giải thích/lập kế hoạch, không phải input utility và không được ghi ngược thành lịch cá nhân.
-
 #### Bước 8 — Feature và utility
 
 **[Điều chỉnh]** Survey mô tả utility values trong `[0,1]` như một dạng biểu diễn preference, với giá trị cao hơn thể hiện preference cao hơn [2, Mục 3.2.1, PDF tr. 8]. MeetUp chọn cùng miền giá trị, nhưng tự định nghĩa member–place utility từ ETA, preference và place quality.
@@ -733,7 +721,7 @@ FAIR_PARETO_RANKED
 LTR_RANKED
 ```
 
-`facts` tối thiểu gồm rank, `effectiveK`, ETA mean/max, `recommendedDepartureAt` từng member, candidate least-misery utility, group utility, opening/weather status và Pareto level/inclusion probability khi strategy có dùng chúng. Khi traffic-aware có dữ liệu, explanation có thể nêu chênh lệch `duration-staticDuration`, nhưng không gọi đó là “đường thoáng nhất” nếu engine không so sánh alternative routes. Mỗi fact ghi `unit` và `source` (`ROUTES`, `PLACES`, `WEATHER`, `ENGINE`). Client map `summaryCode` sang template đã review. Không được nói “gần nhất”, “công bằng nhất” hoặc “được mọi người thích” nếu snapshot không chứng minh đúng mệnh đề đó.
+`facts` tối thiểu gồm rank, `effectiveK`, ETA mean/max, candidate least-misery utility, group utility, opening/weather status và Pareto level/inclusion probability khi strategy có dùng chúng. Khi traffic-aware có dữ liệu, explanation có thể nêu chênh lệch `duration-staticDuration`, nhưng không gọi đó là “đường thoáng nhất” nếu engine không so sánh alternative routes. Mỗi fact ghi `unit` và `source` (`ROUTES`, `PLACES`, `WEATHER`, `ENGINE`). Client map `summaryCode` sang template đã review. Không được nói “gần nhất”, “công bằng nhất” hoặc “được mọi người thích” nếu snapshot không chứng minh đúng mệnh đề đó.
 
 #### Bước 11 — Persist và trả kết quả
 
@@ -756,7 +744,7 @@ Mobile -> RecommendationOrchestrator
        -> scheduled opening + weather policy
        -> Google Routes theo travel mode/routing preference
        -> utility + group ranking
-       -> recommendedDepartureAt + explanation
+       -> explanation từ ETA + ranking snapshot
        -> persist run
        -> top-K -> Mobile
 ```
@@ -952,7 +940,6 @@ interface MemberPlaceFeature {
   etaSeconds: number;
   distanceMeters: number;
   travelMode: 'TWO_WHEELER' | 'DRIVE';
-  recommendedDepartureAt: string;
   matchedTags: Array<{
     tag: string;
     level: 'high' | 'normal' | 'avoid';
@@ -993,7 +980,6 @@ interface RankedPlace {
     staticDurationSeconds?: number;
     distanceMeters: number;
     travelMode: 'TWO_WHEELER' | 'DRIVE';
-    recommendedDepartureAt: string;
     travelUtility: number;
     preferenceUtility: number;
     placeQualityUtility: number;
@@ -1026,7 +1012,7 @@ interface RankedPlace {
 - `canonicalCandidateKey` duy nhất trong một run.
 - Giá trị số dùng cho formula phải hữu hạn; config không hợp lệ làm run fail trước khi gọi provider.
 - Timestamp lưu ở UTC; UI tự chuyển múi giờ.
-- `scheduledAt` phải có trong snapshot của run thành công; `recommendedDepartureAt` phải đúng bằng `scheduledAt - etaSeconds` theo UTC cho từng member–candidate.
+- `scheduledAt` phải có trong snapshot của run thành công; mỗi member–candidate có `etaSeconds` hữu hạn, không âm và được trả cho UI dưới dạng thời lượng di chuyển.
 - `OPEN_AT_SCHEDULED_TIME` chỉ loại `CLOSED`; `UNKNOWN` luôn được giữ và cảnh báo.
 - `FILTER_OUTDOOR` chỉ loại candidate có đủ ba điều kiện: forecast `AVAILABLE`, exposure `OUTDOOR`, threshold versioned bị vi phạm.
 - Mỗi run chỉ có một `effectiveRoutingPreference`. Nếu traffic fallback xảy ra, không giữ route element `TRAFFIC_AWARE` cũ.
@@ -1628,7 +1614,7 @@ Mỗi model version lưu:
 |---|---|---|
 | `recommendation_runs` | Metadata một run. | `request_id`, `payload_hash`, `requested_at`, `scheduled_at_snapshot`, opening/weather policy, requested/effective routing preference, `ranking_strategy`, versions, `random_seed`, `requested_k`, `effective_k`, `status`, latency fields. |
 | `recommendation_candidates` | Toàn bộ candidate đã xét, kể cả không vào top-K. | `run_id`, `canonical_candidate_key`, `provider`, `provider_place_id`, `filter_status`, `filter_reason`, `final_rank`. |
-| `recommendation_member_features` | Feature/utility cho từng member–candidate. | ETA, static duration, distance, travel mode, `recommended_departure_at`, `T`, `P`, `Q`, `U`, route status. |
+| `recommendation_member_features` | Feature/utility cho từng member–candidate. | ETA, static duration, distance, travel mode, `T`, `P`, `Q`, `U`, route status. |
 | `recommendation_places` | Kết quả tổng hợp và explanation. | scheduled opening status/evidence, weather status/evidence, group utility, fairness, Pareto level, inclusion probability. |
 | `recommendation_impressions` | Candidate nào thực sự được hiển thị. | `event_id`, participant, canonical candidate key, rank, timestamp. |
 | `recommendation_feedback_events` | Event sau hiển thị. | `event_id`, event type, actor, canonical candidate key, timestamp, metadata đã lọc. |
@@ -1939,7 +1925,6 @@ Mỗi tử/mẫu đếm entity duy nhất trong evaluation window, không đếm
 | Traffic delta | `duration - staticDuration` theo route element có đủ hai giá trị | Chỉ metric/explanation; không cộng utility. |
 | Weather availability | Candidate có forecast `AVAILABLE` / candidate cần weather | Báo theo forecast horizon/provider; chưa đặt ngưỡng. |
 | Weather filter relaxation rate | Run phát `WEATHER_FILTER_RELAXED` / run dùng `FILTER_OUTDOOR` | Theo dõi để điều chỉnh taxonomy/threshold; chưa đặt ngưỡng. |
-| Departure-time consistency | Output có `recommendedDepartureAt = scheduledAt - ETA` / member result | 100%. |
 
 Các ngưỡng trên là **[Tự đề xuất]** cho giai đoạn đầu, không lấy từ [1]–[7]. Team phải điều chỉnh sau benchmark.
 
@@ -1972,7 +1957,6 @@ Mức “xấu đi quá mức” chưa được chốt và là câu hỏi mở.
 ### Giai đoạn 1.1 — Temporal context và `scheduledAt`
 
 - Snapshot `scheduledAt` và trả `contextStatus=STALE_CONTEXT` khi meetup đổi thời gian.
-- Tính `recommendedDepartureAt` cho từng member–candidate.
 - Triển khai `ScheduledOpeningEvaluator` và `OPEN_AT_SCHEDULED_TIME` với `OPEN/CLOSED/UNKNOWN`.
 - Lưu opening evidence/evaluator version; không dùng `openNow` cho lịch tương lai.
 

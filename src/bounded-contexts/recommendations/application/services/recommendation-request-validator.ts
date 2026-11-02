@@ -8,7 +8,7 @@ export interface ValidatedRecommendationRequest {
   meetupId: string;
   topK: number;
   requiredCategories: string[];
-  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME';
+  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
   searchRadiusMeters: number;
   payloadHash: string;
 }

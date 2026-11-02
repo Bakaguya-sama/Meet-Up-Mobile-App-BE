@@ -1,4 +1,5 @@
 import type { PlaceSearchPort } from '../ports/place-search.port';
+import type { OpeningFilter } from '../ports/place-search.port';
 import type {
   PlaceCategoryMapping,
   RecommendationConfig,
@@ -20,7 +21,7 @@ export class CandidateGenerator {
 
   async generate(input: {
     categories: string[];
-    openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME';
+    openingFilter: OpeningFilter;
     center: { latitude: number; longitude: number };
     radiusMeters: number;
   }): Promise<RawCandidate[]> {
@@ -61,6 +62,9 @@ export class CandidateGenerator {
           ...(input.openingFilter === 'OPEN_AT_REQUEST_TIME'
             ? { openNow: true }
             : {}),
+          ...(input.openingFilter === 'OPEN_AT_SCHEDULED_TIME'
+            ? { includeScheduledOpeningFields: true }
+            : {}),
           ...(state.nextPageToken ? { pageToken: state.nextPageToken } : {}),
         });
         calls += 1;
@@ -82,6 +86,10 @@ export class CandidateGenerator {
             rating0To5: candidate.rating,
             userRatingCount: candidate.userRatingCount,
             currentOpen: candidate.openingHours?.openNow,
+            currentOpeningHours: candidate.currentOpeningHours,
+            regularOpeningHours: candidate.regularOpeningHours,
+            timeZoneId: candidate.timeZoneId,
+            utcOffsetMinutes: candidate.utcOffsetMinutes,
           });
         }
       }

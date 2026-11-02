@@ -17,6 +17,7 @@ import {
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
+  type ApiResponseOptions,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../../../presentation/http/decorators/current-user.decorator';
 import { Roles } from '../../../../presentation/http/decorators/roles.decorator';
@@ -105,7 +106,10 @@ export class RecommendationsController {
   @ApiOperation({
     summary: 'Create an idempotent synchronous recommendation run',
   })
-  @ApiOkResponse({ description: 'Completed recommendation run snapshot' })
+  @ApiOkResponse({
+    description: 'Completed recommendation run snapshot',
+    schema: recommendationRunSchema(),
+  })
   create(
     @CurrentUser('id') actorId: string,
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
@@ -121,7 +125,10 @@ export class RecommendationsController {
   @Get(':meetupId/recommendation-runs/:runId')
   @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: 'Get a persisted recommendation run snapshot' })
-  @ApiOkResponse({ description: 'Persisted recommendation run snapshot' })
+  @ApiOkResponse({
+    description: 'Persisted recommendation run snapshot with freshness status',
+    schema: recommendationRunSchema(),
+  })
   get(
     @CurrentUser('id') actorId: string,
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
@@ -129,4 +136,72 @@ export class RecommendationsController {
   ) {
     return this.getRun.execute(actorId, meetupId, runId);
   }
+}
+
+function recommendationRunSchema(): Extract<
+  ApiResponseOptions,
+  { schema: unknown }
+>['schema'] {
+  return {
+    type: 'object',
+    required: [
+      'id',
+      'meetupId',
+      'requestId',
+      'status',
+      'requestedAt',
+      'scheduledAtSnapshot',
+      'openingFilter',
+      'openingEvaluatorVersion',
+      'contextStatus',
+      'candidates',
+      'memberFeatures',
+    ],
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      meetupId: { type: 'string', format: 'uuid' },
+      requestId: { type: 'string', format: 'uuid' },
+      status: { type: 'string', enum: ['RUNNING', 'COMPLETED', 'FAILED'] },
+      requestedAt: { type: 'string', format: 'date-time' },
+      scheduledAtSnapshot: { type: 'string', format: 'date-time' },
+      openingFilter: {
+        type: 'string',
+        enum: ['ANY', 'OPEN_AT_REQUEST_TIME', 'OPEN_AT_SCHEDULED_TIME'],
+      },
+      openingEvaluatorVersion: { type: 'string' },
+      contextStatus: {
+        type: 'string',
+        enum: ['CURRENT_CONTEXT', 'STALE_CONTEXT'],
+      },
+      warnings: { type: 'array', items: { type: 'string' } },
+      candidates: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            canonicalCandidateKey: { type: 'string' },
+            finalRank: { type: 'integer', nullable: true },
+            scheduledOpeningStatus: {
+              type: 'string',
+              enum: ['OPEN', 'CLOSED', 'UNKNOWN'],
+              nullable: true,
+            },
+            openingEvidence: { type: 'object', nullable: true },
+          },
+        },
+      },
+      memberFeatures: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['participantId', 'canonicalCandidateKey', 'etaSeconds'],
+          properties: {
+            participantId: { type: 'string', format: 'uuid' },
+            canonicalCandidateKey: { type: 'string' },
+            etaSeconds: { type: 'number' },
+          },
+        },
+      },
+    },
+  };
 }

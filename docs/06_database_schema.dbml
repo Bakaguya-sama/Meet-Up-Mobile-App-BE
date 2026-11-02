@@ -222,6 +222,11 @@
     config_version varchar(100) [not null]
     feature_schema_version varchar(100) [not null]
     provider_mapping_version varchar(100) [not null]
+    provider_request_options_version varchar(100) [not null]
+    opening_filter varchar(40) [not null, note: 'ANY, OPEN_AT_REQUEST_TIME, OPEN_AT_SCHEDULED_TIME']
+    opening_evaluator_version varchar(100) [not null]
+    requested_at timestamptz [not null]
+    scheduled_at_snapshot timestamptz [not null]
     effective_k smallint
     warnings jsonb [not null, default: `'[]'::jsonb`]
     random_seed varchar(100)
@@ -263,6 +268,8 @@
     avg_eta_seconds double
     max_eta_seconds double
     eta_range_seconds double
+    scheduled_opening_status varchar(20) [note: 'OPEN, CLOSED, UNKNOWN; null when scheduled opening policy is not used.']
+    opening_evidence jsonb
     created_at timestamptz [not null]
 
     Indexes {

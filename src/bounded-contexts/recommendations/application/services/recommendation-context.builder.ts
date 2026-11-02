@@ -87,10 +87,21 @@ export class RecommendationContextBuilder {
         'At least two accepted members must share a valid current location',
       );
     }
+    const requestedAt = this.now();
+    const scheduledAt = meetup.scheduledAt;
+    if (
+      !Number.isFinite(requestedAt.getTime()) ||
+      !Number.isFinite(scheduledAt.getTime())
+    ) {
+      throw new RecommendationError(
+        'INVALID_RECOMMENDATION_CONTEXT',
+        'Meetup temporal context is invalid',
+      );
+    }
     return {
       meetupId: meetup.meetupId,
-      requestedAt: this.now().toISOString(),
-      scheduledAt: meetup.scheduledAt.toISOString(),
+      requestedAt: requestedAt.toISOString(),
+      scheduledAt: scheduledAt.toISOString(),
       members,
       searchCenter: medoid(members),
     };

@@ -42,6 +42,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         RECOMMENDATION_INSUFFICIENT_LOCATIONS: HttpStatus.BAD_REQUEST,
         PLACE_SEARCH_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
         INVALID_RECOMMENDATION_REQUEST: HttpStatus.BAD_REQUEST,
+        INVALID_RECOMMENDATION_CONTEXT: HttpStatus.UNPROCESSABLE_ENTITY,
         UNSUPPORTED_OPENING_FILTER_FOR_CATEGORY: HttpStatus.BAD_REQUEST,
         INSUFFICIENT_VALID_MEMBERS: HttpStatus.BAD_REQUEST,
         NO_ELIGIBLE_CANDIDATES: HttpStatus.UNPROCESSABLE_ENTITY,
@@ -55,6 +56,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         RECOMMENDATION_RUN_NOT_RUNNING: HttpStatus.CONFLICT,
         RECOMMENDATION_RUN_NOT_FOUND: HttpStatus.NOT_FOUND,
         RECOMMENDATION_RUN_FORBIDDEN: HttpStatus.FORBIDDEN,
+        RECOMMENDATION_STALE_CONTEXT: HttpStatus.CONFLICT,
       };
       const status = statuses[exception.code] ?? HttpStatus.CONFLICT;
       response.status(status).json({

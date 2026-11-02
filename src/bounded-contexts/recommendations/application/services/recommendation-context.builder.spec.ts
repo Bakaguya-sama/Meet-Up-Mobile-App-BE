@@ -119,4 +119,26 @@ describe('RecommendationContextBuilder privacy/location boundary', () => {
     ]);
     expect(JSON.stringify(context)).not.toContain('user-a');
   });
+
+  it('rejects an invalid canonical meetup schedule before provider work', async () => {
+    meetups.getCandidateSearchContext.mockResolvedValueOnce({
+      meetupId: 'meetup',
+      placeType: 'cafe',
+      searchRadiusMeters: 1000,
+      scheduledAt: new Date(Number.NaN),
+      acceptedMembers: [
+        { participantId: 'participant-a', userId: 'user-a' },
+        { participantId: 'participant-b', userId: 'user-b' },
+      ],
+      acceptedMemberUserIds: ['user-a', 'user-b'],
+    });
+    locations.getActiveLocations.mockResolvedValue([
+      { userId: 'user-a', latitude: 10, longitude: 106 },
+      { userId: 'user-b', latitude: 10, longitude: 107 },
+    ]);
+
+    await expect(builder.build('actor', 'meetup')).rejects.toMatchObject({
+      code: 'INVALID_RECOMMENDATION_CONTEXT',
+    });
+  });
 });

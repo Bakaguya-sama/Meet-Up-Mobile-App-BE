@@ -1,3 +1,9 @@
+import type { NormalizedOpeningHours } from '../ports/place-search.port';
+import type {
+  ScheduledOpeningEvidence,
+  ScheduledOpeningStatus,
+} from '../../domain/temporal-context';
+
 export interface RawCandidate {
   provider: string;
   providerPlaceId: string;
@@ -12,6 +18,10 @@ export interface RawCandidate {
   rating0To5?: number;
   userRatingCount?: number;
   currentOpen?: boolean;
+  currentOpeningHours?: NormalizedOpeningHours;
+  regularOpeningHours?: NormalizedOpeningHours;
+  timeZoneId?: string;
+  utcOffsetMinutes?: number;
 }
 
 export interface EligibleCandidate extends RawCandidate {
@@ -21,6 +31,8 @@ export interface EligibleCandidate extends RawCandidate {
   sourceCategories: string[];
   sourcePages: number[];
   normalizedTags: string[];
+  scheduledOpeningStatus?: ScheduledOpeningStatus;
+  openingEvidence?: ScheduledOpeningEvidence;
 }
 
 export function filterCandidates(

@@ -24,7 +24,7 @@ describe('recommendation run orchestration', () => {
       findByRequest: () => Promise.resolve(stored),
       findById: () => Promise.resolve(stored),
       create: (run) => {
-        stored = { ...run, candidates: [] };
+        stored = { ...run, candidates: [], memberFeatures: [] };
         return Promise.resolve(stored);
       },
       complete: (runId, completion, completedAt) => {
@@ -40,6 +40,7 @@ describe('recommendation run orchestration', () => {
           routeBatchCount: completion.routeBatchCount,
           routeElementCount: completion.routeElementCount,
           candidates: completion.candidates,
+          memberFeatures: completion.memberFeatures,
         };
         return Promise.resolve(stored);
       },
@@ -114,6 +115,14 @@ describe('recommendation run orchestration', () => {
       'actor',
       'bbbbbbbb-0000-4000-8000-000000000002',
       input,
+    );
+    expect(created).toMatchObject({
+      requestedAt: new Date('2026-10-27T00:00:00.000Z'),
+      scheduledAtSnapshot: new Date('2026-10-28T00:00:00.000Z'),
+      contextStatus: 'CURRENT_CONTEXT',
+    });
+    expect(created.memberFeatures.map((feature) => feature.etaSeconds)).toEqual(
+      [300, 300],
     );
     await expect(
       useCase.execute('actor', created.meetupId, input),

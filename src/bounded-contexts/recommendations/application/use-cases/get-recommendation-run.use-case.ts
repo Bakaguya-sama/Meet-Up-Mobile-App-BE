@@ -1,8 +1,12 @@
 import type { RecommendationRunStore } from '../ports/recommendation-run-store.port';
 import { RecommendationError } from '../../domain/recommendation.error';
+import { RecommendationRunFreshnessGuard } from '../public/recommendation-run-freshness.guard';
 
 export class GetRecommendationRunUseCase {
-  constructor(private readonly store: RecommendationRunStore) {}
+  constructor(
+    private readonly store: RecommendationRunStore,
+    private readonly freshness: RecommendationRunFreshnessGuard,
+  ) {}
 
   async execute(actorId: string, meetupId: string, runId: string) {
     const run = await this.store.findById(
@@ -21,6 +25,6 @@ export class GetRecommendationRunUseCase {
         'Recommendation run is unavailable to this actor',
       );
     }
-    return run;
+    return this.freshness.toView(run);
   }
 }

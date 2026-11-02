@@ -5,6 +5,7 @@ import { RecommendationError } from '../../../domain/recommendation.error';
 import type {
   RecommendationCandidateSnapshot,
   RecommendationCompletion,
+  RecommendationMemberFeatureSnapshot,
   RecommendationRun,
   RecommendationRunResult,
 } from '../../../domain/recommendation-run';
@@ -27,7 +28,7 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
   async create(run: RecommendationRun): Promise<RecommendationRunResult> {
     try {
       await this.dataSource.getRepository(RecommendationRunEntity).insert(run);
-      return { ...run, candidates: [] };
+      return { ...run, candidates: [], memberFeatures: [] };
     } catch (error) {
       if (isUniqueViolation(error)) {
         const existing = await this.findByRequest(run.meetupId, run.requestId);
@@ -90,6 +91,7 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
         routeBatchCount: completion.routeBatchCount,
         routeElementCount: completion.routeElementCount,
         candidates: completion.candidates.map(cloneCandidate),
+        memberFeatures: completion.memberFeatures.map(cloneMemberFeature),
       };
     });
   }
@@ -115,15 +117,20 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
       .getRepository(RecommendationRunEntity)
       .findOne({
         where,
-        relations: { candidates: true },
+        relations: { candidates: true, memberFeatures: true },
         order: {
           candidates: { finalRank: 'ASC', canonicalCandidateKey: 'ASC' },
+          memberFeatures: {
+            canonicalCandidateKey: 'ASC',
+            participantId: 'ASC',
+          },
         },
       });
     return row
       ? {
           ...toDomain(row),
           candidates: (row.candidates ?? []).map(toCandidate),
+          memberFeatures: (row.memberFeatures ?? []).map(cloneMemberFeature),
         }
       : null;
   }
@@ -144,6 +151,11 @@ function toDomain(row: RecommendationRunEntity): RecommendationRun {
     configVersion: row.configVersion,
     featureSchemaVersion: row.featureSchemaVersion,
     providerMappingVersion: row.providerMappingVersion,
+    providerRequestOptionsVersion: row.providerRequestOptionsVersion,
+    openingFilter: row.openingFilter,
+    openingEvaluatorVersion: row.openingEvaluatorVersion,
+    requestedAt: new Date(row.requestedAt),
+    scheduledAtSnapshot: new Date(row.scheduledAtSnapshot),
     createdAt: new Date(row.createdAt),
     completedAt: row.completedAt ? new Date(row.completedAt) : null,
     effectiveK: row.effectiveK,
@@ -166,6 +178,18 @@ function cloneCandidate(candidate: RecommendationCandidateSnapshot) {
     sourcePages: [...candidate.sourcePages],
     normalizedTags: [...candidate.normalizedTags],
     createdAt: new Date(candidate.createdAt),
+    openingEvidence: candidate.openingEvidence
+      ? structuredClone(candidate.openingEvidence)
+      : null,
+  };
+}
+
+function cloneMemberFeature(feature: RecommendationMemberFeatureSnapshot) {
+  return {
+    ...feature,
+    matchedTags: feature.matchedTags.map((tag) => ({ ...tag })),
+    missingFlags: [...feature.missingFlags],
+    createdAt: new Date(feature.createdAt),
   };
 }
 

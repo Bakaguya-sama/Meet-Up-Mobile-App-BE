@@ -96,6 +96,90 @@ describe('GooglePlacesAdapter', () => {
       openNow: true,
       pageToken: 'next-1',
     });
+    expect(
+      new Headers(request.mock.calls[0][1].headers).get('X-Goog-FieldMask'),
+    ).toContain('places.currentOpeningHours.openNow');
+  });
+
+  it('requests and normalizes scheduled opening fields without sending openNow', async () => {
+    const request: jest.MockedFunction<PlacesFetch> = jest.fn();
+    request.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          places: [
+            {
+              id: 'places/scheduled',
+              displayName: { text: 'Scheduled Cafe' },
+              types: ['cafe'],
+              location: { latitude: 10.77, longitude: 106.69 },
+              utcOffsetMinutes: 420,
+              currentOpeningHours: {
+                periods: [
+                  {
+                    open: {
+                      day: 5,
+                      hour: 18,
+                      minute: 0,
+                      date: { year: 2026, month: 10, day: 30 },
+                    },
+                    close: {
+                      day: 5,
+                      hour: 22,
+                      minute: 0,
+                      date: { year: 2026, month: 10, day: 30 },
+                    },
+                  },
+                ],
+              },
+              regularOpeningHours: {
+                periods: [
+                  {
+                    open: { day: 5, hour: 18, minute: 0 },
+                    close: { day: 5, hour: 22, minute: 0 },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+    });
+    const adapter = new GooglePlacesAdapter(
+      'test-key',
+      request,
+      2,
+      8_000,
+      undefined,
+      () => new Date('2026-10-30T00:00:00Z'),
+    );
+
+    const page = await adapter.searchPage({
+      query: 'cafe',
+      latitude: 10.75,
+      longitude: 106.7,
+      radiusMeters: 1000,
+      includeScheduledOpeningFields: true,
+    });
+
+    expect(
+      JSON.parse(request.mock.calls[0][1].body as string),
+    ).not.toHaveProperty('openNow');
+    const fieldMask = new Headers(request.mock.calls[0][1].headers).get(
+      'X-Goog-FieldMask',
+    );
+    expect(fieldMask).toContain('places.currentOpeningHours');
+    expect(fieldMask).toContain('places.regularOpeningHours');
+    expect(fieldMask).toContain('places.utcOffsetMinutes');
+    expect(page.candidates[0]).toMatchObject({
+      utcOffsetMinutes: 420,
+      currentOpeningHours: {
+        source: 'CURRENT',
+        coverageStartDate: '2026-10-30',
+        coverageEndDate: '2026-11-05',
+      },
+      regularOpeningHours: { source: 'REGULAR' },
+    });
   });
 
   it('retries transient HTTP failures within the configured attempt limit', async () => {

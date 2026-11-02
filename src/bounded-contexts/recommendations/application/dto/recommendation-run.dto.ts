@@ -22,8 +22,8 @@ export class RecommendationFiltersRequest {
   @Matches(/^[a-z][a-z0-9_]{0,99}$/, { each: true })
   categories: string[];
 
-  @IsIn(['ANY', 'OPEN_AT_REQUEST_TIME'])
-  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME';
+  @IsIn(['ANY', 'OPEN_AT_REQUEST_TIME', 'OPEN_AT_SCHEDULED_TIME'])
+  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
 
   @IsInt()
   @Min(1)

@@ -1,14 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import type {
+  NormalizedOpeningHours,
+  NormalizedOpeningPeriod,
   PlaceCandidate,
   PlaceSearchInput,
   PlaceSearchPage,
   PlaceSearchPort,
 } from '../../application/ports/place-search.port';
+import { PLACE_SEARCH_REQUEST_OPTIONS_VERSION } from '../../application/ports/place-search.port';
 import { RecommendationError } from '../../domain/recommendation.error';
 
 const TEXT_SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
-const FIELD_MASK = [
+const BASE_FIELD_MASK = [
   'places.id',
   'places.displayName',
   'places.types',
@@ -16,10 +19,17 @@ const FIELD_MASK = [
   'places.formattedAddress',
   'places.rating',
   'places.userRatingCount',
-  'places.currentOpeningHours.openNow',
   'places.businessStatus',
   'nextPageToken',
-].join(',');
+];
+const SCHEDULED_OPENING_FIELD_MASK = [
+  'places.currentOpeningHours',
+  'places.regularOpeningHours',
+  'places.utcOffsetMinutes',
+];
+
+export const GOOGLE_PLACES_REQUEST_OPTIONS_VERSION =
+  PLACE_SEARCH_REQUEST_OPTIONS_VERSION;
 
 export type PlacesFetch = (
   url: string,
@@ -34,8 +44,23 @@ interface GooglePlace {
   formattedAddress?: unknown;
   rating?: unknown;
   userRatingCount?: unknown;
-  currentOpeningHours?: { openNow?: unknown };
+  currentOpeningHours?: GoogleOpeningHours;
+  regularOpeningHours?: GoogleOpeningHours;
+  utcOffsetMinutes?: unknown;
+  timeZone?: unknown;
   businessStatus?: unknown;
+}
+
+interface GoogleOpeningPoint {
+  day?: unknown;
+  hour?: unknown;
+  minute?: unknown;
+  date?: { year?: unknown; month?: unknown; day?: unknown };
+}
+
+interface GoogleOpeningHours {
+  openNow?: unknown;
+  periods?: Array<{ open?: GoogleOpeningPoint; close?: GoogleOpeningPoint }>;
 }
 
 interface GoogleTextSearchResponse {
@@ -51,6 +76,7 @@ export class GooglePlacesAdapter implements PlaceSearchPort {
     private readonly maxAttempts = 2,
     private readonly timeoutMs = 8_000,
     private readonly endpoint = TEXT_SEARCH_URL,
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   async search(input: PlaceSearchInput): Promise<PlaceCandidate[]> {
@@ -72,7 +98,15 @@ export class GooglePlacesAdapter implements PlaceSearchPort {
           headers: {
             'Content-Type': 'application/json',
             'X-Goog-Api-Key': this.apiKey,
-            'X-Goog-FieldMask': FIELD_MASK,
+            'X-Goog-FieldMask': [
+              ...BASE_FIELD_MASK,
+              ...(input.openNow === true
+                ? ['places.currentOpeningHours.openNow']
+                : []),
+              ...(input.includeScheduledOpeningFields
+                ? SCHEDULED_OPENING_FIELD_MASK
+                : []),
+            ].join(','),
           },
           body: JSON.stringify({
             textQuery: input.query,
@@ -98,9 +132,16 @@ export class GooglePlacesAdapter implements PlaceSearchPort {
           throw new Error(`Google Places HTTP ${response.status}`);
         }
         const payload = (await response.json()) as GoogleTextSearchResponse;
+        const retrievedAt = this.now();
         return {
           candidates: (payload.places ?? [])
-            .map((place) => toCandidate(place))
+            .map((place) =>
+              toCandidate(
+                place,
+                input.includeScheduledOpeningFields === true,
+                retrievedAt,
+              ),
+            )
             .filter(
               (candidate): candidate is PlaceCandidate => candidate !== null,
             ),
@@ -121,7 +162,11 @@ export class GooglePlacesAdapter implements PlaceSearchPort {
   }
 }
 
-function toCandidate(place: GooglePlace): PlaceCandidate | null {
+function toCandidate(
+  place: GooglePlace,
+  includeScheduledOpeningFields: boolean,
+  retrievedAt: Date,
+): PlaceCandidate | null {
   if (
     typeof place.id !== 'string' ||
     typeof place.displayName?.text !== 'string' ||
@@ -155,10 +200,162 @@ function toCandidate(place: GooglePlace): PlaceCandidate | null {
     ...(typeof place.currentOpeningHours?.openNow === 'boolean'
       ? { openingHours: { openNow: place.currentOpeningHours.openNow } }
       : {}),
+    ...(includeScheduledOpeningFields
+      ? scheduledOpeningFields(place, retrievedAt)
+      : {}),
     ...(isBusinessStatus(place.businessStatus)
       ? { businessStatus: place.businessStatus }
       : {}),
   };
+}
+
+function scheduledOpeningFields(place: GooglePlace, retrievedAt: Date) {
+  const utcOffsetMinutes =
+    typeof place.utcOffsetMinutes === 'number' &&
+    Number.isInteger(place.utcOffsetMinutes) &&
+    place.utcOffsetMinutes >= -14 * 60 &&
+    place.utcOffsetMinutes <= 14 * 60
+      ? place.utcOffsetMinutes
+      : undefined;
+  const currentOpeningHours = normalizeOpeningHours(
+    place.currentOpeningHours,
+    'CURRENT',
+    currentHoursCoverage(retrievedAt, utcOffsetMinutes),
+  );
+  const regularOpeningHours = normalizeOpeningHours(
+    place.regularOpeningHours,
+    'REGULAR',
+  );
+  const timeZoneId =
+    typeof place.timeZone === 'object' &&
+    place.timeZone !== null &&
+    'id' in place.timeZone &&
+    typeof place.timeZone.id === 'string'
+      ? place.timeZone.id
+      : undefined;
+  return {
+    ...(currentOpeningHours ? { currentOpeningHours } : {}),
+    ...(regularOpeningHours ? { regularOpeningHours } : {}),
+    ...(timeZoneId ? { timeZoneId } : {}),
+    ...(utcOffsetMinutes !== undefined ? { utcOffsetMinutes } : {}),
+  };
+}
+
+function normalizeOpeningHours(
+  input: GoogleOpeningHours | undefined,
+  source: 'CURRENT' | 'REGULAR',
+  explicitCoverage?: { start: string; end: string },
+): NormalizedOpeningHours | undefined {
+  if (!input || !Array.isArray(input.periods)) return undefined;
+  const periods = input.periods
+    .map((period) => normalizePeriod(period))
+    .filter((period): period is NormalizedOpeningPeriod => period !== null);
+  if (periods.length !== input.periods.length) return undefined;
+  const dates = periods
+    .flatMap((period) => [period.open.date, period.close?.date])
+    .filter((date): date is string => typeof date === 'string')
+    .sort();
+  return {
+    source,
+    periods,
+    ...(source === 'CURRENT' && (explicitCoverage || dates.length)
+      ? {
+          coverageStartDate: explicitCoverage?.start ?? dates[0],
+          coverageEndDate: explicitCoverage?.end ?? dates[dates.length - 1],
+        }
+      : {}),
+  };
+}
+
+function currentHoursCoverage(
+  retrievedAt: Date,
+  utcOffsetMinutes?: number,
+): { start: string; end: string } | undefined {
+  if (
+    !Number.isFinite(retrievedAt.getTime()) ||
+    !Number.isInteger(utcOffsetMinutes)
+  ) {
+    return undefined;
+  }
+  const local = new Date(retrievedAt.getTime() + utcOffsetMinutes! * 60_000);
+  const startDate = Date.UTC(
+    local.getUTCFullYear(),
+    local.getUTCMonth(),
+    local.getUTCDate(),
+  );
+  return {
+    start: formatUtcDate(new Date(startDate)),
+    end: formatUtcDate(new Date(startDate + 6 * 24 * 60 * 60 * 1000)),
+  };
+}
+
+function formatUtcDate(value: Date) {
+  return `${value.getUTCFullYear().toString().padStart(4, '0')}-${(
+    value.getUTCMonth() + 1
+  )
+    .toString()
+    .padStart(2, '0')}-${value.getUTCDate().toString().padStart(2, '0')}`;
+}
+
+function normalizePeriod(input: {
+  open?: GoogleOpeningPoint;
+  close?: GoogleOpeningPoint;
+}): NormalizedOpeningPeriod | null {
+  const open = normalizePoint(input.open);
+  if (!open) return null;
+  const close = input.close ? normalizePoint(input.close) : undefined;
+  if (input.close && !close) return null;
+  return { open, ...(close ? { close } : {}) };
+}
+
+function normalizePoint(input?: GoogleOpeningPoint) {
+  if (
+    !input ||
+    !Number.isInteger(input.day) ||
+    (input.day as number) < 0 ||
+    (input.day as number) > 6 ||
+    !Number.isInteger(input.hour) ||
+    (input.hour as number) < 0 ||
+    (input.hour as number) > 23 ||
+    !Number.isInteger(input.minute) ||
+    (input.minute as number) < 0 ||
+    (input.minute as number) > 59
+  ) {
+    return null;
+  }
+  const date = normalizeDate(input.date);
+  if (input.date && !date) return null;
+  return {
+    day: input.day as number,
+    hour: input.hour as number,
+    minute: input.minute as number,
+    ...(date ? { date } : {}),
+  };
+}
+
+function normalizeDate(input?: GoogleOpeningPoint['date']) {
+  if (
+    !input ||
+    !Number.isInteger(input.year) ||
+    !Number.isInteger(input.month) ||
+    !Number.isInteger(input.day)
+  ) {
+    return undefined;
+  }
+  const year = input.year as number;
+  const month = input.month as number;
+  const day = input.day as number;
+  const value = new Date(Date.UTC(year, month - 1, day));
+  if (
+    value.getUTCFullYear() !== year ||
+    value.getUTCMonth() + 1 !== month ||
+    value.getUTCDate() !== day
+  ) {
+    return undefined;
+  }
+  return `${year.toString().padStart(4, '0')}-${month
+    .toString()
+    .padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 }
 
 function isBusinessStatus(

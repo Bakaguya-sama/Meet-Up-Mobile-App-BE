@@ -1,4 +1,16 @@
+import type { NormalizedOpeningHours } from '../../domain/opening-hours';
+export type {
+  NormalizedOpeningHours,
+  NormalizedOpeningPeriod,
+  NormalizedOpeningPoint,
+} from '../../domain/opening-hours';
+
 export const PLACE_SEARCH = Symbol('PLACE_SEARCH');
+export const PLACE_SEARCH_REQUEST_OPTIONS_VERSION =
+  'google-places-text-search-v2-scheduled-opening';
+
+export type OpeningFilter =
+  'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
 
 export interface PlaceCandidate {
   provider?: string;
@@ -11,6 +23,10 @@ export interface PlaceCandidate {
   rating?: number;
   userRatingCount?: number;
   openingHours?: { openNow?: boolean };
+  currentOpeningHours?: NormalizedOpeningHours;
+  regularOpeningHours?: NormalizedOpeningHours;
+  timeZoneId?: string;
+  utcOffsetMinutes?: number;
   businessStatus?:
     'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY' | 'UNKNOWN';
 }
@@ -22,6 +38,7 @@ export interface PlaceSearchInput {
   longitude: number;
   radiusMeters: number;
   openNow?: boolean;
+  includeScheduledOpeningFields?: boolean;
   pageToken?: string;
 }
 

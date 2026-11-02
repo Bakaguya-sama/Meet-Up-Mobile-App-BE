@@ -9,6 +9,10 @@ import {
   Unique,
 } from 'typeorm';
 import type { RecommendationCandidateFilterStatus } from '../../../../domain/recommendation-run';
+import type {
+  ScheduledOpeningEvidence,
+  ScheduledOpeningStatus,
+} from '../../../../domain/temporal-context';
 import { RecommendationRunEntity } from './recommendation-run.typeorm-entity';
 
 @Entity('recommendation_candidates')
@@ -38,6 +42,10 @@ import { RecommendationRunEntity } from './recommendation-run.typeorm-entity';
 @Check(
   'chk_recommendation_candidates_ranking',
   '(final_rank IS NULL OR final_rank > 0) AND (group_utility IS NULL OR group_utility BETWEEN 0 AND 1) AND (candidate_least_misery_utility IS NULL OR candidate_least_misery_utility BETWEEN 0 AND 1) AND (pareto_level IS NULL OR pareto_level > 0) AND (inclusion_probability IS NULL OR inclusion_probability BETWEEN 0 AND 1) AND (avg_eta_seconds IS NULL OR avg_eta_seconds >= 0) AND (max_eta_seconds IS NULL OR max_eta_seconds >= 0) AND (eta_range_seconds IS NULL OR eta_range_seconds >= 0)',
+)
+@Check(
+  'chk_recommendation_candidates_scheduled_opening',
+  "scheduled_opening_status IS NULL OR scheduled_opening_status IN ('OPEN','CLOSED','UNKNOWN')",
 )
 export class RecommendationCandidateEntity {
   @PrimaryColumn('uuid') id: string;
@@ -86,6 +94,14 @@ export class RecommendationCandidateEntity {
   maxEtaSeconds: number | null;
   @Column('double precision', { name: 'eta_range_seconds', nullable: true })
   etaRangeSeconds: number | null;
+  @Column('varchar', {
+    name: 'scheduled_opening_status',
+    length: 20,
+    nullable: true,
+  })
+  scheduledOpeningStatus: ScheduledOpeningStatus | null;
+  @Column('jsonb', { name: 'opening_evidence', nullable: true })
+  openingEvidence: ScheduledOpeningEvidence | null;
   @ManyToOne(() => RecommendationRunEntity, (run) => run.candidates, {
     onDelete: 'CASCADE',
   })

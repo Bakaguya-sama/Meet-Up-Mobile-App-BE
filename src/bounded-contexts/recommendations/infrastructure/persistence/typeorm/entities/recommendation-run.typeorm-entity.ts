@@ -13,6 +13,7 @@ import { UserAccountEntity } from '../../../../../auth/infrastructure/persistenc
 import { MeetupEntity } from '../../../../../meetups/infrastructure/persistence/typeorm/entities/meetup.typeorm-entity';
 import type { RecommendationRunStatus } from '../../../../domain/recommendation-run';
 import { RecommendationCandidateEntity } from './recommendation-candidate.typeorm-entity';
+import { RecommendationMemberFeatureEntity } from './recommendation-member-feature.typeorm-entity';
 
 @Entity('recommendation_runs')
 @Unique('uq_recommendation_runs_request', ['meetupId', 'requestId'])
@@ -29,6 +30,10 @@ import { RecommendationCandidateEntity } from './recommendation-candidate.typeor
 @Check(
   'chk_recommendation_runs_route_counts',
   '(route_batch_count IS NULL OR route_batch_count >= 0) AND (route_element_count IS NULL OR route_element_count >= 0)',
+)
+@Check(
+  'chk_recommendation_runs_opening_filter',
+  "opening_filter IN ('ANY','OPEN_AT_REQUEST_TIME','OPEN_AT_SCHEDULED_TIME')",
 )
 export class RecommendationRunEntity {
   @PrimaryColumn('uuid') id: string;
@@ -50,6 +55,18 @@ export class RecommendationRunEntity {
   featureSchemaVersion: string;
   @Column('varchar', { name: 'provider_mapping_version', length: 100 })
   providerMappingVersion: string;
+  @Column('varchar', {
+    name: 'provider_request_options_version',
+    length: 100,
+  })
+  providerRequestOptionsVersion: string;
+  @Column('varchar', { name: 'opening_filter', length: 40 })
+  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
+  @Column('varchar', { name: 'opening_evaluator_version', length: 100 })
+  openingEvaluatorVersion: string;
+  @Column('timestamptz', { name: 'requested_at' }) requestedAt: Date;
+  @Column('timestamptz', { name: 'scheduled_at_snapshot' })
+  scheduledAtSnapshot: Date;
   @Column('timestamptz', { name: 'created_at' }) createdAt: Date;
   @Column('timestamptz', { name: 'completed_at', nullable: true })
   completedAt: Date | null;
@@ -65,6 +82,8 @@ export class RecommendationRunEntity {
   routeElementCount: number | null;
   @OneToMany(() => RecommendationCandidateEntity, (candidate) => candidate.run)
   candidates?: RecommendationCandidateEntity[];
+  @OneToMany(() => RecommendationMemberFeatureEntity, (feature) => feature.run)
+  memberFeatures?: RecommendationMemberFeatureEntity[];
   @ManyToOne(() => MeetupEntity, { nullable: false })
   @JoinColumn({
     name: 'meetup_id',

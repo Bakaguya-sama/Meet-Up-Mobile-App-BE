@@ -112,4 +112,26 @@ describe('CandidateGenerator pagination', () => {
       }),
     ).rejects.toThrow('HTTP boundary failed');
   });
+
+  it('requests scheduled opening data without using openNow', async () => {
+    const boundary = new ScriptedPlaceBoundary([
+      { candidates: [candidate('cafe-1', ['cafe'])] },
+    ]);
+    const generator = new CandidateGenerator(
+      boundary,
+      RECOMMENDATION_CONFIG_DEV_V1,
+    );
+
+    await generator.generate({
+      categories: ['cafe'],
+      openingFilter: 'OPEN_AT_SCHEDULED_TIME',
+      center: { latitude: 10.7, longitude: 106.7 },
+      radiusMeters: 1000,
+    });
+
+    expect(boundary.calls[0]).toMatchObject({
+      includeScheduledOpeningFields: true,
+    });
+    expect(boundary.calls[0]).not.toHaveProperty('openNow');
+  });
 });

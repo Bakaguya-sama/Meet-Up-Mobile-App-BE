@@ -23,6 +23,21 @@ describe('recommendation request validation', () => {
       requiredCategories: ['cafe', 'restaurant'],
     });
   });
+  it('accepts scheduled opening as a versioned request policy', () => {
+    expect(
+      validateRecommendationRequest(
+        {
+          ...request,
+          filters: {
+            ...request.filters,
+            openingFilter: 'OPEN_AT_SCHEDULED_TIME',
+          },
+        },
+        'bbbbbbbb-0000-4000-8000-000000000002',
+        RECOMMENDATION_CONFIG_DEV_V1,
+      ),
+    ).toMatchObject({ openingFilter: 'OPEN_AT_SCHEDULED_TIME' });
+  });
   it.each([
     { ...request, topK: 6 },
     { ...request, filters: { ...request.filters, radiusMeters: 10_001 } },

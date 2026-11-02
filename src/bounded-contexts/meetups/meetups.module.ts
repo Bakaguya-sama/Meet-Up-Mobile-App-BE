@@ -11,6 +11,7 @@ import type { ProfilePreferenceFallbackPort } from './application/ports/profile-
 import { MeetupMembershipReader } from './application/public/meetup-membership-reader';
 import { MeetupCandidateSearchReader } from './application/public/meetup-candidate-search-reader';
 import { MeetupPreferenceReader } from './application/public/meetup-preference-reader';
+import { MeetupScheduleReader } from './application/public/meetup-schedule-reader';
 import { GetMeetupDetailQuery } from './application/queries/get-meetup-detail.query';
 import { ListMeetupsQuery } from './application/queries/list-meetups.query';
 import { GetMeetupPreferencesSummaryQuery } from './application/queries/get-meetup-preferences-summary.query';
@@ -86,6 +87,7 @@ import { MeetupsController } from './presentation/http/meetups.controller';
       ListMeetupsQuery,
       MeetupMembershipReader,
       MeetupCandidateSearchReader,
+      MeetupScheduleReader,
     ].map((useCase) => ({
       provide: useCase,
       useFactory: (store: MeetupStorePort) => new useCase(store),
@@ -96,6 +98,7 @@ import { MeetupsController } from './presentation/http/meetups.controller';
     MeetupMembershipReader,
     MeetupPreferenceReader,
     MeetupCandidateSearchReader,
+    MeetupScheduleReader,
   ],
 })
 export class MeetupsModule {}

@@ -18,6 +18,7 @@ import { validateEnvironment } from '../src/infrastructure/config/environment.va
 import { DatabaseModule } from '../src/infrastructure/database/typeorm/database.module';
 import { RedisModule } from '../src/infrastructure/redis/redis.module';
 import { RedisService } from '../src/infrastructure/redis/redis.service';
+import { RecommendationRunFreshnessGuard } from '../src/bounded-contexts/recommendations/application/public/recommendation-run-freshness.guard';
 
 jest.setTimeout(30_000);
 
@@ -44,10 +45,19 @@ interface RecommendationRunHttpBody {
   warnings: string[];
   routeBatchCount: number;
   routeElementCount: number;
+  contextStatus: 'CURRENT_CONTEXT' | 'STALE_CONTEXT';
+  requestedAt: string;
+  scheduledAtSnapshot: string;
+  openingFilter: string;
   candidates: Array<{
     finalRank: number;
     groupUtility: number;
     avgEtaSeconds: number;
+    scheduledOpeningStatus: 'OPEN' | 'UNKNOWN' | null;
+  }>;
+  memberFeatures: Array<{
+    participantId: string;
+    etaSeconds: number;
   }>;
 }
 
@@ -57,8 +67,18 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
   let redis: RedisService;
   let google: Server;
   let googleEndpoint: string;
-  let googleMode: 'success' | 'empty' | 'failure' | 'routeFailure' | 'noRoute' =
-    'success';
+  let googleMode:
+    | 'success'
+    | 'empty'
+    | 'failure'
+    | 'routeFailure'
+    | 'noRoute'
+    | 'scheduledOpen'
+    | 'scheduledClosed'
+    | 'scheduledUnknown' = 'success';
+  let routeRequestCount = 0;
+  const placeRequestBodies: Array<Record<string, unknown>> = [];
+  const placeFieldMasks: string[] = [];
   const actorId = randomUUID();
   const memberId = randomUUID();
   const meetupId = randomUUID();
@@ -84,6 +104,7 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
         const parsed = JSON.parse(body) as { pageToken?: string };
         response.writeHead(200, { 'Content-Type': 'application/json' });
         if (isRoute) {
+          routeRequestCount += 1;
           const routeInput = JSON.parse(body) as {
             origins: unknown[];
             destinations: unknown[];
@@ -102,7 +123,11 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
                     ? { status: { code: 5 } }
                     : {
                         distanceMeters: 1000 + originIndex,
-                        duration: `${300 + originIndex}s`,
+                        duration: `${
+                          googleMode.startsWith('scheduled')
+                            ? 1500
+                            : 300 + originIndex
+                        }s`,
                       }),
                 })),
               ),
@@ -110,6 +135,12 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
           );
           return;
         }
+        placeRequestBodies.push(parsed);
+        placeFieldMasks.push(
+          typeof incoming.headers['x-goog-fieldmask'] === 'string'
+            ? incoming.headers['x-goog-fieldmask']
+            : '',
+        );
         response.end(
           JSON.stringify({
             places:
@@ -122,7 +153,32 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
                       types: ['cafe'],
                       location: { latitude: 10.7, longitude: 106.7 },
                       businessStatus: 'OPERATIONAL',
-                      currentOpeningHours: { openNow: true },
+                      ...(googleMode === 'scheduledUnknown'
+                        ? {}
+                        : googleMode === 'scheduledClosed'
+                          ? {
+                              utcOffsetMinutes: 0,
+                              regularOpeningHours: {
+                                periods: [
+                                  {
+                                    open: { day: 0, hour: 1, minute: 0 },
+                                    close: { day: 0, hour: 2, minute: 0 },
+                                  },
+                                ],
+                              },
+                            }
+                          : googleMode === 'scheduledOpen'
+                            ? {
+                                utcOffsetMinutes: 0,
+                                regularOpeningHours: {
+                                  periods: [
+                                    {
+                                      open: { day: 0, hour: 0, minute: 0 },
+                                    },
+                                  ],
+                                },
+                              }
+                            : { currentOpeningHours: { openNow: true } }),
                     },
                   ],
             ...(parsed.pageToken ? {} : {}),
@@ -211,8 +267,13 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       [randomUUID(), actorId, randomUUID(), memberId],
     );
     await db.query(
-      `INSERT INTO meetup_sessions (id, organizer_id, title, scheduled_at, invitation_deadline_at, search_radius_m, place_type, recommendation_mode, status, created_at, updated_at) VALUES ($1, $2, 'E2E', NOW() + interval '2 hours', NOW() + interval '1 hour', 1000, 'cafe', 'balanced', 'inviting', NOW(), NOW())`,
-      [meetupId, actorId],
+      `INSERT INTO meetup_sessions (id, organizer_id, title, scheduled_at, invitation_deadline_at, search_radius_m, place_type, recommendation_mode, status, created_at, updated_at) VALUES ($1, $2, 'E2E', $3, $4, 1000, 'cafe', 'balanced', 'inviting', NOW(), NOW())`,
+      [
+        meetupId,
+        actorId,
+        '2030-01-01T19:00:00.000Z',
+        '2030-01-01T18:00:00.000Z',
+      ],
     );
     await db.query(
       `INSERT INTO meetup_participants (id, meetup_id, user_id, status, invited_by_id, responded_at, joined_at) VALUES ($1, $2, $3, 'accepted', $3, NOW(), NOW()), ($4, $2, $5, 'accepted', $3, NOW(), NOW())`,
@@ -263,6 +324,15 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     },
   });
 
+  const scheduledBody = () => ({
+    topK: 2,
+    filters: {
+      categories: ['cafe'],
+      openingFilter: 'OPEN_AT_SCHEDULED_TIME',
+      radiusMeters: 1000,
+    },
+  });
+
   it('POST persists a completed run, retry is idempotent, and GET returns it', async () => {
     googleMode = 'success';
     const authorization = `Bearer ${await token()}`;
@@ -282,6 +352,7 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       warnings: ['RESULT_COUNT_BELOW_REQUESTED_K'],
       routeBatchCount: 1,
       routeElementCount: 2,
+      contextStatus: 'CURRENT_CONTEXT',
     });
     expect(createdBody.candidates).toHaveLength(1);
     expect(createdBody.candidates[0]).toMatchObject({ finalRank: 1 });
@@ -324,6 +395,195 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       .expect(({ body: error }) => {
         expect(error).toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED' });
       });
+  });
+
+  it('evaluates scheduled opening before Routes and persists temporal evidence', async () => {
+    await db.query(
+      'UPDATE meetup_sessions SET scheduled_at = $2 WHERE id = $1',
+      [meetupId, '2030-01-01T19:00:00.000Z'],
+    );
+    googleMode = 'scheduledOpen';
+    placeRequestBodies.length = 0;
+    placeFieldMasks.length = 0;
+    const created = await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(scheduledBody())
+      .expect(200);
+    const result = created.body as RecommendationRunHttpBody;
+
+    expect(placeRequestBodies).not.toHaveLength(0);
+    expect(placeRequestBodies.every((value) => !('openNow' in value))).toBe(
+      true,
+    );
+    expect(placeFieldMasks[0]).toContain('places.currentOpeningHours');
+    expect(placeFieldMasks[0]).toContain('places.regularOpeningHours');
+    expect(placeFieldMasks[0]).toContain('places.utcOffsetMinutes');
+    expect(result).toMatchObject({
+      scheduledAtSnapshot: '2030-01-01T19:00:00.000Z',
+      openingFilter: 'OPEN_AT_SCHEDULED_TIME',
+      contextStatus: 'CURRENT_CONTEXT',
+    });
+    expect(result.warnings).toContain('OPENING_FROM_REGULAR_HOURS');
+    expect(result.candidates[0]).toMatchObject({
+      scheduledOpeningStatus: 'OPEN',
+    });
+    expect(result.memberFeatures).toHaveLength(2);
+    expect(
+      result.memberFeatures.every((feature) => feature.etaSeconds === 1500),
+    ).toBe(true);
+    expect(result.memberFeatures[0]).not.toHaveProperty(
+      'recommendedDepartureAt',
+    );
+    const rows = await db.query<
+      Array<{
+        requested_at: Date;
+        scheduled_at_snapshot: Date;
+        opening_filter: string;
+        scheduled_opening_status: string;
+        opening_evidence: {
+          evaluatorVersion: string;
+          source: string;
+        };
+      }>
+    >(
+      `SELECT run.requested_at, run.scheduled_at_snapshot, run.opening_filter,
+                candidate.scheduled_opening_status, candidate.opening_evidence
+         FROM recommendation_runs run
+         JOIN recommendation_candidates candidate ON candidate.run_id = run.id
+         JOIN recommendation_member_features feature ON feature.run_id = run.id
+         WHERE run.id = $1
+         ORDER BY feature.participant_id`,
+      [result.id],
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0].opening_filter).toBe('OPEN_AT_SCHEDULED_TIME');
+    expect(rows[0].scheduled_opening_status).toBe('OPEN');
+    expect(rows[0].opening_evidence).toEqual({
+      evaluatorVersion: 'scheduled-opening-evaluator-v1',
+      source: 'REGULAR',
+      evaluatedLocalDateTime: '2030-01-01T19:00',
+      utcOffsetMinutes: 0,
+      matchedPeriod: { open: { day: 0, hour: 0, minute: 0 } },
+      fallbackToRegularHours: true,
+    });
+  });
+
+  it('takes scheduledAt only from the meetup', async () => {
+    await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        ...scheduledBody(),
+        scheduledAt: '2040-01-01T12:00:00.000Z',
+      })
+      .expect(400)
+      .expect(({ body: error }) =>
+        expect(error).toMatchObject({ code: 'INVALID_INPUT' }),
+      );
+
+    await db.query(
+      'UPDATE meetup_sessions SET scheduled_at = $2, invitation_deadline_at = $3 WHERE id = $1',
+      [meetupId, '2030-01-02T00:10:00.000Z', '2029-12-31T00:00:00.000Z'],
+    );
+    googleMode = 'scheduledOpen';
+    const created = await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(scheduledBody())
+      .expect(200);
+    const result = created.body as RecommendationRunHttpBody;
+
+    expect(result.scheduledAtSnapshot).toBe('2030-01-02T00:10:00.000Z');
+    expect(result.memberFeatures.map((item) => item.etaSeconds)).toEqual([
+      1500, 1500,
+    ]);
+  });
+
+  it('filters CLOSED before Routes and keeps UNKNOWN with a warning', async () => {
+    await db.query(
+      'UPDATE meetup_sessions SET scheduled_at = $2 WHERE id = $1',
+      [meetupId, '2030-01-01T19:00:00.000Z'],
+    );
+    googleMode = 'scheduledClosed';
+    const routesBeforeClosed = routeRequestCount;
+    await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(scheduledBody())
+      .expect(422)
+      .expect(({ body: error }) =>
+        expect(error).toMatchObject({ code: 'NO_ELIGIBLE_CANDIDATES' }),
+      );
+    expect(routeRequestCount).toBe(routesBeforeClosed);
+
+    googleMode = 'scheduledUnknown';
+    const unknown = await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(scheduledBody())
+      .expect(200);
+    const unknownBody = unknown.body as RecommendationRunHttpBody;
+    expect(unknownBody.warnings).toEqual(
+      expect.arrayContaining(['OPENING_STATUS_UNKNOWN']),
+    );
+    expect(unknownBody.candidates[0].scheduledOpeningStatus).toBe('UNKNOWN');
+  });
+
+  it('returns STALE_CONTEXT without mutating the snapshot and blocks decision guard', async () => {
+    await db.query(
+      'UPDATE meetup_sessions SET scheduled_at = $2 WHERE id = $1',
+      [meetupId, '2030-01-01T19:00:00.000Z'],
+    );
+    googleMode = 'scheduledOpen';
+    const created = await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(scheduledBody())
+      .expect(200);
+    const original = created.body as RecommendationRunHttpBody;
+    const originalRanks = original.candidates.map((item) => item.finalRank);
+
+    await db.query(
+      'UPDATE meetup_sessions SET scheduled_at = $2 WHERE id = $1',
+      [meetupId, '2030-01-01T20:00:00.000Z'],
+    );
+    const stale = await request(app.getHttpServer())
+      .get(`/api/v1/meetups/${meetupId}/recommendation-runs/${original.id}`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .expect(200);
+    expect(stale.body).toMatchObject({
+      id: original.id,
+      contextStatus: 'STALE_CONTEXT',
+      scheduledAtSnapshot: '2030-01-01T19:00:00.000Z',
+    });
+    expect(
+      (stale.body as RecommendationRunHttpBody).candidates.map(
+        (item) => item.finalRank,
+      ),
+    ).toEqual(originalRanks);
+    await expect(
+      app
+        .get(RecommendationRunFreshnessGuard)
+        .assertFreshForDecision(meetupId, original.id),
+    ).rejects.toMatchObject({ code: 'RECOMMENDATION_STALE_CONTEXT' });
+    expect(
+      await db.query(
+        'SELECT scheduled_at_snapshot, status FROM recommendation_runs WHERE id = $1',
+        [original.id],
+      ),
+    ).toEqual([
+      {
+        scheduled_at_snapshot: new Date('2030-01-01T19:00:00.000Z'),
+        status: 'COMPLETED',
+      },
+    ]);
   });
 
   it.each([

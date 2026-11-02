@@ -56,7 +56,9 @@ export class RecommendationMemberFeatureEntity {
   routeStatus: 'OK';
   @Column('timestamptz', { name: 'created_at' }) createdAt: Date;
 
-  @ManyToOne(() => RecommendationRunEntity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => RecommendationRunEntity, (run) => run.memberFeatures, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({
     name: 'run_id',
     foreignKeyConstraintName: 'recommendation_member_features_run_id_fkey',
