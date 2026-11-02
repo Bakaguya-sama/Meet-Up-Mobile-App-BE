@@ -182,12 +182,12 @@
     }
   }
 
-  // BE-33 planned durable invite-link state. Raw token is never persisted.
+  // BE-33 durable invite-link state. Raw token is never persisted.
   Table meetup_invite_links {
     id uuid [pk]
     meetup_id uuid [not null]
     created_by_id uuid [not null]
-    token_hash char(64) [not null, unique, note: 'HMAC/SHA-256 lookup fingerprint, never raw token.']
+    token_hash char(64) [not null, unique, note: 'SHA-256 lookup fingerprint, never raw token.']
     expires_at timestamptz [not null]
     revoked_at timestamptz
     revoked_by_id uuid
