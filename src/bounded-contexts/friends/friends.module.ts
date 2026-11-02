@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { FRIENDSHIP_STORE } from './application/ports/persistence/friendship-store.port';
 import type { FriendshipStorePort } from './application/ports/persistence/friendship-store.port';
+import { FRIEND_QR_SESSION_STORE } from './application/ports/persistence/friend-qr-session-store.port';
 import { FRIEND_USER_DIRECTORY } from './application/ports/user-directory.port';
 import type { FriendUserDirectoryPort } from './application/ports/user-directory.port';
 import { ListFriendshipsQuery } from './application/queries/list-friendships.query';
@@ -14,6 +15,7 @@ import { UnfriendUseCase } from './application/use-cases/unfriend.use-case';
 import { AuthUserDirectoryAdapter } from './infrastructure/adapters/auth-user-directory.adapter';
 import { FriendshipEntity } from './infrastructure/persistence/typeorm/entities/friendship.typeorm-entity';
 import { TypeOrmFriendshipRepository } from './infrastructure/persistence/typeorm/typeorm-friendship-repository';
+import { RedisFriendQrSessionStore } from './infrastructure/persistence/redis/redis-friend-qr-session-store';
 import { FriendsController } from './presentation/http/friends.controller';
 import { FriendshipReader } from './application/public/friendship-reader';
 import { PrivacySelectedFriendPurge } from '../auth/application/public/privacy-selected-friend-purge';
@@ -28,6 +30,10 @@ import { PrivacySelectedFriendPurge } from '../auth/application/public/privacy-s
       inject: [FRIENDSHIP_STORE],
     },
     { provide: FRIENDSHIP_STORE, useClass: TypeOrmFriendshipRepository },
+    {
+      provide: FRIEND_QR_SESSION_STORE,
+      useClass: RedisFriendQrSessionStore,
+    },
     { provide: FRIEND_USER_DIRECTORY, useClass: AuthUserDirectoryAdapter },
     {
       provide: SendFriendRequestUseCase,
