@@ -12,6 +12,7 @@ Base URL: `/api/v1/friends`. Tất cả endpoint yêu cầu `Authorization: Bear
 | GET | `/` | `offset`, `limit` | 200, trang bạn bè `accepted` |
 | GET | `/requests` | `direction=received\|sent`, `offset`, `limit` | 200, trang lời mời `pending` |
 | GET | `/qr-profiles/:publicHandle` | Stable handle | 200, hồ sơ tối thiểu và trạng thái friendship; không có account ID |
+| GET | `/public-handle` | Không cần body | 200, handle hiện tại hoặc `null` nếu chưa có/đã tắt |
 | POST | `/public-handle/rotate` | Không cần body | 200, public handle mới |
 | DELETE | `/public-handle` | Không cần body | 204, handle bị vô hiệu hóa |
 | POST | `/qr-sessions` | Không cần body | 201, `sessionId`, `qrUrl`, `expiresAt` |
@@ -78,12 +79,14 @@ QR không thay đổi friendship aggregate; cả hai nhánh cuối cùng vẫn g
 ### QR hồ sơ ổn định
 
 - Backend cấp một `publicHandle` entropy cao, unique và không chứa UUID nội bộ/email/số điện thoại. Handle được lưu nullable/unique tại `user_accounts.public_handle`; disable đặt handle ở trạng thái không resolve và rotate thay handle hiện hành, nên handle cũ không resolve. Audit dùng audit log hiện có, không tạo bảng profile/QR riêng.
+- Mobile có thể gọi `GET /public-handle` sau đăng nhập hoặc khi mở lại màn hình QR để lấy handle hiện tại. API chỉ đọc, không tự tạo hay rotate handle; trả `{ "publicHandle": null }` nếu tài khoản chưa có handle hoặc đã disable. Response dùng `Cache-Control: no-store`.
 - QR chỉ mã hóa HTTPS universal/app link chứa handle. Scan mở preview tối thiểu (`publicHandle`, `displayName`, `avatarUrl`, friendship status), sau đó người quét phải chủ động gọi `POST /requests` với `{ "recipientPublicHandle": "..." }`; preview không trả internal user ID và không auto-friend.
 
 Contract stable handle:
 
 ```http
 GET  /api/v1/friends/qr-profiles/:publicHandle
+GET  /api/v1/friends/public-handle
 POST /api/v1/friends/public-handle/rotate
 DELETE /api/v1/friends/public-handle
 POST /api/v1/friends/requests
