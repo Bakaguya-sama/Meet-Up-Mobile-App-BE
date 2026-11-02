@@ -274,6 +274,39 @@ export class FriendsController {
     return this.publicHandle.rotate(actorId);
   }
 
+  @Get('public-handle')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Get the current stable QR handle for this account',
+  })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      required: ['publicHandle'],
+      properties: {
+        publicHandle: {
+          type: 'string',
+          minLength: 43,
+          maxLength: 43,
+          nullable: true,
+        },
+      },
+    },
+  })
+  @ApiTooManyRequestsResponse({ description: 'QR handle rate limit exceeded' })
+  async getPublicHandle(
+    @CurrentUser('id') actorId: string,
+    @Req() request: Request,
+  ) {
+    await assertFriendQrRateLimit(
+      this.rateLimiter,
+      this.config,
+      request,
+      actorId,
+    );
+    return this.publicHandle.current(actorId);
+  }
+
   @Delete('public-handle')
   @HttpCode(204)
   @Header('Cache-Control', 'no-store')
