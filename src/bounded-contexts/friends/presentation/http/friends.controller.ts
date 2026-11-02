@@ -11,6 +11,7 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -26,8 +27,11 @@ import {
   ApiOperation,
   ApiQuery,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+import type { Request } from 'express';
 import { AccessTokenGuard } from '../../../../presentation/http/guards/access-token.guard';
 import { RolesGuard } from '../../../../presentation/http/guards/roles.guard';
 import { CurrentUser } from '../../../../presentation/http/decorators/current-user.decorator';
@@ -47,6 +51,8 @@ import { UnfriendUseCase } from '../../application/use-cases/unfriend.use-case';
 import { FRIEND_USER_DIRECTORY } from '../../application/ports/user-directory.port';
 import type { FriendUserDirectoryPort } from '../../application/ports/user-directory.port';
 import { FriendshipError } from '../../domain/errors/friendship.error';
+import { CreateFriendQrSessionUseCase } from '../../application/use-cases/create-friend-qr-session.use-case';
+import { RedisRateLimiter } from '../../../../infrastructure/redis/redis-rate-limiter.service';
 import { ManagePublicHandleUseCase } from '../../../auth/application/use-cases/manage-public-handle.use-case';
 import {
   ApiFriendPage,
@@ -81,6 +87,9 @@ export class FriendsController {
     private readonly resolvePublicQrProfile: ResolvePublicQrProfileQuery,
     @Inject(FRIEND_USER_DIRECTORY)
     private readonly friendUsers: FriendUserDirectoryPort,
+    private readonly createQrSession: CreateFriendQrSessionUseCase,
+    private readonly rateLimiter: RedisRateLimiter,
+    private readonly config: ConfigService,
   ) {}
 
   @Get('search')
@@ -150,6 +159,36 @@ export class FriendsController {
     @Param('publicHandle') publicHandle: string,
   ) {
     return this.resolvePublicQrProfile.execute({ actorId, publicHandle });
+  }
+
+  @Post('qr-sessions')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Create a temporary friend QR session' })
+  @ApiCreatedResponse({
+    schema: {
+      type: 'object',
+      required: ['sessionId', 'qrUrl', 'expiresAt'],
+      properties: {
+        sessionId: { type: 'string', format: 'uuid' },
+        qrUrl: { type: 'string', format: 'uri' },
+        expiresAt: { type: 'string', format: 'date-time' },
+      },
+    },
+  })
+  @ApiTooManyRequestsResponse({ description: 'QR session rate limit exceeded' })
+  async createTemporaryQr(
+    @CurrentUser('id') actorId: string,
+    @Req() request: Request,
+  ) {
+    const limit = this.config.getOrThrow<number>('friendQr.rateLimit');
+    const ip = request.ip || request.socket.remoteAddress || 'unknown';
+    await this.rateLimiter.assertAllowed('friend-qr:create:ip', ip, limit);
+    await this.rateLimiter.assertAllowed(
+      'friend-qr:create:account',
+      actorId,
+      limit,
+    );
+    return this.createQrSession.execute(actorId);
   }
 
   @Post('public-handle/rotate')
