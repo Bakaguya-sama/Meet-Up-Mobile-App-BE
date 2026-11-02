@@ -16,11 +16,14 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `08_huong_dan_cau_truc_ddd.md` | Quy ước bounded context, layer, dependency, domain model và quy trình phát triển backend theo DDD. |
 | `09_cong_nghe_su_dung.md` | Stack kỹ thuật, chiến lược Neon/Redis, Docker Compose, biến môi trường và cách triển khai theo từng môi trường. |
 | `MeetUp_Product_Backlog_Function_Points.xlsx` | Chia việc theo Function Points, backlog và tiến độ. |
-| `10_be03_friends_api.md` | API kết bạn BE-03, quy tắc concurrency, migration và kiểm thử. |
+| `friends/friends_api.md` | API kết bạn BE-03, quy tắc concurrency, migration, QR hybrid và kiểm thử. |
 | `11_location_privacy_api.md` | Cài đặt quyền riêng tư vị trí, kiểm quyền mỗi yêu cầu và contract cho realtime. |
-| `10_notifications_api.md` | Đăng ký thiết bị FCM, mã hóa token và contract deep-link notification. |
+| `outbox_event/notifications_api.md` | Đăng ký thiết bị FCM, mã hóa token, outbox retry và contract deep-link notification. |
+| `outbox_event/realtime_event_contracts.md` | Contract integration event có version, Socket room, outbox, retry/idempotency và notification payload. |
 | `13_backend2_roadmap.md` | Roadmap triển khai Backend 2: realtime, recommendation, FCM, AI, nearby và quan sát hệ thống. |
 | `11_backend_integration_handoff.md` | Handoff giữa hai developer backend: owner, contract, outbox, migration và nhật ký phối hợp. |
+| `12_meetup_group_recommendation_engine.md` | Thiết kế kỹ thuật recommendation pipeline, fairness ranking, feedback logging và lộ trình offline learning/LTR. |
+| `13_implementation_plan.md` | Thứ tự triển khai, dependency, exit gate và quyết định đã khóa cho toàn bộ function backend. |
 
 ## Cách dùng nhanh
 
@@ -33,7 +36,9 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 
 Phạm vi triển khai gồm Android, một thành phố, di chuyển bằng xe máy/ô tô theo dữ liệu Google Routes, meetup có số thành viên linh hoạt và chia sẻ vị trí bằng một cờ chung trong hồ sơ. Thành viên meetup đã chấp nhận sẽ tự được dùng vị trí hợp lệ khi cờ này bật. Sau phần lõi, nhóm sẽ triển khai: lọc đang mở cửa, địa điểm yêu thích, lịch sử meetup, ETA từng thành viên, dẫn đường, chat nhóm, AI giải thích đề xuất và phát hiện bạn bè ở gần.
 
-Meetup không giới hạn số thành viên ở cấp sản phẩm. Engine gợi ý tự chọn cách tính theo quy mô: tối đa 20 người tính ETA chính xác; 21–50 người chạy theo batch; trên 50 người gom cụm vị trí trước rồi tính chi tiết cho các địa điểm tốt nhất. Hệ thống dùng một cách xếp hạng cố định, cân bằng ETA, sở thích meetup và rating.
+Meetup không giới hạn số thành viên ở cấp sản phẩm. Engine v1 không gom cụm hoặc thay ETA thật bằng ước lượng: Route Matrix được chia batch theo cả chiều origin và destination, và run có thể bị từ chối theo giới hạn/cost policy nếu không thể tạo ETA hợp lệ cho mọi thành viên. Công thức xếp hạng có version, baseline và hướng đánh giá được mô tả trong `12_meetup_group_recommendation_engine.md`.
+
+Các quyết định mở rộng đã khóa gồm: địa điểm còn mở nhưng sắp đóng chỉ bị cảnh báo và hạ hạng mềm; mọi participant được thấy ETA nhưng chỉ thấy preference/utility của chính mình; cùng GET recommendation run được dùng trước và sau vote. Link mời meetup dùng token hash bền vững có expiry/revoke. QR kết bạn dùng hybrid giữa public handle ổn định và phiên tạm thời Redis TTL; không lưu ảnh QR và không tự kết bạn khi quét.
 
 Sở thích profile chỉ là giá trị mặc định. Khi tạo hoặc nhận meetup, mỗi người chọn sở thích tạm thời cho meetup; lựa chọn này là dữ liệu chính để xếp hạng.
 

@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { CreateAuthTables1760000001000 } from '../src/infrastructure/database/migrations/1760000001000-create-auth-tables';
+import { CreateUserPreferencesTables1760000002000 } from '../src/infrastructure/database/migrations/1760000002000-create-user-preferences-tables';
+import { CreateMeetupParticipantPreferencesTable1792070001000 } from '../src/infrastructure/database/migrations/1792070001000-create-meetup-participant-preferences-table';
+import { ParticipantPreferenceEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/participant-preference.typeorm-entity';
 import { CreateFriendshipsTable1760000003000 } from '../src/infrastructure/database/migrations/1760000003000-create-friendships-table';
 import { CreateOutboxEventsTable1760000006000 } from '../src/infrastructure/database/migrations/1760000006000-create-outbox-events-table';
 import { CreateMeetupsTables1792070000000 } from '../src/infrastructure/database/migrations/1792070000000-create-meetups-tables';
@@ -47,15 +50,18 @@ integration('Meetup PostgreSQL transactions and migrations', () => {
       entities: [
         MeetupEntity,
         ParticipantEntity,
+        ParticipantPreferenceEntity,
         OutboxEventTypeOrmEntity,
         FriendshipEntity,
         UserAccountEntity,
       ],
       migrations: [
         CreateAuthTables1760000001000,
+        CreateUserPreferencesTables1760000002000,
         CreateFriendshipsTable1760000003000,
         CreateOutboxEventsTable1760000006000,
         CreateMeetupsTables1792070000000,
+        CreateMeetupParticipantPreferencesTable1792070001000,
       ],
     }).initialize();
     await db.runMigrations();
@@ -126,6 +132,38 @@ integration('Meetup PostgreSQL transactions and migrations', () => {
       true,
     );
     expect(await store.findVisible(id, carol)).toBeNull();
+  });
+
+  it('persists selected preferences, preserves them on reinvite and clears them transactionally', async () => {
+    const id = await create();
+    await store.updateLocked(id, (meetup) =>
+      meetup.respond(bob, 'accepted', new Date()),
+    );
+    await store.updateLocked(id, (meetup) =>
+      meetup.setParticipantPreferences(
+        bob,
+        [{ activityTagId: 1, level: 'avoid' }],
+        new Date(),
+      ),
+    );
+    await store.updateLocked(id, (meetup) => meetup.leave(bob, new Date()));
+    await store.updateLocked(id, (meetup) =>
+      meetup.invite(alice, [{ id: randomUUID(), userId: bob }], new Date()),
+    );
+    const member = (await store.findVisible(id, alice))!.participants.find(
+      (p) => p.userId === bob,
+    )!;
+    expect(member.preferences).toMatchObject([
+      { activityTagId: 1, level: 'avoid' },
+    ]);
+    await store.updateLocked(id, (meetup) =>
+      meetup.setParticipantPreferences(bob, [], new Date()),
+    );
+    expect(
+      (await store.findVisible(id, alice))!.participants.find(
+        (p) => p.userId === bob,
+      )!.preferences,
+    ).toEqual([]);
   });
 
   it('serializes competing accept/reject and emits exactly one response event', async () => {

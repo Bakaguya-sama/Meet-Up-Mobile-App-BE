@@ -33,6 +33,7 @@ export class OutboxDispatcher {
           'MeetupCancelled.v1',
           'MeetupFinished.v1',
           'MeetupMemberChanged.v1',
+          'PreferenceUpdated.v1',
         ].includes(event.eventName) &&
         recipientIds.length > 0
       ) {

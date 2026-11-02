@@ -56,6 +56,8 @@
     password_hash varchar(255) // Null for an account that only uses Google OAuth.
     display_name varchar(100) [not null]
     avatar_url varchar(1000)
+    public_handle varchar(128) [unique, note: 'BE-34 planned public QR handle. Nullable: disabled/not provisioned. It is opaque and never an internal account ID.']
+    public_handle_disabled_at timestamptz [note: 'Non-null means handle must not resolve. Rotate replaces public_handle and clears this value.']
     is_locked boolean [not null, default: false]
     locked_reason varchar(500)
     last_login_at timestamptz
@@ -162,6 +164,7 @@
     title varchar(150) [not null]
     description varchar(1000)
     scheduled_at timestamptz [not null]
+    invitation_deadline_at timestamptz [not null, note: 'Must be at or before scheduled_at.']
     vote_deadline_at timestamptz
     search_radius_m integer [not null]
     status meetup_status [not null, default: 'draft']
@@ -177,6 +180,29 @@
       (organizer_id, status)
       (scheduled_at, status)
     }
+  }
+
+  // BE-33 planned durable invite-link state. Raw token is never persisted.
+  Table meetup_invite_links {
+    id uuid [pk]
+    meetup_id uuid [not null]
+    created_by_id uuid [not null]
+    token_hash char(64) [not null, unique, note: 'HMAC/SHA-256 lookup fingerprint, never raw token.']
+    expires_at timestamptz [not null]
+    revoked_at timestamptz
+    revoked_by_id uuid
+    use_count integer [not null, default: 0, note: 'Increments only when a distinct actor first becomes accepted through this link.']
+    last_used_at timestamptz
+    created_at timestamptz [not null]
+    updated_at timestamptz [not null]
+
+    Indexes {
+      (meetup_id, revoked_at)
+      (expires_at)
+      (created_by_id, created_at)
+    }
+
+    Note: 'A non-revoked, non-expired link permits multiple distinct actors. create(revokePrevious=true) revokes active links and creates the replacement in one transaction.'
   }
 
   Table meetup_participants {
@@ -211,15 +237,95 @@
   Table recommendation_runs {
     id uuid [pk]
     meetup_id uuid [not null]
+    request_id uuid [not null]
+    payload_hash char(64) [not null]
     requested_by_id uuid [not null]
-    route_strategy route_strategy [not null]
-    valid_member_count integer [not null]
-    status varchar(30) [not null] // pending, completed, failed
-    failure_reason varchar(500)
+    requested_k smallint [not null]
+    status varchar(20) [not null, note: 'RUNNING, COMPLETED, FAILED']
+    failure_code varchar(100)
+    ranking_strategy varchar(50) [not null]
+    algorithm_version varchar(100) [not null]
+    config_version varchar(100) [not null]
+    feature_schema_version varchar(100) [not null]
+    provider_mapping_version varchar(100) [not null]
+    provider_request_options_version varchar(100) [not null]
+    opening_filter varchar(40) [not null, note: 'ANY, OPEN_AT_REQUEST_TIME, OPEN_AT_SCHEDULED_TIME']
+    opening_evaluator_version varchar(100) [not null]
+    requested_at timestamptz [not null]
+    scheduled_at_snapshot timestamptz [not null]
+    effective_k smallint
+    warnings jsonb [not null, default: `'[]'::jsonb`]
+    random_seed varchar(100)
+    route_batch_count integer
+    route_element_count integer
     created_at timestamptz [not null]
     completed_at timestamptz
 
-    Note: 'Do not store individual current coordinates. The run only records strategy and result metadata.'
+    Indexes {
+      (meetup_id, request_id) [unique, name: 'uq_recommendation_runs_request']
+      (meetup_id, created_at) [name: 'idx_recommendation_runs_meetup_created']
+    }
+
+    Note: 'Step 1 run/idempotency metadata. Do not store individual member coordinates.'
+  }
+
+  Table recommendation_candidates {
+    id uuid [pk]
+    run_id uuid [not null]
+    canonical_candidate_key varchar(300) [not null]
+    provider varchar(50) [not null]
+    provider_place_id varchar(255) [not null]
+    name varchar(255) [not null]
+    latitude double [not null, note: 'Provider place coordinate, -90..90; never a member coordinate.']
+    longitude double [not null, note: 'Provider place coordinate, -180..180; never a member coordinate.']
+    provider_types jsonb [not null]
+    source_categories jsonb [not null]
+    source_pages jsonb [not null]
+    normalized_tags jsonb [not null, default: `'[]'::jsonb`]
+    rating_0_to_5 double
+    user_rating_count integer
+    filter_status varchar(20) [not null, note: 'ELIGIBLE or FILTERED']
+    filter_reason varchar(100)
+    final_rank smallint
+    group_utility double
+    candidate_least_misery_utility double
+    pareto_level integer
+    inclusion_probability double
+    avg_eta_seconds double
+    max_eta_seconds double
+    eta_range_seconds double
+    scheduled_opening_status varchar(20) [note: 'OPEN, CLOSED, UNKNOWN; null when scheduled opening policy is not used.']
+    opening_evidence jsonb
+    created_at timestamptz [not null]
+
+    Indexes {
+      (run_id, canonical_candidate_key) [unique, name: 'uq_recommendation_candidate']
+      (run_id, filter_status) [name: 'idx_recommendation_candidates_run_status']
+      (run_id, final_rank) [unique, name: 'uq_recommendation_candidates_run_rank', note: 'Partial unique index where final_rank is not null.']
+    }
+  }
+
+  Table recommendation_member_features {
+    id uuid [pk]
+    run_id uuid [not null]
+    candidate_id uuid [not null]
+    participant_id uuid [not null]
+    canonical_candidate_key varchar(300) [not null]
+    eta_seconds double [not null]
+    distance_meters double [not null]
+    matched_tags jsonb [not null]
+    missing_flags jsonb [not null]
+    travel_utility double [not null]
+    preference_utility double [not null]
+    place_quality_utility double [not null]
+    member_utility double [not null]
+    route_status varchar(20) [not null, note: 'Step 2 persists only OK route features.']
+    created_at timestamptz [not null]
+
+    Indexes {
+      (run_id, participant_id, canonical_candidate_key) [unique, name: 'uq_recommendation_member_feature']
+      (run_id, candidate_id) [name: 'idx_recommendation_member_features_run_candidate']
+    }
   }
 
   // External place data persisted only when it is shown in a recommendation or saved as a favorite.
@@ -246,21 +352,28 @@
 
   Table recommendation_places {
     id uuid [pk]
-    recommendation_run_id uuid [not null]
-    place_snapshot_id uuid [not null]
+    run_id uuid [not null]
+    candidate_id uuid [not null]
+    canonical_candidate_key varchar(300) [not null]
     rank smallint [not null]
-    score numeric(12, 4) [not null]
-    avg_eta_seconds integer [not null]
-    max_eta_seconds integer [not null]
-    preference_penalty numeric(12, 4) [not null, default: 0]
-    rating_adjustment numeric(12, 4) [not null, default: 0]
-    rule_explanation varchar(1000)
+    group_utility double [not null]
+    candidate_least_misery_utility double [not null]
+    pareto_level integer [not null]
+    inclusion_probability double
+    avg_eta_seconds double [not null]
+    max_eta_seconds double [not null]
+    eta_range_seconds double [not null]
+    scheduled_opening_status varchar(20) [note: 'OPEN, CLOSED, UNKNOWN; null when scheduled opening policy is not used.']
+    opening_evidence jsonb
+    explanation jsonb [not null, note: 'Deterministic summaryCode, sourced/unit-tagged facts and warnings from the persisted snapshot.']
     created_at timestamptz [not null]
 
     Indexes {
-      (recommendation_run_id, rank) [unique]
-      (recommendation_run_id, place_snapshot_id) [unique]
+      (run_id, rank) [unique, name: 'uq_recommendation_places_run_rank']
+      (run_id, candidate_id) [unique, name: 'uq_recommendation_places_candidate']
     }
+
+    Note: 'Step 3 aggregate result snapshot. One row per fully ranked candidate; API projects only rank <= effective_k.'
   }
 
   Table recommendation_place_etas {
@@ -485,6 +598,9 @@
   Ref: user_accounts.id < privacy_settings.user_id
   Ref: user_accounts.id < meetup_sessions.organizer_id
   Ref: user_accounts.id < meetup_sessions.chosen_by_id
+  Ref: meetup_sessions.id < meetup_invite_links.meetup_id
+  Ref: user_accounts.id < meetup_invite_links.created_by_id
+  Ref: user_accounts.id < meetup_invite_links.revoked_by_id
   Ref: meetup_sessions.id < meetup_participants.meetup_id
   Ref: user_accounts.id < meetup_participants.user_id
   Ref: user_accounts.id < meetup_participants.invited_by_id
@@ -492,8 +608,12 @@
   Ref: activity_tags.id < meetup_participant_preferences.activity_tag_id
   Ref: meetup_sessions.id < recommendation_runs.meetup_id
   Ref: user_accounts.id < recommendation_runs.requested_by_id
-  Ref: recommendation_runs.id < recommendation_places.recommendation_run_id
-  Ref: place_snapshots.id < recommendation_places.place_snapshot_id
+  Ref: recommendation_runs.id < recommendation_candidates.run_id [delete: cascade]
+  Ref: recommendation_runs.id < recommendation_member_features.run_id [delete: cascade]
+  Ref: recommendation_candidates.id < recommendation_member_features.candidate_id [delete: cascade]
+  Ref: meetup_participants.id < recommendation_member_features.participant_id
+  Ref: recommendation_runs.id < recommendation_places.run_id [delete: cascade]
+  Ref: recommendation_candidates.id < recommendation_places.candidate_id [delete: cascade]
   Ref: recommendation_places.id < recommendation_place_etas.recommendation_place_id
   Ref: meetup_participants.id < recommendation_place_etas.meetup_participant_id
   Ref: recommendation_places.id < meetup_sessions.chosen_recommendation_place_id

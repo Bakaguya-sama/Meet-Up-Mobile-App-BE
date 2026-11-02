@@ -187,6 +187,7 @@ export class Meetup {
   update(actorId: string, patch: Partial<MeetupDetails>, now: Date): void {
     this.assertOrganizer(actorId);
     this.assertEditable();
+    this.assertInvitationOpen(now);
     const details = validateDetails({ ...this.state, ...patch }, now);
     Object.assign(this.state, details);
     this.record('MeetupUpdated', now);
@@ -282,6 +283,7 @@ export class Meetup {
   remove(actorId: string, userId: string, now: Date): void {
     this.assertOrganizer(actorId);
     this.assertEditable();
+    this.assertInvitationOpen(now);
     if (userId === this.state.organizerId)
       throw new MeetupError(
         'MEETUP_FORBIDDEN',
@@ -472,11 +474,8 @@ function validateInvitees(organizerId: string, userIds: string[]): void {
 function validatePreferences(
   items: Array<{ activityTagId: number; level: PreferenceLevel }>,
 ): void {
-  if (!Array.isArray(items) || items.length === 0) {
-    throw new MeetupError(
-      'INVALID_INPUT',
-      'At least one preference tag must be provided',
-    );
+  if (!Array.isArray(items)) {
+    throw new MeetupError('INVALID_INPUT', 'Preferences must be an array');
   }
   const seen = new Set<number>();
   for (const item of items) {

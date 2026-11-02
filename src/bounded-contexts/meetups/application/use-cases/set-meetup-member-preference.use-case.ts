@@ -3,6 +3,7 @@ import type { PreferenceTagInput } from '../dto/meetup-request.dto';
 import type { MeetupMemberPreferenceResponseDto } from '../dto/meetup-response.dto';
 import type { MeetupStorePort } from '../ports/persistence/meetup-store.port';
 import type { ProfilePreferenceFallbackPort } from '../ports/profile-preference-fallback.port';
+import { resolveMeetupPreferences } from '../services/resolve-meetup-preferences';
 
 export class SetMeetupMemberPreferenceUseCase {
   constructor(
@@ -28,32 +29,34 @@ export class SetMeetupMemberPreferenceUseCase {
       }
     }
 
+    // Resolve fallback before committing a clear, so a profile read failure cannot
+    // turn an already-committed change into a failed HTTP response.
+    const clearedFallback =
+      preferences.length === 0
+        ? await this.fallbackPort.getProfilePreference(actorId)
+        : null;
     const now = new Date();
     const state = await this.store.updateLocked(meetupId, (meetup) => {
       meetup.setParticipantPreferences(actorId, preferences, now);
     });
 
     const participant = state.participants.find((p) => p.userId === actorId)!;
-    const prefMap = new Map(
-      (participant.preferences ?? []).map((p) => [p.activityTagId, p]),
+    const resolved = await resolveMeetupPreferences(
+      participant,
+      activeTags,
+      preferences.length === 0
+        ? {
+            getActiveTags: () => Promise.resolve(activeTags),
+            getProfilePreference: () => Promise.resolve(clearedFallback),
+          }
+        : this.fallbackPort,
     );
 
     return {
       meetupId: state.id,
       participantId: participant.id,
       userId: participant.userId,
-      hasExplicitMeetupPreference: true,
-      tags: activeTags.map((tag) => {
-        const saved = prefMap.get(tag.id);
-        return {
-          activityTagId: tag.id,
-          tagCode: tag.code,
-          displayName: tag.displayName,
-          level: saved ? saved.level : 'normal',
-          source: saved ? saved.source : 'profile_fallback',
-          updatedAt: saved ? saved.updatedAt.toISOString() : null,
-        };
-      }),
+      ...resolved,
     };
   }
 }

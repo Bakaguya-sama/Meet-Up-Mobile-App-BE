@@ -25,6 +25,7 @@ import {
 import { realtimeRooms } from '../../../../shared-kernel/application/realtime-publisher.port';
 import type { AccessTokenClaims } from '../../../../shared-kernel/application/token-claims';
 import { isTokenClaims } from '../../../../infrastructure/jwt/jwt-tokens.service';
+import { RealtimePublisherAdapter } from '../../../../infrastructure/realtime/realtime-publisher.adapter';
 import {
   MEETUP_LOCATION_ACCESS,
   type MeetupLocationAccessPort,
@@ -71,6 +72,7 @@ export class LocationGateway
     private readonly meetups: MeetupLocationAccessPort,
     private readonly publishLocation: PublishLocationUseCase,
     private readonly getLatestLocation: GetLatestLocationQuery,
+    private readonly realtimePublisher: RealtimePublisherAdapter,
   ) {}
 
   afterInit(
@@ -81,6 +83,7 @@ export class LocationGateway
       SocketData
     >,
   ): void {
+    this.realtimePublisher.bindServer(server);
     server.use((socket, next) => {
       void this.authenticate(socket)
         .then((user) => {

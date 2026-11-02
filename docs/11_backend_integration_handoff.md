@@ -67,10 +67,13 @@ Event phải có `eventId`, `eventName` versioned và `occurredAt`. Không đưa
 |---|---|---|---|
 | `MeetupMemberChanged.v1` | Backend 1 / BE-08 | Backend 2 Socket/location | `eventId`, `meetupId`, `userId`, `membershipStatus`, `occurredAt` |
 | `PreferenceUpdated.v1` | Backend 1 / BE-09 | Backend 2 recommendation | `eventId`, `meetupId`, `participantId`, `occurredAt` |
+| `RecommendationReady.v1` | Backend 2 / BE-23 | Mobile/Socket, Backend 1 vote flow | `eventId`, `meetupId`, `runId`, ordered top-K `placeIds`, route execution `strategy` (`exact` or `batched`), `occurredAt` |
 | `VoteUpdated.v1` | Backend 1 / BE-10 | Backend 2 Socket | `eventId`, `meetupId`, `placeId`, `voteCount`, `occurredAt` |
 | `MeetupFinalized.v1` | Backend 1 / BE-10 | Backend 2 Socket + FCM | `eventId`, `meetupId`, `placeId`, `scheduledAt`, `occurredAt` |
 
 Backend 1 ghi event vào `outbox_events` bằng `OutboxPort` trong cùng transaction persist Meetup/Vote. Worker chỉ dispatch sau commit; consumer phải xử lý idempotent theo `eventId`.
+
+Backend 2 áp dụng cùng transaction boundary cho `RecommendationReady.v1`: row outbox chỉ commit cùng `recommendation_places` và trạng thái `COMPLETED`. `placeIds` là provider place id theo rank top-K, không phải raw provider order và payload không chứa tọa độ member. Consumer dùng `eventId` để bỏ qua delivery lặp.
 
 ## 5. Luồng FCM chung
 
@@ -110,3 +113,137 @@ Không gửi title/body/token/GPS qua integration event; title/body hiện đư�
 | 2026-10-14 | Backend 2 | BE-05/BE-06 location Socket, Redis presence và room contract | Backend 1 cần nối Meetup membership port | Chờ BE-08 |
 | 2026-10-14 | Backend 2 | BE-07 `device_tokens`, FCM adapter, push outbox delivery | Backend 1 dùng `MeetupFinalized.v1` khi BE-10 hoàn thành | Sẵn sàng |
 | 2026-10-15 | Backend 1 | BE-03 hoàn thành vòng đời Meetup và thành viên, kết nối MeetupLocationAdapter, phát realtime & push outbox events | Backend 2 có thể join/read location theo active meetup | Sẵn sàng |
+| 2026-10-19 | Backend 1 / Backend 2 | BR-07/21: sau hạn mời khóa sửa thông tin và quản lý thành viên của organizer; thành viên vẫn rời/sửa preference trước khi chốt. Preference meetup thay toàn bộ profile, chỉ tag đã chọn được tính; danh sách rỗng trở về profile. Mời lại giữ preference cũ. | Backend 2 recommendation phải dùng `MeetupPreferenceReader`, không tự bổ sung tag thiếu từ profile hoặc gán `normal`; mobile phân biệt profile gợi ý và tag đã xác nhận. | Cần kiểm tra tích hợp khi triển khai recommendation |
+| 2026-10-26 | Backend 2 | BE-13: candidate search dùng `MeetupCandidateSearchPort` và `MeetupLocationPort`, Google Places API (New), chưa có ETA/ranking/recommendationMode. | Backend 1 giữ public reader của Meetup; mobile gọi endpoint candidate và không gửi tọa độ tâm tìm kiếm. | Sẵn sàng, cần cấu hình Google Places |
+| 2026-11-02 | Backend 2 | BE-23: recommendation-run POST/GET trả persisted top-K có per-member ETA/explanation; full rank nằm trong DB và phát `RecommendationReady.v1` qua outbox. | Mobile dùng `results`, không dùng candidate-only order; consumer realtime dedup theo `eventId`; vote giữ `runId` cho bước tích hợp sau. | Sẵn sàng |
+
+## 8. BE-13 — Lấy địa điểm ứng viên
+
+BE-13 lấy địa điểm ứng viên từ Google Places API (New) trước khi BE-14 tính ETA và BE-15 xếp hạng. Chức năng này không ghi `RecommendationRun`, không gọi Google Routes và không dùng `recommendationMode`.
+
+### API
+
+`POST /api/v1/meetups/:meetupId/recommendations/candidates`
+
+API yêu cầu Bearer access token. Chỉ organizer của meetup đang `inviting` hoặc `choosing` có thể gọi.
+
+Backend lấy `placeType` và `searchRadiusM` từ Meetup qua `MeetupCandidateSearchPort`. Tâm tìm kiếm là trung bình tọa độ đã được privacy-project cho organizer của các participant `accepted`, lấy qua `MeetupLocationPort`; client không gửi tọa độ tìm kiếm.
+
+Điều kiện trước:
+
+- Meetup có ít nhất hai participant `accepted`.
+- Có ít nhất hai latest location còn hiệu lực và được phép dùng trong meetup.
+- `GOOGLE_MAPS_API_KEY` đã cấu hình, không bị đưa vào client/log và Places API (New) được bật.
+
+Response thành công:
+
+```json
+{
+  "meetupId": "uuid",
+  "placeType": "cafe",
+  "searchedAround": { "latitude": 10.775, "longitude": 106.7 },
+  "candidates": [
+    {
+      "providerPlaceId": "places/abc",
+      "name": "Cafe Example",
+      "categories": ["cafe", "food"],
+      "latitude": 10.776,
+      "longitude": 106.701,
+      "formattedAddress": "District 1",
+      "rating": 4.5,
+      "openingHours": { "openNow": true }
+    }
+  ]
+}
+```
+
+### Privacy, dữ liệu và giới hạn
+
+- Location được đọc qua public API của context `locations`; mỗi mẫu được kiểm tra privacy và membership meetup trước khi dùng.
+- API không trả location của từng participant, token hoặc GPS history.
+- Google request chỉ yêu cầu các field candidate cần thiết: ID, display name, type, location của **địa điểm**, địa chỉ, rating và `openNow`.
+- Không dùng `priceLevel`, Budget filter hay PricePenalty.
+- Ảnh địa điểm chưa được trả ở BE-13 để tránh đưa server API key vào URL photo. Nếu cần ảnh, thêm endpoint proxy/adapter riêng sau.
+- BE-13 không cần migration vì chưa lưu `PlaceSnapshot` hay `RecommendationRun`.
+
+### Lỗi chính
+
+| Code | HTTP | Khi nào |
+|---|---:|---|
+| `MEETUP_NOT_FOUND` | 404 | Meetup không tồn tại |
+| `MEETUP_FORBIDDEN` | 403 | Caller không phải organizer |
+| `MEETUP_INSUFFICIENT_PARTICIPANTS` | 400 | Có dưới hai participant accepted |
+| `RECOMMENDATION_INSUFFICIENT_LOCATIONS` | 400 | Có dưới hai location hợp lệ/được phép |
+| `PLACE_SEARCH_UNAVAILABLE` | 503 | Chưa cấu hình key, Google lỗi hoặc timeout |
+
+### Kiểm thử
+
+- Organizer tìm candidate với hai location hợp lệ.
+- Non-organizer, meetup đã chốt/hủy và meetup có dưới hai member bị từ chối.
+- Location hết TTL, privacy không cho phép hoặc không có location làm request thất bại an toàn.
+- Google response thiếu ID/tên/tọa độ bị loại; field không cần thiết không được yêu cầu.
+- Google timeout/lỗi không làm thay đổi state Meetup.
+
+## 9. BE-23 — Recommendation result
+
+Mobile production dùng hai endpoint đồng bộ sau:
+
+```http
+POST /api/v1/meetups/:meetupId/recommendation-runs
+Idempotency-Key: <requestId UUID v4>
+
+GET /api/v1/meetups/:meetupId/recommendation-runs/:runId
+```
+
+POST chỉ trả `200` sau khi candidate, member feature, full rank, explanation, trạng thái `COMPLETED` và outbox row đã commit. GET chỉ đọc snapshot đã lưu; không gọi lại Google hoặc tính lại ranking. Cả hai trả `results` theo rank và chỉ chứa tối đa `effectiveK`; không trả mảng candidate/member-feature nội bộ hay raw provider order.
+
+Contract đích là viewer-aware:
+
+- `memberEtas[]` chỉ có `participantId`, `etaSeconds` và được trả cho mọi participant có quyền xem run.
+- `viewerFeature` chỉ chứa matched tags và `travel/preference/placeQuality/memberUtility` của chính actor; organizer không được xem feature người khác.
+- `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility` và feature của người khác vẫn được persist nội bộ nhưng không nằm trong public DTO.
+- `opening.closingStatus`, `nextClosingAt`, `secondsUntilClose` và warning `CLOSING_SOON` là public vì đây là thuộc tính chung của địa điểm. Numeric closing penalty chỉ dùng nội bộ.
+
+GET phải đổi từ requester-only sang membership-aware. Trước finalize, chỉ participant `accepted` đọc được. Sau finalize/kết thúc, participant thuộc snapshot và còn quyền history đọc được. Route này dùng cả trước và sau vote; không tạo route feature riêng. API finalize trả `runId` và `selectedCanonicalCandidateKey`, mobile gọi lại GET để xem kết quả cuối theo projection của chính actor.
+
+Retry cùng key/payload của run `COMPLETED` trả đúng run và result đã lưu, không thêm row/event. Run `RUNNING` trả `409 RECOMMENDATION_RUN_IN_PROGRESS`; run `FAILED` trả lại failure code đã lưu. Nếu `scheduledAt` hiện tại khác snapshot, GET trả `STALE_CONTEXT` nhưng không sửa kết quả cũ.
+
+## 10. Link mời meetup
+
+Link mời là extension của BE-08, không thay thế lời mời trực tiếp theo account/FCM.
+
+```http
+POST   /api/v1/meetups/:meetupId/invite-links
+GET    /api/v1/meetup-invites/:token/preview
+POST   /api/v1/meetup-invites/:token/accept
+DELETE /api/v1/meetups/:meetupId/invite-links/:linkId
+```
+
+- `POST` body là `{ "expiresAt": "ISO-8601", "revokePrevious": false }`; `expiresAt` phải ở tương lai và không vượt `invitationDeadlineAt`. `revokePrevious` mặc định `false`. Khi `true`, transaction thu hồi **mọi** link hiệu lực của meetup rồi tạo link mới; đây là rotate chính thức, không có endpoint rotate riêng.
+- Token là opaque random secret entropy cao. Response create trả `{ id, inviteUrl, expiresAt, revokedAt: null }`; `inviteUrl`/raw token chỉ xuất hiện đúng lần này. PostgreSQL chỉ lưu `token_hash`, `meetup_id`, `created_by_id`, `expires_at`, `revoked_at`, `use_count`, timestamps và audit metadata cần thiết.
+- Một link hiệu lực được nhiều actor khác nhau accept. `use_count` chỉ tăng khi actor lần đầu trở thành `accepted` qua link đó; retry/cùng actor đã accepted trả membership hiện có, không tăng count hoặc phát event mới. Preview công khai chỉ trả `{ title, scheduledAt, expiresAt }`; không trả participant list, location hoặc preference. Accept yêu cầu JWT và kiểm state/deadline ở thời điểm commit.
+- Rate limit theo token/IP/account; lỗi token dùng contract chống enumeration. Event `MeetupInviteLinkAccepted.v1` phát sau commit; không đặt raw token trong outbox/log/event.
+- Event `MeetupInviteLinkAccepted.v1` phát sau commit; không đặt raw token trong outbox/log/event.
+
+## 11. QR kết bạn hybrid
+
+Backend không sinh hoặc lưu bitmap QR; mobile mã hóa HTTPS universal/app link từ payload backend.
+
+**QR hồ sơ ổn định** dùng public handle ngẫu nhiên/không chứa user ID nội bộ:
+
+```http
+GET  /api/v1/friends/qr-profiles/:publicHandle
+POST /api/v1/friends/public-handle/rotate
+```
+
+`public_handle` là cột `unique`, nullable ở `user_accounts`; không có bảng QR/profile riêng. Preview yêu cầu actor đăng nhập và chỉ trả `{ publicHandle, displayName, avatarUrl, friendship }`, không trả internal `userAccountId`. Chủ tài khoản có thể tắt/rotate handle; handle cũ không resolve sau rotate. Sau preview, mobile dùng `POST /api/v1/friends/requests` với `{ recipientPublicHandle: publicHandle }`; controller resolve handle qua public directory rồi gọi use case friendship hiện có. Scan không tự tạo friendship.
+
+**QR tạm thời** dùng phiên Redis TTL:
+
+```http
+POST   /api/v1/friends/qr-sessions
+GET    /api/v1/friends/qr-sessions/:token
+DELETE /api/v1/friends/qr-sessions/:sessionId
+```
+
+Redis dùng key dẫn xuất từ token hash/HMAC, không dùng raw token làm key hoặc value. Key giữ owner, session ID, expiry và revoke state với TTL; không cần bảng QR riêng. Resolve chỉ trả `{ displayName, avatarUrl, friendship }` và không trả internal ID. Sau preview, mobile gọi `POST /api/v1/friends/requests` với `{ qrSessionToken: token }`; controller resolve token rồi gọi cùng friend-request service. Self/duplicate/pending/accepted/blocked/rate-limit dùng đúng rule BE-03. Token, email, số điện thoại, tọa độ và access token không được ghi log hoặc nhúng trong QR.

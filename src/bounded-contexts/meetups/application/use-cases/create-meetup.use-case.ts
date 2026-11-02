@@ -19,7 +19,8 @@ export class CreateMeetupUseCase {
       {
         ...input,
         description: input.description ?? null,
-        recommendationMode: input.recommendationMode ?? 'balanced',
+        // Legacy persistence default only; this is not part of the BE-08 API.
+        recommendationMode: 'balanced',
         scheduledAt: new Date(input.scheduledAt),
         invitationDeadlineAt: new Date(input.invitationDeadlineAt),
         id: randomUUID(),

@@ -143,6 +143,13 @@ Project dùng `ioredis` vì BullMQ sử dụng tốt client này và cần các 
 # Development
 REDIS_URL=redis://localhost:6379
 
+# BE-33/BE-34: base HTTPS cho universal/app link và policy runtime.
+# Giá trị production do deployment/Product cung cấp; startup phải validate, test inject config riêng.
+PUBLIC_APP_BASE_URL=
+FRIEND_QR_SESSION_TTL_SECONDS=
+MEETUP_INVITE_RATE_LIMIT=
+FRIEND_QR_RATE_LIMIT=
+
 # Staging/production
 REDIS_URL=rediss://default:password@managed-redis-host:port
 ```

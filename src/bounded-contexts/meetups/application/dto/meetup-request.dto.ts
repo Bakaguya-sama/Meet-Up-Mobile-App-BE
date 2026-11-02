@@ -63,9 +63,6 @@ export class CreateMeetupRequest extends InviteParticipantsRequest {
   @IsString()
   @Matches(/^[a-z][a-z0-9_]{0,99}$/)
   placeType: string;
-
-  @IsIn(['balanced'])
-  recommendationMode = 'balanced' as const;
 }
 
 export class UpdateMeetupRequest {
@@ -100,10 +97,6 @@ export class UpdateMeetupRequest {
   @IsString()
   @Matches(/^[a-z][a-z0-9_]{0,99}$/)
   placeType?: string;
-
-  @ValidateIf(optional)
-  @IsIn(['balanced'])
-  recommendationMode?: 'balanced';
 }
 
 export class MeetupPageRequest {
@@ -131,7 +124,6 @@ export class PreferenceTagInput {
 
 export class SetMeetupPreferencesRequest {
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => PreferenceTagInput)
   preferences: PreferenceTagInput[];

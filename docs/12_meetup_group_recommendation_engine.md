@@ -1,0 +1,2170 @@
+# MeetUp Group Recommendation Engine
+
+> Tài liệu kỹ thuật dùng chung cho team phát triển
+>
+> Trạng thái: bản thiết kế ban đầu
+>
+> Ngày cập nhật: 27/10/2026
+>
+> Phạm vi: online recommendation phiên bản đầu và kiến trúc mở rộng cho offline learning / learning-to-rank
+
+## Mục lục
+
+1. [Tổng quan](#1-tổng-quan)
+2. [Glossary](#2-glossary)
+3. [Nguyên tắc và giả định](#3-nguyên-tắc-và-giả-định)
+4. [Kiến trúc tổng thể](#4-kiến-trúc-tổng-thể)
+5. [Luồng online recommendation](#5-luồng-online-recommendation)
+6. [Mô hình dữ liệu đầu vào và đầu ra](#6-mô-hình-dữ-liệu-đầu-vào-và-đầu-ra)
+7. [Công thức utility](#7-công-thức-utility)
+8. [Thuật toán group ranking](#8-thuật-toán-group-ranking)
+9. [Vote và feedback](#9-vote-và-feedback)
+10. [Offline evaluation và learning-to-rank](#10-offline-evaluation-và-learning-to-rank)
+11. [Lưu trữ, API và versioning](#11-lưu-trữ-api-và-versioning)
+12. [Xử lý lỗi, hiệu năng và quyền riêng tư](#12-xử-lý-lỗi-hiệu-năng-và-quyền-riêng-tư)
+13. [Quyết định thiết kế](#13-quyết-định-thiết-kế)
+14. [Đánh giá chất lượng](#14-đánh-giá-chất-lượng)
+15. [Kế hoạch triển khai](#15-kế-hoạch-triển-khai)
+16. [Hạn chế và câu hỏi còn mở](#16-hạn-chế-và-câu-hỏi-còn-mở)
+17. [Tài liệu tham khảo](#17-tài-liệu-tham-khảo)
+
+## 1. Tổng quan
+
+### 1.1. Bài toán
+
+**MeetUp Group Recommendation Engine** nhận bối cảnh của một meetup và trả về danh sách địa điểm phù hợp cho cả nhóm. Hệ thống không chỉ tìm địa điểm gần tâm hình học. Nó phải xem xét thời gian di chuyển của từng thành viên, sở thích trong meetup, thông tin địa điểm và mức bất lợi của thành viên có trải nghiệm tệ nhất.
+
+**[Từ bài báo]** Group recommender system hỗ trợ quyết định chung của nhiều người. Một nhiệm vụ chính là kết hợp preference hoặc prediction của từng thành viên thành recommendation cho cả nhóm [2, Mục 3.1, PDF tr. 5].
+
+**[Điều chỉnh]** Trong MeetUp, mỗi địa điểm được đánh giá riêng cho từng thành viên trước. Kết quả cá nhân được tổng hợp bằng một group ranking strategy có xét fairness. Cách này gần với hướng *aggregated predictions* được trình bày trong [2, Mục 3.1, PDF tr. 5–6], nhưng prediction cá nhân của phiên bản đầu được tính từ ETA và preference hiện tại, không đến từ collaborative filtering.
+
+### 1.2. Người dùng và bên sử dụng kết quả
+
+| Đối tượng | Cách sử dụng |
+|---|---|
+| Thành viên meetup | Xem top-K địa điểm, ETA của mình, lý do gợi ý và vote sau khi đã nhận recommendation. |
+| Người tạo meetup | Yêu cầu chạy recommendation, xem kết quả và chốt địa điểm sau giai đoạn vote. |
+| Backend meetup | Cung cấp trạng thái meetup, thành viên hợp lệ và preference hiện tại. |
+| Mobile app | Gửi yêu cầu, hiển thị kết quả, thu vote và hành vi sau recommendation. |
+| Team phát triển | Theo dõi metric, chạy offline evaluation, thay ranking strategy và triển khai model mới. |
+
+### 1.3. Đầu vào
+
+**[Tự đề xuất]** Một recommendation run cần các nhóm dữ liệu sau:
+
+- `meetupId`, `scheduledAt` của meetup và cấu hình tìm kiếm.
+- Danh sách thành viên đã chấp nhận meetup.
+- Latest location còn hiệu lực của từng thành viên, gồm tọa độ, `accuracy` và `updatedAt`.
+- Preference tạm thời của từng thành viên trong meetup. Preference profile chỉ là fallback.
+- Loại địa điểm, bán kính, opening policy và weather policy.
+- Candidate places từ Google Places hoặc provider tương đương.
+- ETA và khoảng cách từ từng thành viên đến từng candidate từ Google Routes; travel mode của member là `TWO_WHEELER` hoặc `DRIVE`, mặc định `TWO_WHEELER` khi chưa có giá trị.
+- `algorithmVersion`, `configVersion` và `modelVersion` nếu có.
+
+### 1.4. Đầu ra
+
+**[Tự đề xuất]** Hệ thống trả tối đa `K` địa điểm. Mỗi kết quả gồm:
+
+- Thứ hạng, `canonicalCandidateKey` và `providerPlaceId`.
+- ETA trung bình, ETA lớn nhất và ETA của từng thành viên.
+- Member utility của từng thành viên.
+- Group utility và candidate least-misery utility; list fairness được báo ở tầng evaluation.
+- Các feature chính được dùng để xếp hạng.
+- Lý do giải thích dạng có cấu trúc.
+- Cờ dữ liệu thiếu và warning khi kết quả ít hơn `requestedK`. Candidate top-K luôn có route hợp lệ cho mọi member.
+- Snapshot của `scheduledAt`, opening/weather context, requested/effective routing preference và travel mode đã dùng.
+- Phiên bản thuật toán và cấu hình tạo ra kết quả.
+
+### 1.5. Phạm vi
+
+#### Trong phạm vi
+
+**[Tự đề xuất]** Tài liệu bao phủ:
+
+- Candidate generation và filtering.
+- Route Matrix theo travel mode của từng member (`TWO_WHEELER` hoặc `DRIVE`), mặc định xe máy.
+- Tùy chọn traffic-aware theo cấu hình deployment; không dùng `scheduledAt` làm `departureTime` trong giai đoạn này.
+- Đánh giá địa điểm có mở tại `scheduledAt`.
+- Weather context tại `scheduledAt`, với policy `OFF`, `WARN_ONLY` hoặc `FILTER_OUTDOOR`.
+- Member utility theo ETA, preference và chất lượng địa điểm.
+- Group ranking dựa trên Pareto/fairness.
+- Top-K explanation.
+- Logging impression, vote, địa điểm được chốt và hành vi sau recommendation.
+- Offline replay, offline evaluation và kiến trúc mở rộng cho learning-to-rank.
+
+#### Ngoài phạm vi hiện tại
+
+**[Tự đề xuất]** Các mục sau chưa thuộc phiên bản đầu:
+
+- Dự đoán hành trình hoặc next-POI từ lịch sử GPS.
+- Tối ưu tuyến đường nhiều điểm dừng.
+- Đồng bộ Google Calendar, FreeBusy, OAuth calendar scope hoặc recommendation theo lịch cá nhân ngoài `scheduledAt` của meetup.
+- Dự báo traffic tại thời điểm khởi hành tương lai. Giai đoạn này chỉ có traffic hiện tại khi deployment bật `TRAFFIC_AWARE`.
+- Travel mode ngoài `TWO_WHEELER` và `DRIVE`.
+- Reinforcement learning và cập nhật model theo thời gian thực.
+- Thay vote bằng quyết định tự động. Vote luôn diễn ra sau recommendation.
+- Dùng AI tạo sinh để quyết định thứ hạng. AI, nếu có, chỉ diễn đạt explanation từ dữ liệu đã tính.
+
+### 1.6. Quy ước nguồn
+
+Mỗi quyết định quan trọng dùng một trong ba nhãn:
+
+- **[Từ bài báo]**: mô tả trực tiếp ý tưởng hoặc phương pháp của nguồn được trích dẫn.
+- **[Điều chỉnh]**: bắt đầu từ ý tưởng của nguồn nhưng đã thay đổi cho dữ liệu và nghiệp vụ MeetUp.
+- **[Tự đề xuất]**: thiết kế của team, chưa được khẳng định bởi các nguồn tham khảo của tài liệu này.
+
+Thông tin thuần túy về contract, quota hoặc trạng thái tính năng của Google Maps Platform được ghi nguồn `[3]`–`[7]` ngay tại chỗ. Các thông tin này không phải phương pháp nghiên cứu nên không gắn nhãn `[Từ bài báo]`.
+
+## 2. Glossary
+
+| Thuật ngữ | Giải thích đời thường | Ví dụ |
+|---|---|---|
+| MeetUp Group Recommendation Engine | Hệ thống tạo danh sách địa điểm cho một nhóm trong một meetup. | Trả 5 quán cà phê phù hợp cho nhóm 4 người. |
+| Recommender system | Hệ thống chọn và xếp hạng các lựa chọn có khả năng phù hợp. | Xếp các quán từ phù hợp nhất đến ít phù hợp hơn. |
+| Group recommender system | Recommender system phục vụ một nhóm thay vì một cá nhân. | Chọn quán sao cho cả An, Bình và Chi đều có thể chấp nhận. |
+| Context | Dữ liệu mô tả tình huống hiện tại. | Vị trí thành viên, giờ meetup, loại địa điểm và bán kính. |
+| Candidate | Một địa điểm có thể được đưa vào xếp hạng. Raw candidate chưa chắc đã đạt hard constraint. | Một quán do Places API trả về nhưng còn phải kiểm tra bán kính ở backend. |
+| Candidate generation | Bước tạo tập địa điểm ban đầu trước khi chấm điểm. | Tìm 50 quán cà phê quanh vùng tìm kiếm. |
+| Provider-side filter | Filter được đưa thẳng vào request gửi cho provider để provider trả về ít candidate hơn. | Với Text Search (New), gửi `includedType=cafe`, `strictTypeFiltering=true` và tùy chọn `openNow=true`. |
+| Residual filter | Filter nội bộ còn lại sau khi đã nhận candidate từ provider. | Loại place không có Place ID hoặc không phù hợp policy của Meetup. |
+| Constraint | Điều kiện địa điểm phải thỏa. | Địa điểm phải nằm trong bán kính được phép. |
+| Opening filter | Quy tắc lọc theo trạng thái mở cửa. | `OPEN_AT_REQUEST_TIME` dùng `openNow`; `OPEN_AT_SCHEDULED_TIME` đánh giá opening periods tại `scheduledAt`. |
+| `scheduledAt` | Thời điểm cả nhóm dự kiến gặp tại địa điểm. Đây không phải thời điểm từng người bắt đầu đi. | Meetup hẹn lúc 19:00 thì `scheduledAt=19:00`. |
+| Temporal context | Snapshot các dữ liệu phụ thuộc thời gian của một run. | `requestedAt`, `scheduledAt`, opening status và thời điểm weather forecast. |
+| Scheduled opening evaluator | Module xác định candidate `OPEN`, `CLOSED` hoặc `UNKNOWN` tại `scheduledAt`. | Quán mở 18:00–22:00 được đánh `OPEN` cho meetup 19:00. |
+| Weather policy | Cách engine sử dụng weather context. | `WARN_ONLY` chỉ cảnh báo; `FILTER_OUTDOOR` có thể loại địa điểm chắc chắn ngoài trời khi forecast vượt ngưỡng. |
+| Outdoor exposure | Phân loại mức địa điểm phụ thuộc không gian ngoài trời. | Công viên là `OUTDOOR`; quán không đủ dữ liệu là `UNKNOWN`. |
+| Hard constraint | Điều kiện không đạt thì loại địa điểm ngay. | Place API xác nhận quán đã đóng vĩnh viễn. |
+| Soft penalty | Điểm phạt làm giảm thứ hạng nhưng không loại ngay. | Một thành viên chọn `avoid` cho karaoke nên quán karaoke bị giảm utility. |
+| Feature | Một giá trị đầu vào dùng để chấm điểm hoặc huấn luyện model. | ETA 12 phút, rating 4.3, preference `high`. |
+| Utility | Trong utility model của MeetUp, điểm từ 0 đến 1 biểu diễn mức phù hợp; điểm càng cao càng tốt. Utility list-level trong [1] là khái niệm khác. | Utility 0.8 nghĩa là địa điểm khá phù hợp theo cách hệ thống đo. |
+| Member utility | Utility của một địa điểm đối với một thành viên cụ thể. | Quán A có utility 0.9 với An nhưng 0.4 với Bình. |
+| Group utility | Mức phù hợp chung của cả nhóm, trong tài liệu này là trung bình member utility. | Ba utility 0.8, 0.7, 0.6 tạo group utility 0.7. |
+| Candidate least-misery utility | Member utility thấp nhất của một candidate. Đây là diagnostic/tie-breaker của MeetUp, không phải list fairness nguyên bản trong [1]. | Quán có utility `[0.8, 0.7, 0.4]` có candidate least-misery utility là `0.4`. |
+| List fairness | Mức recommendation list tránh để một thành viên có utility của cả danh sách quá thấp. | Lấy minimum của list utility giữa các thành viên. |
+| Least misery | Nguyên tắc nhìn vào thành viên có utility thấp nhất. | Với `[0.9, 0.8, 0.2]`, least-misery score là 0.2. |
+| Pareto dominance | Địa điểm A lấn át B nếu A không tệ hơn với mọi thành viên và tốt hơn với ít nhất một người. | A có `[0.8, 0.7]`, B có `[0.8, 0.5]`; A lấn át B. |
+| Pareto-optimal | Candidate không bị candidate nào khác lấn át. | Không có quán nào tốt hơn quán A đối với tất cả thành viên. |
+| N-level Pareto set | Tập item bị lấn át bởi không quá `N-1` item. | Với `N=2`, item bị tối đa một item khác lấn át vẫn được giữ. |
+| NPO | Thuật toán *N-level Pareto Optimal aggregation* trong [1]. | Chọn và xếp hạng trong N-level Pareto set. |
+| XPO | Biến thể trong [1] dùng Pareto level nhỏ nhất vẫn có đủ N item. | Nếu Pareto level 1 chỉ có 3 item nhưng cần 5, tăng level đến khi đủ. |
+| XPO-inspired ranker | Phiên bản MeetUp điều chỉnh từ XPO. Nó dùng member utility theo session và thêm tie-breaker nghiệp vụ. | Xếp quán theo xác suất vào top-5, sau đó theo fairness và group utility. |
+| Rank | Vị trí của candidate trong một danh sách có thứ tự. Rank 1 là tốt nhất. | Quán A đứng thứ 2 với thành viên Bình. |
+| Ranking strategy | Module quyết định thứ tự candidate. | `min-sum`, `min-max` hoặc `fair-pareto`. |
+| Ground truth | Kết quả mục tiêu dùng để đối chiếu khi đánh giá. | Trong [1], personal top-N là ground truth của một member; MeetUp v1 chưa có dữ liệu này. |
+| Query group | Nhóm candidate cạnh tranh với nhau trong một lần xếp hạng hoặc một mẫu LTR. | Tất cả candidate của cùng một `recommendationRunId`. |
+| Relevance score | Điểm dự đoán một candidate phù hợp với query đến đâu. | LTR model dự đoán khả năng candidate được nhóm chọn. |
+| Domination count | Số candidate lấn át một candidate theo Pareto dominance. | Candidate bị hai candidate khác lấn át có domination count bằng 2. |
+| Re-ranking | Sắp xếp lại sau khi đã có score ban đầu để đáp ứng fairness hoặc diversity. | Đẩy một quán khác loại vào top-5 để tránh 5 kết quả giống nhau. |
+| Top-K | K kết quả đầu tiên được trả cho client. | `K=5` nghĩa là hiển thị 5 địa điểm. |
+| Monte Carlo sampling | Ước lượng kết quả bằng cách thử nhiều bộ trọng số ngẫu nhiên. | Sinh 2.000 weight vector và đếm số lần quán A vào top-5. |
+| Weight vector | Bộ trọng số dành cho các thành viên trong một lần mô phỏng. | `[0.5, 0.3, 0.2]` cho nhóm ba người. |
+| ETA | *Estimated Time of Arrival*, thời gian dự kiến để đến nơi. | An cần 12 phút để đến quán A. |
+| Route Matrix | Ma trận route giữa nhiều điểm đi và nhiều điểm đến. | 4 thành viên × 20 quán tạo 80 phần tử route. |
+| Origin | Điểm bắt đầu của route. | Latest location của một thành viên. |
+| Destination | Điểm kết thúc của route. | Tọa độ hoặc Place ID của quán. |
+| Route element | Một cặp origin–destination trong Route Matrix. | Route từ An đến quán A là một element. |
+| `TWO_WHEELER` | Travel mode của Google Routes cho xe hai bánh có động cơ. | Xe máy là `TWO_WHEELER`, không phải `BICYCLE`. |
+| `DRIVE` | Travel mode của Google Routes cho ô tô. | Một member chọn đi ô tô thì route của member đó dùng `DRIVE`. |
+| Routing preference | Tùy chọn cho biết Routes có dùng traffic hiện tại hay không. | `TRAFFIC_UNAWARE` ưu tiên latency thấp; `TRAFFIC_AWARE` xét traffic hiện tại. |
+| `TRAFFIC_AWARE` | Routing preference dùng live traffic với một số tối ưu để giảm latency. | ETA lúc 17:30 có thể dài hơn ETA không xét traffic. |
+| `TRAFFIC_UNAWARE` | Routing preference không xét live traffic. | Dùng khi muốn giảm tài nguyên/latency hoặc khi traffic provider không sẵn sàng. |
+| `staticDuration` | Duration của route không tính traffic. | `duration=1.800s`, `staticDuration=1.500s` cho thấy traffic làm ETA tăng 300 giây. |
+| `STALE_CONTEXT` | Cờ cho biết run cũ không còn khớp context meetup hiện tại. | Organizer đổi `scheduledAt`; kết quả cũ chỉ để audit và phải chạy recommendation mới. |
+| Recommendation run | Một lần pipeline được thực thi với input và version xác định. | Người tạo bấm “Tìm địa điểm” lúc 19:00 tạo một run. |
+| Impression | Sự kiện một candidate thật sự được hiển thị cho người dùng. | Quán A xuất hiện ở rank 2 trên màn hình. |
+| Feedback | Hành vi xảy ra sau khi recommendation được hiển thị. | Vote, đổi vote, chốt địa điểm, mở dẫn đường. |
+| Label | Giá trị mục tiêu dùng để đánh giá hoặc huấn luyện model. | Địa điểm được chốt có label cao hơn địa điểm chỉ được xem. |
+| Offline evaluation | Đánh giá thuật toán bằng dữ liệu đã lưu, không ảnh hưởng người dùng thật. | Chạy lại meetup cũ bằng `min-max` và `fair-pareto`. |
+| Learning-to-rank (LTR) | Machine learning học cách sắp thứ tự candidate từ feature và feedback. | Model học rằng nhóm thường chọn nơi có ETA cân bằng và đúng category. |
+| Model | Hàm đã học từ dữ liệu để dự đoán score. | Model dự đoán xác suất một candidate được nhóm chọn. |
+| Model Registry | Nơi quản lý model version và trạng thái triển khai. | `ltr-v3` đang production, `ltr-v4` đang shadow. |
+| Machine learning (ML) | Cách xây hàm dự đoán bằng dữ liệu ví dụ thay vì chỉ viết quy tắc thủ công. | Học score từ các recommendation run và feedback cũ. |
+| Collaborative filtering | Cách học sở thích từ mẫu tương tác giống nhau giữa nhiều user và item. | Hai người thường thích cùng loại quán có thể nhận gợi ý tương tự. |
+| Shadow evaluation | Model mới tính kết quả nhưng không hiển thị cho người dùng. | Lưu top-5 của `ltr-v4` để so sánh với production. |
+| A/B test | Chia các meetup thành nhóm dùng thuật toán khác nhau để so sánh. | 50% meetup dùng baseline, 50% dùng LTR. |
+| NDCG@K | Metric đánh giá thứ tự top-K, cho điểm cao hơn khi item liên quan nằm gần đầu. | Địa điểm được chốt ở rank 1 tốt hơn ở rank 5. |
+| HitRate@K | Tỷ lệ trường hợp item mục tiêu xuất hiện trong top-K. | Địa điểm cuối cùng được chọn có nằm trong top-5 hay không. |
+| p95 latency | 95% request có thời gian xử lý không vượt quá giá trị này. | p95 = 3 giây nghĩa là 95/100 request nhanh hơn hoặc bằng 3 giây. |
+| TTL | *Time To Live*, thời gian dữ liệu cache còn hiệu lực. | Latest location hết hạn sau 5 phút. |
+| Stale location | Vị trí đã quá thời hạn cho phép. | Location cập nhật 8 phút trước không được dùng. |
+| Modular monolith | Một backend deploy chung nhưng code được chia module rõ ràng. | Recommendation là module riêng trong NestJS, chưa phải microservice riêng. |
+| NestJS | Framework TypeScript đang dùng để xây backend MeetUp. | `RecommendationModule` nằm trong ứng dụng NestJS. |
+| API | Giao diện để hai phần mềm gửi request và nhận response. | Mobile gọi API tạo recommendation run. |
+| Provider | Dịch vụ bên ngoài cung cấp dữ liệu hoặc phép tính. | Google Places là place provider; Google Routes là route provider. |
+| Provider adapter | Lớp chuyển request/response riêng của provider sang contract nội bộ. | `GoogleTextSearchAdapter` chuyển Google Place Type và rating về `RawCandidatePlace`. |
+| Canonical candidate key | Khóa nội bộ ổn định để deduplicate và join dữ liệu trong một run. | `google-places:ChIJ...`. |
+| `RecommendationOrchestrator` | Module điều phối thứ tự các bước của một recommendation run. | Gọi context, candidate, route, utility, ranking rồi persist. |
+| `ContextBuilder` | Module kiểm tra member/location/preference và tạo context nhất quán. | Loại member có location stale trước khi gọi Places. |
+| `CandidateGenerator` | Module gọi active place provider strategy và phân trang trong budget. | Gọi Text Search cho category `coffee`. |
+| `CandidateMerger` | Module union và deduplicate raw candidates từ nhiều category/page của cùng provider. | Hai query cùng trả một quán thì chỉ giữ một canonical candidate. |
+| `ConstraintFilter` | Module áp dụng residual hard constraints ở backend. | Loại candidate ngoài exact radius. |
+| `ScheduledOpeningEvaluator` | Module đọc opening periods và timezone để đánh giá tại `scheduledAt`. | Đánh `UNKNOWN` khi thiếu hours hoặc timezone thay vì tự coi là đóng. |
+| `NormalizedOpeningHours` | Opening periods đã được adapter đổi về contract nội bộ, không còn field riêng của provider. | Một period ghi local open/close time và nguồn `CURRENT` hoặc `REGULAR`. |
+| `WeatherContextProvider` | Port lấy forecast cho candidate tại `scheduledAt`; provider cụ thể chưa được chốt. | Trả trạng thái forecast `AVAILABLE`, `UNAVAILABLE` hoặc `OUT_OF_RANGE`. |
+| `WeatherPolicyEvaluator` | Module áp dụng `OFF`, `WARN_ONLY` hoặc `FILTER_OUTDOOR` lên forecast đã chuẩn hóa. | Nếu hard filter làm rỗng tập candidate, tự hạ xuống `WARN_ONLY`. |
+| `RawCandidatePlace` | Candidate vừa được adapter chuẩn hóa nhưng chưa qua hard filter nội bộ. | Place có ID và tọa độ nhưng có thể nằm ngoài radius. |
+| `EligibleCandidate` | Candidate đã qua provider-side và residual hard constraints, sẵn sàng gửi tới Routes. | Quán đúng category, trong radius và không đóng vĩnh viễn. |
+| `RouteMatrixProvider` | Port tính route theo batch giữa member và candidate. | Tạo route cho 6 member × 20 quán. |
+| Route batch | Một phần hình chữ nhật của ma trận origin × destination được gửi trong một provider request. | Batch 10 origins × 20 destinations có 200 elements. |
+| `RouteFeature` | ETA/distance hợp lệ của một cặp member–candidate. | An đến quán A mất 720 giây và 4.200 mét. |
+| `RouteFailure` | Kết quả cho biết một cặp member–candidate không có route hợp lệ hoặc provider lỗi. | Không tìm được route xe máy từ An đến quán B. |
+| `FeatureBuilder` | Module chuẩn hóa provider/route data thành feature. | Chuyển rating và ETA thành input cho utility. |
+| `MemberPlaceFeature` | Bộ feature của một cặp member–candidate trước khi tính utility. | ETA, distance, matched tags và rating của An–quán A. |
+| `MemberUtilityScorer` | Module tính `T`, `P`, `Q`, `U` cho từng member–candidate. | Tính utility của quán A riêng cho An. |
+| `MemberPlaceUtility` | Kết quả `T`, `P`, `Q`, `U` của một cặp member–candidate. | `U(An, quán A)=0.72`. |
+| `GroupRanker` | Module chạy ranking strategy đã chọn để tạo full ranking. | Chạy `fair-pareto-v1`. |
+| `ExplanationBuilder` | Module tạo explanation chỉ từ feature và score đã lưu. | Giải thích “ETA lớn nhất 18 phút”. |
+| `RecommendationRunRepository` | Module persist và đọc run/snapshot/result. | Retry cùng request lấy lại run đã hoàn tất. |
+| `FeedbackCollector` | Module validate và ghi event sau khi recommendation được hiển thị. | Ghi vote bằng `eventId` idempotent. |
+| `OfflineDatasetBuilder` | Module ghép snapshot với impression/feedback thành dataset có label version. | Tạo một query group cho mỗi run. |
+| `OfflineEvaluator` | Module replay và so sánh strategy trên dữ liệu đã lưu. | So sánh `min-max` với `fair-pareto-v1`. |
+| `LTRTrainer` | Module huấn luyện model group-level candidate relevance. | Train model dự đoán candidate được chọn. |
+| `ShadowRunner` | Module chạy model mới nhưng không trả kết quả đó cho user. | So sánh LTR candidate với production ranking. |
+| Google Places | Dịch vụ cung cấp candidate place và thông tin địa điểm. | Tìm các quán cà phê trong bán kính 5 km. |
+| Google Routes | Dịch vụ tính route, duration và distance. | Tính ETA từ từng member đến từng quán. |
+| PostgreSQL | Cơ sở dữ liệu quan hệ lưu dữ liệu bền vững. | Lưu recommendation run, candidate và feedback. |
+| Redis | Kho dữ liệu nhanh dùng cho dữ liệu tạm thời. | Lưu latest location với TTL. |
+| Snapshot | Bản chụp dữ liệu đúng tại thời điểm một run diễn ra. | Lưu candidate và feature để replay mà không gọi provider lại. |
+| Random seed | Giá trị khởi tạo bộ sinh số ngẫu nhiên để có thể lặp lại cùng kết quả. | Seed `48291` tái tạo các weight vector của run. |
+| Cache | Bản lưu tạm để tránh tính hoặc gọi API lại quá sớm. | Dùng lại Route Matrix khi khóa cache còn hợp lệ. |
+| Retry | Thử lại một thao tác bị lỗi tạm thời. | Gọi lại Routes sau lỗi mạng. |
+| Backoff | Tăng thời gian chờ giữa các lần retry để tránh làm dịch vụ quá tải. | Chờ 200 ms, rồi 500 ms, rồi 1 giây. |
+| Circuit breaker | Cơ chế tạm dừng gọi provider đang lỗi liên tục. | Ngừng gọi Routes trong 30 giây sau nhiều lỗi liên tiếp. |
+| Checksum | Chuỗi dùng để kiểm tra artifact hoặc config có bị thay đổi không. | Model file có checksum khác thì không được load dưới version cũ. |
+| Hyperparameter | Tham số cấu hình quá trình học model, không được model tự học trực tiếp. | Số cây hoặc learning rate của một LTR model tương lai. |
+| Overfitting | Model nhớ dữ liệu cũ quá kỹ nhưng hoạt động kém với meetup mới. | Offline score cao trên train nhưng thấp trên test theo thời gian. |
+| Exposure bias | Sai lệch vì hệ thống chỉ quan sát feedback trên candidate đã hiển thị. | Candidate không được show không thể bị xem là user không thích. |
+| Guardrail | Điều kiện an toàn không được vi phạm dù metric chính tăng. | Không dùng stale location và không tăng p95 latency quá ngưỡng. |
+| Member medoid | Vị trí của một member có tổng Haversine distance đến các member còn lại nhỏ nhất; dùng làm search center v1. | Trong ba vị trí, chọn vị trí thành viên nằm giữa và gần tổng thể nhất. |
+| Haversine distance | Khoảng cách đường chim bay giữa hai tọa độ trên mô hình Trái Đất hình cầu. | Backend dùng nó để kiểm tra candidate có nằm trong search radius hay không; không dùng thay ETA đường bộ. |
+| Diversity | Mức khác nhau giữa các item trong danh sách. | Top-5 không chỉ gồm năm chi nhánh gần như giống nhau. |
+| UTC | Chuẩn thời gian thống nhất để lưu timestamp. | Backend lưu `2026-10-26T12:00:00Z`, mobile đổi sang giờ Việt Nam. |
+| Fallback | Phương án thay thế khi bước chính thất bại. | Routes lỗi thì trả lỗi có thể retry; không giả ETA bằng đường thẳng. |
+| Idempotency | Gửi lại cùng request không tạo kết quả trùng ngoài ý muốn. | Retry cùng `requestId` trả lại run cũ thay vì tạo run mới. |
+| Algorithm version | Phiên bản logic xếp hạng. | `fair-pareto-v1`. |
+| Config version | Phiên bản tham số của thuật toán. | `utility-config-2026-10-26`. |
+| Cold start | Trường hợp chưa có đủ preference hoặc feedback lịch sử. | Member mới không có preference cho bất kỳ tag nào. |
+| Train/validation/test split | Cách chia dữ liệu học, chỉnh tham số và kiểm tra cuối cùng thành ba phần tách biệt. | Train bằng các run cũ, validation bằng run mới hơn và test bằng khoảng thời gian cuối. |
+| Pseudonymous ID | ID thay thế không trực tiếp lộ định danh thật. | Dataset offline dùng một mã đã biến đổi thay cho `participantId`. |
+
+## 3. Nguyên tắc và giả định
+
+1. **[Tự đề xuất]** Recommendation và vote là hai giai đoạn riêng. Pipeline hoàn tất top-K trước. Vote chỉ hoạt động trên kết quả đã hiển thị.
+2. **[Từ bài báo]** Group recommendation có thể gồm preference acquisition, recommendation generation, presentation/explanation và consensus negotiation [2, Mục 3.1, PDF tr. 5–7].
+3. **[Điều chỉnh]** MeetUp ánh xạ vote sang bước consensus sau recommendation. Vote không phải feature của chính run đang diễn ra.
+4. **[Tự đề xuất]** Preference `avoid` là soft penalty. Nó làm giảm utility nhưng không tự động loại candidate.
+5. **[Tự đề xuất]** Travel mode mặc định là xe máy (`TWO_WHEELER`); member có cấu hình hợp lệ có thể dùng `DRIVE`. Google định nghĩa `TWO_WHEELER` là xe hai bánh có động cơ và phân biệt với xe đạp [5, mục “Available route matrix vehicle types”].
+6. Route Matrix tính duration và distance cho mọi cặp origin–destination; số element bằng số origin nhân số destination [3, mục “Request limits”].
+7. **[Tự đề xuất]** Hệ thống không lưu lịch sử GPS. Recommendation run chỉ lưu snapshot feature đã giảm độ nhạy hoặc reference cần thiết để audit.
+8. **[Tự đề xuất]** Mọi score, threshold và model phải có version. Không được thay cấu hình production mà không tạo `configVersion` mới.
+9. **[Tự đề xuất]** Rule-based ranker là production baseline ngay cả sau khi có LTR. Khi model lỗi, hệ thống quay về baseline có version.
+10. **[Tự đề xuất]** Không dùng rating hoặc dữ liệu thiếu như hard constraint nếu provider không xác nhận rõ trạng thái.
+11. **[Tự đề xuất]** `scheduledAt` là thời điểm gặp. Run phải snapshot giá trị này; không diễn giải nó thành thời điểm khởi hành của mọi member.
+12. **[Tự đề xuất]** `ROUTES_ROUTING_PREFERENCE` là cấu hình deployment được validate khi khởi động. Mobile không được bật/tắt traffic cho từng request.
+13. **[Tự đề xuất]** `TRAFFIC_AWARE` đã tác động vào `duration`; không cộng thêm congestion penalty vào utility ở phiên bản này để tránh tính traffic hai lần.
+14. **[Tự đề xuất]** Weather chỉ hard-filter khi forecast có sẵn, candidate chắc chắn `OUTDOOR`, và threshold có version bị vi phạm. `UNKNOWN`, provider lỗi hoặc forecast ngoài tầm không bị diễn giải thành thời tiết xấu.
+15. **[Tự đề xuất]** Calendar integration nằm ngoài phạm vi. Engine chỉ dùng `scheduledAt` đã có trong meetup; UI nhận `etaSeconds` để hiển thị thời gian di chuyển.
+
+## 4. Kiến trúc tổng thể
+
+### 4.1. Kiến trúc triển khai
+
+**[Tự đề xuất]** Phiên bản đầu là modular monolith trong NestJS. Recommendation chạy trong cùng backend nhưng có module, interface và bảng dữ liệu riêng. Chỉ tách thành service độc lập khi có bằng chứng về nhu cầu scale, cadence triển khai hoặc dependency ML khác biệt.
+
+```mermaid
+flowchart LR
+    Mobile[Mobile App] --> MeetupAPI[Meetup API]
+    MeetupAPI --> Orchestrator[Recommendation Orchestrator]
+
+    Orchestrator --> Context[Context Builder]
+    Context --> Candidate[Candidate Generator]
+    Candidate --> Filter[Place Constraint Filter]
+    Filter --> Opening[Scheduled Opening Evaluator]
+    Opening --> Weather[Weather Enrichment / Filter]
+    Weather --> Route[Route Matrix by Travel Mode]
+    Route --> Feature[Feature Builder]
+    Feature --> Utility[Member Utility Scorer]
+    Utility --> Ranker[Group Ranker / Ranking Strategy]
+    Ranker --> Explain[Explanation Builder]
+    Explain --> Repo[Recommendation Run Repository]
+    Repo --> Mobile
+
+    Mobile --> Feedback[Feedback Collector]
+    Feedback --> EventStore[(Feedback / Impression Store)]
+    Repo --> EventStore
+
+    EventStore --> Dataset[Offline Dataset Builder]
+    Dataset --> Evaluator[Offline Evaluator]
+    Dataset --> Trainer[LTR Trainer]
+    Trainer --> Registry[Model Registry]
+    Registry -. model candidate .-> LTR[LTR Group Scorer]
+    Feature -. group features .-> LTR
+    LTR -. experimental strategy .-> Ranker
+    Evaluator --> Dashboard[Metrics Dashboard]
+
+    Candidate --> Places[Google Places]
+    Opening --> Places
+    Weather --> WeatherProvider[Weather Provider Port]
+    Route --> Routes[Google Routes]
+    Context --> Redis[(Redis latest location)]
+    Context --> Postgres[(PostgreSQL)]
+```
+
+### 4.2. Flow end-to-end của engine
+
+**[Tự đề xuất]** Diagram dưới đây là flow hoàn chỉnh. Chuỗi từ `Start` đến `Response` là online path của một request. Chuỗi từ `Impression` trở đi là feedback/offline path; nó không nằm trên đường trả kết quả cho request đó mà dùng dữ liệu đã ghi để đánh giá hoặc huấn luyện cho các meetup tương lai.
+
+```mermaid
+flowchart TD
+    Start(["Người tạo bấm Tìm địa điểm"]) --> Auth["Kiểm tra quyền, meetup state và idempotency"]
+    Auth --> Context["Context Builder<br/>snapshot requestedAt + scheduledAt,<br/>member/location/preference/travel mode, policies"]
+    Context --> EnoughMembers{"Đủ ít nhất 2 member<br/>và location hợp lệ?"}
+    EnoughMembers -->|Không| InvalidContext["Đánh run failed và trả lỗi có lý do<br/>không tạo ranked result"]
+    EnoughMembers -->|Có| Query["CandidateGenerator tạo query"]
+
+    Query --> ProviderFilter["Google Places Text Search<br/>một query cho mỗi required category<br/>strict type và optional openNow tại request time"]
+    ProviderFilter --> Places["Google Places"]
+    Places --> Raw["Raw candidates<br/>locationBias không bảo đảm bán kính"]
+    Places -->|first-page lỗi sau retry| ProviderFailed["Đánh run failed<br/>PLACE_SEARCH_UNAVAILABLE"]
+    Raw --> Merge["Union pages và category queries<br/>dedup bằng canonical candidate key"]
+    Merge --> ResidualFilter["Backend residual hard filter<br/>required fields, exact radius, category, policy,<br/>business status nếu provider trả về"]
+    ResidualFilter --> OpeningPolicy{"openingFilter là<br/>OPEN_AT_SCHEDULED_TIME?"}
+    OpeningPolicy -->|Không| ClosingRisk["ClosingSoonEvaluator<br/>UNKNOWN khi không có scheduled evidence"]
+    OpeningPolicy -->|Có| Opening["ScheduledOpeningEvaluator<br/>OPEN / CLOSED / UNKNOWN"]
+    Opening --> OpeningFilter["Loại CLOSED; giữ UNKNOWN + warning"]
+    OpeningFilter --> ClosingRisk["Tính nextClosingAt, closingRisk<br/>OPEN nhưng sắp đóng: giữ + soft penalty"]
+    ClosingRisk --> WeatherEnrich["Weather enrichment tại scheduledAt"]
+    WeatherEnrich --> WeatherPolicy{"weatherPolicy"}
+    WeatherPolicy -->|OFF hoặc provider unavailable| WeatherPass["Giữ candidate; ghi snapshot/warning cần thiết"]
+    WeatherPolicy -->|WARN_ONLY| WeatherWarn["Giữ candidate + weather warning"]
+    WeatherPolicy -->|FILTER_OUTDOOR| WeatherFilter["Chỉ loại khi forecast AVAILABLE,<br/>exposure=OUTDOOR và threshold versioned bị vi phạm"]
+    WeatherFilter --> WeatherEmpty{"Filter làm rỗng tập?"}
+    WeatherEmpty -->|Có| WeatherRelax["Hạ run xuống WARN_ONLY<br/>WEATHER_FILTER_RELAXED"]
+    WeatherEmpty -->|Không| EnoughCandidates
+    WeatherPass --> EnoughCandidates{"Còn candidate?"}
+    WeatherWarn --> EnoughCandidates
+    WeatherRelax --> EnoughCandidates
+    EnoughCandidates -->|Không| NoCandidate["Đánh run failed<br/>NO_ELIGIBLE_CANDIDATES"]
+    EnoughCandidates -->|Có| ModeGroups["Nhóm member theo travelMode<br/>TWO_WHEELER / DRIVE"]
+    ModeGroups --> RoutingConfig["Đọc ROUTES_ROUTING_PREFERENCE đã validate<br/>TRAFFIC_UNAWARE / TRAFFIC_AWARE"]
+    RoutingConfig --> Matrix["Google Routes ComputeRouteMatrix<br/>batch riêng cho từng travelMode"]
+    Matrix --> MatrixOk{"Mọi batch thành công?"}
+    MatrixOk -->|Có| RouteCheck["Kiểm tra route element<br/>và loại candidate không đủ route"]
+    MatrixOk -->|Không| WasAware{"Requested preference<br/>là TRAFFIC_AWARE?"}
+    WasAware -->|Không| RouteFailed["Đánh run failed<br/>ROUTE_MATRIX_UNAVAILABLE"]
+    WasAware -->|Có| TrafficFallback["Bỏ matrix cũ; chạy lại toàn matrix<br/>bằng TRAFFIC_UNAWARE"]
+    TrafficFallback --> FallbackOk{"Fallback thành công?"}
+    FallbackOk -->|Không| RouteFailed
+    FallbackOk -->|Có| TrafficWarning["Ghi TRAFFIC_DATA_UNAVAILABLE<br/>effective=TRAFFIC_UNAWARE"]
+    TrafficWarning --> RouteCheck
+    RouteCheck --> EnoughRoutes{"Còn candidate<br/>có đủ route?"}
+    EnoughRoutes -->|Không| NoRoute["Đánh run failed<br/>NO_ROUTABLE_CANDIDATES"]
+    EnoughRoutes -->|Có| EffectiveK["effectiveK bằng min của requestedK<br/>và routableCandidateCount"]
+    EffectiveK --> Feature["Feature Builder"]
+    Feature -->|feature hoặc config không hữu hạn| AlgorithmFailed["Đánh run failed<br/>INVALID_FEATURE_OR_CONFIG"]
+    Feature --> Travel["7.1 Travel utility<br/>ETA thành T"]
+    Feature --> Preference["7.2 Preference utility<br/>tag thành P"]
+    Feature --> Quality["7.3 Place quality utility<br/>rating và review thành Q"]
+    Travel --> MemberUtility["7.4 Member utility<br/>T cộng P cộng Q thành U"]
+    Preference --> MemberUtility
+    Quality --> MemberUtility
+    MemberUtility --> ClosingPenalty["7.8 Closing-soon adjustment<br/>U base thành U rank; không hard-filter"]
+    ClosingPenalty --> GroupMetrics["7.5 Group utility và candidate least-misery<br/>U rank thành G và F"]
+    GroupMetrics --> Pareto["7.6 Pareto dominance<br/>U thành member rank rồi Pareto level"]
+    Pareto --> MonteCarlo["7.7 Monte Carlo inclusion probability"]
+    MonteCarlo --> Rank["Group Ranker<br/>full ranking và top-K"]
+    Rank --> Explain["Explanation Builder"]
+    Explain --> Persist["Persist run, temporal/provider snapshots,<br/>full ranking, versions"]
+    Persist -->|transaction lỗi| PersistFailed["Giữ run không COMPLETED<br/>trả lỗi retryable"]
+    Persist --> Freshness{"scheduledAt hiện tại<br/>còn bằng snapshot?"}
+    Freshness -->|Không| Stale["Trả contextStatus=STALE_CONTEXT<br/>yêu cầu run mới"]
+    Freshness -->|Có| Response["Viewer-aware response<br/>mọi member thấy ETA; actor chỉ thấy feature của mình"]
+
+    Response --> Impression["Impression: candidate thực sự được hiển thị"]
+    Impression --> Feedback["Vote, đổi vote, chốt,<br/>navigation, favorite"]
+    Feedback --> FeedbackStore["Feedback store"]
+    Persist --> FeedbackStore
+    FeedbackStore --> Dataset["Offline Dataset Builder"]
+    Dataset --> Replay["Offline replay và evaluator"]
+    Dataset --> Train["LTR trainer khi đủ dữ liệu"]
+    Train --> Registry["Model Registry: candidate"]
+    Registry --> Shadow["Shadow evaluation"]
+    Replay --> OfflineDecision{"Đạt offline metric<br/>và guardrail?"}
+    Shadow --> OfflineDecision
+    OfflineDecision -->|Không| Config["Điều chỉnh config hoặc model<br/>không đổi run cũ"]
+    Config --> Dataset
+    OfflineDecision -->|Có| AB["A/B test theo meetup"]
+    AB --> OnlineDecision{"Đạt online criteria?"}
+    OnlineDecision -->|Không| Retired["Registry: retired"]
+    OnlineDecision -->|Có| Production["Registry: production"]
+    Production -.-> Rank
+```
+
+**Điểm cần đọc đúng trong diagram:** `Raw candidates` là dữ liệu trả **từ Google Places về backend**, không phải danh sách trả cho mobile. Mobile chỉ nhận `top-K` ở node `Response`, sau toàn bộ filter, route, utility và ranking.
+
+**Provider boundary đã xác minh:** Candidate search và các filter `includedType`, `strictTypeFiltering`, `openNow` đều thuộc Google Places Text Search (New) [6]. Text Search chỉ nhận một `includedType`, nên nhiều category tạo nhiều query cùng provider rồi merge. `openNow` chỉ áp dụng tại thời điểm query. Đánh giá `OPEN_AT_SCHEDULED_TIME` dùng opening periods/timezone do Places trả về nhưng logic `OPEN/CLOSED/UNKNOWN` nằm trong backend [8]. Weather dùng một provider port riêng và không được trộn vào Places adapter. Kiểm tra bán kính tròn chính xác và policy nội bộ thuộc backend. ETA/traffic thuộc Google Routes, là API khác với Google Places dù cùng nằm trong Google Maps Platform [9][10].
+
+### 4.3. Thành phần online
+
+| Thành phần | Vai trò | Input | Output |
+|---|---|---|---|
+| `RecommendationOrchestrator` | Điều phối toàn bộ run, timeout, retry và trạng thái. | Actor identity và API request chưa validate | `runId`, `RankedPlace[]`, versions/warnings hoặc lỗi có mã. |
+| `ContextBuilder` | Kiểm tra meetup và tạo context nhất quán. | Meetup, participant, preference, latest location | `RecommendationContext`. |
+| `CandidateGenerator` | Tạo các request cho place provider, phân trang trong budget và trả raw candidates. Nó không quyết định ranking. | Search center, mapped category queries, radius, opening filter | `RawCandidatePlace[]` và provider request metadata. |
+| `CandidateMerger` | Union kết quả của nhiều category/page và deduplicate bằng canonical candidate key. | Nhiều `RawCandidatePlace[]` | Candidate duy nhất theo provider identity. |
+| `ConstraintFilter` | Áp dụng residual hard constraint mà provider không thể hoặc không nên quyết định. | Context và candidate đã merge | `EligibleCandidate[]` cùng lý do loại. |
+| `ScheduledOpeningEvaluator` | Đánh giá opening periods theo timezone địa điểm tại `scheduledAt`; không dùng `openNow` cho tương lai. | Candidate, `scheduledAt`, current/regular opening hours, timezone | `OPEN`, `CLOSED` hoặc `UNKNOWN` cùng evidence. |
+| `WeatherContextProvider` | Chuẩn hóa forecast tại candidate và `scheduledAt`; provider cụ thể chưa chốt. | Candidate coordinates và `scheduledAt` | Weather snapshot `AVAILABLE`, `UNAVAILABLE` hoặc `OUT_OF_RANGE`. |
+| `WeatherPolicyEvaluator` | Áp dụng `OFF`, `WARN_ONLY` hoặc `FILTER_OUTDOOR` trước Routes. | Candidate exposure, weather snapshot, threshold version | Candidate giữ/loại, warning và effective policy. |
+| `RouteMatrixProvider` | Tính ETA/distance theo từng nhóm travel mode, routing preference và batch. | Origins, destinations, `TWO_WHEELER`/`DRIVE`, routing preference | `RouteFeature[]`, `RouteFailure[]` và requested/effective provider options. |
+| `FeatureBuilder` | Chuẩn hóa dữ liệu thành feature dùng chung. | Context, place data, route matrix | `MemberPlaceFeature[]`. |
+| `MemberUtilityScorer` | Tính utility cho từng member–place. Model LTR group-level không cắm vào component này. | Feature và utility config | `MemberPlaceUtility[]`. |
+| `GroupRanker` | Chạy ranking strategy đã chọn. Baseline dùng utility matrix; LTR tương lai dùng group relevance score rồi qua fairness re-ranker có version. | Utility matrix, optional LTR score, strategy config | Full ranked candidates. |
+| `ExplanationBuilder` | Tạo lý do dựa trên feature và score thật. | Ranked candidates | Explanation có cấu trúc. |
+| `RecommendationRunRepository` | Lưu run, candidate, feature snapshot và result. | Toàn bộ dữ liệu audit đã cho phép | Run đã lưu và `runId`. |
+| `FeedbackCollector` | Ghi impression, vote, selection và hành vi sau đó. | Event từ mobile/backend | Feedback event có thời gian và actor. |
+
+### 4.4. Thành phần offline mở rộng
+
+| Thành phần | Vai trò | Input | Output |
+|---|---|---|---|
+| `OfflineDatasetBuilder` | Ghép feature tại thời điểm recommendation với feedback xảy ra sau đó. | Run, impression, vote, selection | Dataset theo group/query. |
+| `OfflineEvaluator` | Replay và so sánh ranking strategy trên cùng candidate set. | Dataset và algorithm versions | Metric report. |
+| `LTRTrainer` | Huấn luyện model xếp hạng khi dữ liệu đủ. | Training dataset | Model artifact và training report. |
+| `ModelRegistry` | Quản lý version, trạng thái và metadata model; chỉ model ở trạng thái `production` mới được ranking strategy online sử dụng. | Model artifact | `candidate`, `shadow`, `production`, `retired`. |
+| `ShadowRunner` | Tính ranking bằng model mới nhưng không trả cho user. | Live feature snapshot | Shadow result để đánh giá. |
+
+### 4.5. Quy tắc tích hợp provider
+
+**[Tự đề xuất]** Mỗi run dùng đúng một `PlaceCandidateProvider` và một `RouteMatrixProvider` đang active theo config version.
+
+```ts
+interface PlaceCandidateProvider {
+  search(request: CandidateSearchRequest): Promise<RawCandidatePlace[]>;
+}
+
+interface RouteMatrixProvider {
+  compute(request: RouteBatchRequest): Promise<RouteBatchResult>;
+}
+
+interface WeatherContextProvider {
+  forecast(request: WeatherForecastRequest): Promise<WeatherForecastResult>;
+}
+```
+
+- Provider adapter chịu trách nhiệm mapping taxonomy, rating scale, status/error code và response field về contract nội bộ ở Mục 6.
+- Engine join place và route bằng `canonicalCandidateKey` cùng index mapping nội bộ, không cho hai provider cùng ghi một score.
+- Thay provider không được làm `MemberUtilityScorer` hoặc `GroupRanker` đọc field riêng của provider.
+- Multi-place-provider retrieval/merge trong cùng run chưa được hỗ trợ. Muốn thêm phải thiết kế canonical identity xuyên provider, source priority, rating normalization và conflict policy trước.
+- Provider timeout/retry/circuit-breaker là policy của adapter/orchestrator; provider không tự ghi database hoặc thay run state.
+- Opening data vẫn do active place provider trả về hoặc được enrich bằng Place Details của cùng provider identity. Không dùng place provider thứ hai để quyết định opening status trong cùng run nếu chưa có cross-provider identity contract.
+- Weather provider là enrichment provider độc lập. Nó không tạo candidate, không ghi place score và không thay ranking trực tiếp.
+- Nếu `TRAFFIC_AWARE` lỗi và policy cho phép fallback, orchestrator chạy lại **toàn bộ** matrix bằng `TRAFFIC_UNAWARE`; không trộn duration của hai routing preference trong cùng run.
+
+## 5. Luồng online recommendation
+
+### 5.1. Sequence chính
+
+```mermaid
+sequenceDiagram
+    actor Organizer as Người tạo meetup
+    participant API as Meetup API
+    participant RE as Recommendation Engine
+    participant DB as PostgreSQL/Redis
+    participant Places as Places Provider
+    participant Weather as Weather Provider
+    participant Routes as Google Routes
+
+    Organizer->>API: POST /meetups/{id}/recommendation-runs
+    API->>RE: requestId, meetupId, filters/policies
+    RE->>DB: Load meetup scheduledAt, members, preferences, latest locations
+    DB-->>RE: Temporal RecommendationContext
+    loop Mỗi required category, phân trang trong budget
+        RE->>Places: Text Search: one includedType + strict type + optional openNow
+        Places-->>RE: Raw places + optional nextPageToken
+    end
+    RE->>RE: Union/dedup + exact-radius/category/policy filters
+    RE->>RE: Evaluate opening at scheduledAt
+    opt weatherPolicy != OFF
+        RE->>Weather: Forecast by candidate + scheduledAt
+        Weather-->>RE: Normalized weather status
+        RE->>RE: Warn or filter definite OUTDOOR candidates
+    end
+    loop Mỗi travelMode: TWO_WHEELER / DRIVE
+        RE->>Routes: Batched ComputeRouteMatrix + routingPreference
+        Routes-->>RE: duration/staticDuration/distance per element
+    end
+    RE->>RE: effectiveK = min(requestedK, routableCandidateCount)
+    RE->>RE: Build features and member utilities
+    RE->>RE: XPO-inspired group ranking
+    RE->>RE: Build explanations from ETA and ranking snapshots
+    RE->>DB: Persist run and full ranked set
+    RE-->>API: top-K + runId + versions
+    API-->>Organizer: Hiển thị recommendation
+    Organizer->>API: Vote/chốt sau đó
+    API->>DB: Persist feedback linked to runId
+```
+
+### 5.2. Các bước chi tiết
+
+#### Bước 1 — Xác thực request
+
+**[Tự đề xuất]** Orchestrator kiểm tra:
+
+- Người gọi có quyền yêu cầu recommendation cho meetup.
+- Meetup chưa bị hủy hoặc kết thúc.
+- `requestId` là UUID hợp lệ. Database phải có unique constraint trên `(meetupId, requestId)`.
+- Nếu cùng `requestId` và cùng payload hash được gửi lại, trả run cũ. Nếu payload hash khác, trả `409 IDEMPOTENCY_KEY_REUSED`.
+- `topK` là số nguyên trong `[1, maxTopK]`.
+- `radiusMeters` là số hữu hạn trong `[1, maxSearchRadiusMeters]`.
+- `categories` có từ 1 đến `maxRequiredCategories` giá trị khác nhau và mọi giá trị có mapping provider hợp lệ.
+- `openingFilter` thuộc enum được hỗ trợ.
+
+Output của bước này là `ValidatedRecommendationRequest`; các bước sau không đọc trực tiếp payload chưa validate.
+
+#### Bước 2 — Xây dựng context
+
+**[Tự đề xuất]** Chỉ lấy thành viên `accepted`, bật chia sẻ phù hợp, location chưa stale và accuracy đạt yêu cầu. Tọa độ phải hữu hạn, latitude trong `[-90,90]`, longitude trong `[-180,180]`, `accuracyMeters >= 0`, và `updatedAt` phải parse được. Nếu còn dưới hai thành viên hợp lệ, run thất bại với mã `INSUFFICIENT_VALID_MEMBERS`.
+
+`requestedAt`, `scheduledAt` và mọi location timestamp được chuẩn hóa thành ISO 8601 UTC trước khi ghi context.
+
+Mỗi `participantId` chỉ xuất hiện một lần. Member được sort tăng dần theo `participantId` trước khi tạo matrix và snapshot. Với cùng một tag, `meetup_input` ghi đè `profile_fallback`; nếu cả hai nguồn đều không có giá trị thì tag đó được xử lý bằng `p_missing` ở Mục 7.2.
+
+`scheduledAt` là temporal snapshot bắt buộc của run. ContextBuilder cũng resolve `travelMode` từng member về `TWO_WHEELER` hoặc `DRIVE`; thiếu giá trị dùng `TWO_WHEELER`. Run không nhận `latestArrivalAt` và không đọc calendar.
+
+Nếu organizer đổi `scheduledAt` sau khi run hoàn tất, run cũ không bị sửa hoặc tính lại. API đọc kết quả so sánh meetup hiện tại với snapshot và trả `contextStatus=STALE_CONTEXT`; mobile phải yêu cầu run mới trước khi dùng kết quả để vote/chốt.
+
+#### Bước 3 — Tạo query và provider-side filter
+
+**[Tự đề xuất]** CandidateGenerator lấy nhiều hơn `K` theo `candidateTargetCount` và không vượt `candidateMaxCount`. Hai giá trị thuộc config có version, không do mobile tùy ý đặt.
+
+Search center của `search-center-medoid-v1` là vị trí member có tổng Haversine distance đến các member còn lại nhỏ nhất:
+
+```math
+c^* = \arg\min_{c \in memberLocations} \sum_{u=1}^{m} Haversine(c, location_u)
+```
+
+Nếu tie, chọn member có `participantId` nhỏ hơn. Search center chỉ giới hạn retrieval; nó không thay ETA của từng member.
+
+Implementation hiện tại gọi `POST /v1/places:searchText`, tức Google Places Text Search (New). Adapter hiện gửi một `includedType`, `strictTypeFiltering=true`, `pageSize=20` và `locationBias.circle`. Engine đích tiếp tục dùng Text Search nhưng bổ sung category mapping, pagination, field mask và merge contract có version.
+
+Text Search chỉ nhận một `includedType` mỗi request, hỗ trợ tối đa 20 result mỗi page và trả `nextPageToken` để lấy page tiếp theo [6, mục `includedType`, `pageSize`, `pageToken`]. `requiredCategories` của MeetUp có semantics **ANY/OR**. CandidateGenerator chạy một query cho mỗi category đã map, rồi `CandidateMerger` union và deduplicate kết quả.
+
+Mỗi mapping có dạng:
+
+```ts
+interface PlaceCategoryMapping {
+  internalCategory: string;
+  textQuery: string;
+  includedType: string; // Google Place Type thuộc Table A
+  candidateTags: string[];
+  supportsOpenAtRequestTime: boolean;
+}
+```
+
+Thứ tự retrieval phải deterministic: sort mapping theo `internalCategory`, lấy page đầu của từng category, sau đó lấy page tiếp theo theo round-robin cho đến khi đạt `candidateTargetCount`, hết page token hoặc chạm provider-call budget. Mọi tham số ngoài `pageSize` và `pageToken` của page tiếp theo phải giữ nguyên [6, mục `pageToken`].
+
+Các constraint mà Text Search hỗ trợ và có ý nghĩa giống nghiệp vụ MeetUp nên được đẩy vào request tìm kiếm. Text Search hỗ trợ `includedType`, `strictTypeFiltering` và `openNow` [6, mục “Request body”]. Tuy nhiên:
+
+- Type filter: **đã dùng** trong adapter hiện tại.
+- `openingFilter=OPEN_AT_REQUEST_TIME`: gửi `openNow=true`. Google định nghĩa đây là mở tại thời điểm query được gửi, không phải tại `scheduledAt` [6, mục `openNow`].
+- `openingFilter=ANY`: không gửi `openNow`; thiếu opening hours không bị coi là đóng.
+- `openingFilter=OPEN_AT_SCHEDULED_TIME`: không gửi `openNow`; yêu cầu field mask cho `currentOpeningHours`, `regularOpeningHours` và timezone/UTC offset cần thiết, rồi backend đánh giá tại `scheduledAt`. `currentOpeningHours` bao phủ bảy ngày kể từ ngày request và gồm special hours; `regularOpeningHours` chỉ là lịch điển hình [8, trường `currentOpeningHours`, `regularOpeningHours`].
+- Nếu mapping của một category có `supportsOpenAtRequestTime=false`, request kết hợp category đó với `OPEN_AT_REQUEST_TIME` bị từ chối bằng `UNSUPPORTED_OPENING_FILTER_FOR_CATEGORY`; không im lặng bỏ filter. Google nêu `openNow` không áp dụng cho một số nhóm query như hotel hoặc geopolitical [6, mục `openNow`].
+- Radius: code dùng `locationBias.circle`. Đây chỉ là bias, không phải hard restriction. Google ghi rõ kết quả có thể nằm ngoài vùng bias [6, mục `locationBias`].
+- Activity/category nội bộ phải đi qua `PlaceCategoryMapping`. Không truyền trực tiếp tag chưa được kiểm tra vào `includedType`.
+
+| Constraint | Xử lý ở đâu | Lý do |
+|---|---|---|
+| Một hoặc nhiều loại địa điểm bắt buộc | Một Text Search cho mỗi mapping: `includedType` + `strictTypeFiltering=true`; merge theo OR rồi backend validate response types. | Text Search chỉ nhận một `includedType`; nhiều category phải là nhiều query [6]. |
+| Bán kính tròn | Text Search dùng `locationBias.circle` để ưu tiên retrieval; backend tính khoảng cách đường chim bay và loại ngoài radius. | `locationBias` không bảo đảm kết quả nằm trong vòng tròn [6]. Text Search chỉ hỗ trợ hard `locationRestriction` dạng rectangle. |
+| Đang mở tại request time | Khi `openingFilter=OPEN_AT_REQUEST_TIME`, gửi `openNow=true`. | Cùng provider hỗ trợ [6]; không dùng để khẳng định mở tại lịch meetup tương lai. |
+| Mở tại `scheduledAt` | Không gửi `openNow`; `ScheduledOpeningEvaluator` chạy sau residual place filter. | Provider trả periods/timezone; backend mới biết `scheduledAt` của meetup và policy `UNKNOWN`. |
+| Place ID/location tồn tại | Residual filter. | Chỉ kiểm tra được sau khi provider trả candidate. |
+| Provider báo đóng vĩnh viễn | Residual filter. | Đây là thuộc tính của candidate trả về. |
+| Policy nội bộ, blacklist, deduplication | Residual filter. | Provider không biết chính sách MeetUp. |
+| Có route cho mọi member | Sau Route Matrix. | Cần kết quả route mới quyết định được. |
+| `avoid` | Không filter; xử lý trong preference utility. | Đây là soft penalty đã chốt. |
+
+#### Bước 4 — Residual hard filtering
+
+**[Tự đề xuất]** `CandidateMerger` deduplicate trước bằng `canonicalCandidateKey = provider + ':' + providerPlaceId`. `ConstraintFilter` nhận candidate đã merge và loại các candidate chắc chắn không dùng được nhưng chưa thể loại ở request tìm kiếm:
+
+- Thiếu Place ID hoặc location.
+- Nằm ngoài `searchRadiusMeters` khi tính lại Haversine distance từ search center. Candidate đúng bằng biên được giữ.
+- Provider báo rõ `CLOSED_PERMANENTLY`. Status thiếu/`UNKNOWN` không bị diễn giải thành đóng.
+- Không đúng category bắt buộc sau khi chuẩn hóa dữ liệu provider.
+- Vi phạm policy hệ thống có version.
+
+Exact-radius distance dùng:
+
+```math
+\Delta\varphi = \varphi_2 - \varphi_1
+```
+
+```math
+\Delta\lambda = \lambda_2 - \lambda_1
+```
+
+```math
+a = \sin^2(\Delta\varphi/2)
+  + \cos(\varphi_1)\cos(\varphi_2)\sin^2(\Delta\lambda/2)
+```
+
+Trước bước tiếp theo, clamp `a` vào `[0,1]` để tránh sai số floating-point làm căn bậc hai không hợp lệ.
+
+```math
+d = 2R\arctan2(\sqrt{a}, \sqrt{1-a})
+```
+
+Trong đó latitude/longitude đổi sang radian, `R = 6.371.000 m`. Giữ candidate khi `d <= searchRadiusMeters`.
+
+`avoid` không nằm trong bước này vì đã được chốt là soft penalty.
+
+#### Bước 5 — Opening tại `scheduledAt`
+
+**[Tự đề xuất]** Bước này chỉ chạy khi `openingFilter=OPEN_AT_SCHEDULED_TIME`. Nó nằm sau place hard constraints và trước weather/Routes để không tốn forecast hoặc route element cho candidate đã xác định đóng.
+
+1. Ưu tiên `currentOpeningHours` nếu `scheduledAt` nằm trong khoảng bảy ngày mà dữ liệu này bao phủ, vì field này có special hours [8].
+2. Nếu ngoài khoảng đó, dùng `regularOpeningHours` như lịch điển hình và ghi `OPENING_FROM_REGULAR_HOURS`. Đây không phải bảo đảm cho ngày lễ hoặc đóng cửa đột xuất.
+3. Chuyển `scheduledAt` sang local time của place bằng timezone/UTC offset do provider trả. Không dùng timezone của server hay mobile.
+4. Kết quả `OPEN`: giữ candidate. `CLOSED`: loại với `CLOSED_AT_SCHEDULED_TIME`. `UNKNOWN`: giữ candidate và thêm `OPENING_STATUS_UNKNOWN`.
+5. Thiếu hours, thiếu timezone, periods không parse được hoặc thời điểm nằm ngoài dữ liệu có thể xác định chắc chắn đều là `UNKNOWN`; không tự coi là `CLOSED`.
+
+Với candidate `OPEN`, `ClosingSoonEvaluator` tìm lần chuyển sang đóng kế tiếp sau `scheduledAt` từ cùng evidence/timezone. Nếu khoảng còn mở nhỏ hơn `closingSoonWindowSeconds`, candidate **không bị loại** nhưng nhận warning `CLOSING_SOON` và soft penalty ở Mục 7.8. Nếu không xác định chắc `nextClosingAt`, trạng thái là `UNKNOWN`, không tự áp penalty. Cách này chỉ nói “địa điểm sắp đóng”, không suy diễn meetup cần kéo dài bao lâu.
+
+`openNow` không được dùng trong bước này vì nó chỉ phản ánh thời điểm request [6].
+
+#### Bước 6 — Weather enrichment và policy
+
+**[Tự đề xuất]** Weather chạy sau opening filter và trước Route Matrix. Thứ tự này giảm số candidate phải gọi route nhưng vẫn bảo đảm weather không tham gia candidate retrieval của Places.
+
+- `OFF`: không gọi weather provider.
+- `WARN_ONLY`: lấy forecast tại `scheduledAt`, giữ candidate và tạo warning/explanation.
+- `FILTER_OUTDOOR`: chỉ loại khi `forecastStatus=AVAILABLE`, `outdoorExposure=OUTDOOR` và threshold có version bị vi phạm.
+- Candidate `INDOOR` hoặc `UNKNOWN`, forecast `UNAVAILABLE`/`OUT_OF_RANGE`, provider timeout/lỗi hoặc field thiếu đều được giữ. Ghi warning phù hợp; không diễn giải missing thành thời tiết xấu.
+- Nếu `FILTER_OUTDOOR` loại hết candidate, chạy lại policy trên cùng snapshot dưới dạng `WARN_ONLY`, giữ tập trước weather filter và ghi `WEATHER_FILTER_RELAXED`.
+
+Weather không tạo một thành phần utility riêng trong phiên bản này. Vì vậy cùng một candidate được giữ sẽ dùng utility 7.1–7.4 như cũ; weather chỉ quyết định eligibility/warning theo policy.
+
+#### Ghi chú sau Bước 4 — Có nên đổi sang Nearby Search (New)?
+
+Google Places Nearby Search (New) vẫn là cùng product/provider, nhưng là endpoint khác. Nó hỗ trợ `locationRestriction.circle`, tối đa 50 `includedTypes` và tối đa 20 kết quả cho một request [7, mục `locationRestriction`, `includedTypes`, `maxResultCount`]. Tài liệu endpoint không có `openNow` request filter.
+
+**[Tự đề xuất] Quyết định hiện tại:** chưa đổi adapter sang Nearby Search. Giữ Text Search (New), chạy một query cho mỗi category, phân trang trong budget và hậu kiểm exact radius. Text Search và Nearby Search là hai strategy thay thế nhau; phiên bản đầu không gọi đồng thời. Chỉ đánh giá chuyển sang Nearby Search khi cần một request nhiều types và circular restriction tại provider quan trọng hơn pagination và `OPEN_AT_REQUEST_TIME`.
+
+#### Bước 7 — Route Matrix
+
+`ComputeRouteMatrix` trả distance và duration cho nhiều origin và destination [3, mục “Get a route matrix”]. Giới hạn thông thường là 625 element mỗi request; `TRAFFIC_AWARE_OPTIMAL` giới hạn 100 element. Tổng số address/Place ID origin và destination tối đa là 50 [3, mục “Request limits”].
+
+**[Tự đề xuất]** Engine nhóm member theo `travelMode`, rồi tính riêng cho từng nhóm:
+
+```text
+elementCount(mode) = memberCount(mode) × eligibleCandidateCount
+```
+
+Phiên bản đầu mã hóa origin và destination bằng `latLng`, không phụ thuộc Google Place ID. `travelMode` chỉ nhận `TWO_WHEELER` hoặc `DRIVE`. Element limit là 625, hoặc 100 nếu request dùng `TRAFFIC_AWARE_OPTIMAL` [3, mục “Request limits”]. Giới hạn tổng 50 áp dụng khi waypoint được gửi bằng address hoặc Place ID [3]; nếu adapter đổi encoding thì batch planner phải bật thêm constraint này.
+
+`ROUTES_ROUTING_PREFERENCE` chỉ nhận `TRAFFIC_UNAWARE` hoặc `TRAFFIC_AWARE` và được validate khi process khởi động. Không set tương đương `TRAFFIC_UNAWARE`; `TRAFFIC_AWARE` dùng live traffic nhưng tối ưu latency hơn `TRAFFIC_AWARE_OPTIMAL` [9]. Mỗi run snapshot cả requested và effective value. Cache key bắt buộc có travel mode và effective routing preference.
+
+Engine **không** gửi `scheduledAt` vào `departureTime` trong giai đoạn này. Khi không có `departureTime`, route phản ánh request time; vì vậy `TRAFFIC_AWARE` là traffic hiện tại, không phải dự báo giao thông lúc member sẽ khởi hành [10]. Nếu một batch `TRAFFIC_AWARE` lỗi sau retry và fallback được bật, bỏ toàn bộ kết quả matrix đang có và chạy lại tất cả mode/batch bằng `TRAFFIC_UNAWARE`; ghi `TRAFFIC_DATA_UNAVAILABLE` và effective preference thực tế. Nếu fallback cũng lỗi thì run fail.
+
+`duration` là ETA dùng cho travel utility. `staticDuration` chỉ dùng cho explanation/metric congestion; không cộng penalty lần nữa. Google xác nhận `duration` xét traffic khi routing preference là traffic-aware, còn `staticDuration` không xét traffic [10].
+
+`RouteBatchPlanner` chia **cả origin và destination**. Nó duyệt các cặp số nguyên `(o,d)` thỏa `o >= 1`, `d >= 1`, `o × d <= elementLimit` và constraint waypoint encoding. Chọn cặp làm nhỏ nhất:
+
+```text
+ceil(validMemberCount / o) × ceil(eligibleCandidateCount / d)
+```
+
+Nếu nhiều cặp cùng số request, chọn cặp có `o × d` lớn hơn, rồi `o` lớn hơn. Mỗi batch lưu ánh xạ local index sang global `participantId` và `canonicalCandidateKey`. Ghép kết quả bằng `originIndex` và `destinationIndex`; không dựa vào thứ tự response [3, mục “gRPC Stream results”].
+
+Sau route validation:
+
+```text
+effectiveK = min(requestedK, routableCandidateCount)
+```
+
+Nếu `effectiveK = 0`, trả `NO_ROUTABLE_CANDIDATES`. Nếu `effectiveK < requestedK`, tiếp tục ranking và trả warning `RESULT_COUNT_BELOW_REQUESTED_K`.
+
+#### Bước 8 — Feature và utility
+
+**[Điều chỉnh]** Survey mô tả utility values trong `[0,1]` như một dạng biểu diễn preference, với giá trị cao hơn thể hiện preference cao hơn [2, Mục 3.2.1, PDF tr. 8]. MeetUp chọn cùng miền giá trị, nhưng tự định nghĩa member–place utility từ ETA, preference và place quality.
+
+**Thứ tự áp dụng các công thức ở Mục 7**
+
+| Công thức | Thời điểm chạy | Input đã phải có | Output dùng ở bước sau |
+|---|---|---|---|
+| 7.1 `T(u,p)` — Travel utility | Ngay sau Route Matrix và route validation. | `etaSeconds` của member đến candidate và `tauSeconds`. | Một thành phần của member utility. |
+| 7.2 `P(u,p)` — Preference utility | Sau khi có place tags đã chuẩn hóa và preference meetup. | Tag của place và `high/normal/avoid` của member. | Một thành phần của member utility; `avoid` bị phạt tại đây. |
+| 7.3 `Q(p)` — Place quality utility | Sau khi có metadata Places. | Rating và review count, hoặc cờ dữ liệu thiếu. | Một thành phần chung của member utility cho mọi member. |
+| 7.4 `U(u,p)` — Member utility | Sau khi 7.1, 7.2, 7.3 hoàn tất cho cặp member–candidate. | `T(u,p)`, `P(u,p)`, `Q(p)` và config weights. | Ranking riêng của từng member. |
+| 7.8 Closing-soon adjustment | Sau khi có `U(u,p)` và scheduled opening evidence, trước mọi strategy ranking. | `nextClosingAt`, `scheduledAt`, `closingSoonWindowSeconds`, `closingPenaltyWeight`. | `closingRisk`, `closingPenalty`, `U_rank(u,p)` hoặc adjusted ETA score. |
+| 7.5 `G(p), F(p)` — Group utility/candidate least-misery | Sau khi có `U_rank(u,p)` cho tất cả member hợp lệ của candidate. | Ranking utility vector của một candidate. | Explanation nội bộ, diagnostic và tie-breaker của group ranker. |
+| 7.6 Pareto dominance | Sau khi sort utility thành rank riêng từng member. | `r_u(p)` của toàn bộ candidate đủ route. | `paretoLevel` và pool cho XPO-inspired ranking. |
+| 7.7 `π̂(p)` — Inclusion probability | Sau Pareto pool selection. | Pareto pool, member ranks, `effectiveK`, random seed, sample count. | Primary score của `fair-pareto-v1`; `null` cho candidate ngoài pool. |
+
+`FeatureBuilder` chịu trách nhiệm lấy và chuẩn hóa input cho 7.1–7.3. `MemberUtilityScorer` chạy 7.1–7.4. `ClosingSoonAdjuster` chạy 7.8 và không sửa các feature gốc `T/P/Q/U_base`. `GroupRanker` chạy 7.5–7.7 đúng một lần trên ranking input đã điều chỉnh. Vì vậy, utility **không** được tính khi candidate vừa được Places trả về; lúc đó hệ thống chưa có ETA, route validity và đôi khi chưa có metadata cần thiết.
+
+#### Bước 9 — Group ranking
+
+**[Điều chỉnh]** Ranker tạo ranking riêng cho từng thành viên từ member utility, xác định Pareto level và dùng Monte Carlo weight vectors theo hướng NPO/XPO của [1, Mục 3, PDF tr. 3–4]. Chi tiết ở Mục 8.
+
+#### Bước 10 — Explanation
+
+**[Từ bài báo]** Presentation/explanation giúp thành viên hiểu vì sao item được chọn; survey nêu ví dụ hiển thị prediction của từng người và cả nhóm [2, Mục 3.1, PDF tr. 6].
+
+**[Điều chỉnh]** MeetUp hiển thị ETA từng người và cảnh báo dữ liệu cho mọi participant. Preference, matched tags và utility chỉ được project cho chính actor đang đọc response. Explanation công khai không chứa numeric group utility/least-misery vì nhóm nhỏ có thể dùng chúng để suy ra utility người khác. Explanation không được tạo lý do không có trong feature snapshot.
+
+`summaryCode` là code deterministic theo ranking strategy, không phải câu do AI sinh:
+
+```text
+MIN_SUM_RANKED
+MIN_MAX_RANKED
+FAIR_PARETO_RANKED
+LTR_RANKED
+```
+
+Snapshot nội bộ tối thiểu có rank, `effectiveK`, ETA mean/max, candidate least-misery utility, group utility, opening/weather status, closing risk/penalty và Pareto level/inclusion probability khi strategy có dùng chúng. Public facts chỉ project rank, ETA tổng hợp, opening/weather/closing warning và fact không làm lộ utility riêng. Khi traffic-aware có dữ liệu, explanation có thể nêu chênh lệch `duration-staticDuration`, nhưng không gọi đó là “đường thoáng nhất” nếu engine không so sánh alternative routes. Mỗi fact ghi `unit` và `source` (`ROUTES`, `PLACES`, `WEATHER`, `ENGINE`). Client map `summaryCode` sang template đã review. Không được nói “gần nhất”, “công bằng nhất” hoặc “được mọi người thích” nếu snapshot không chứng minh đúng mệnh đề đó.
+
+#### Bước 11 — Persist và trả kết quả
+
+**[Tự đề xuất]** Lưu full ranked candidate set trước khi trả top-K. Candidate/features/ranking và transition sang `COMPLETED` nằm trong cùng transaction. Nếu lưu thất bại, không trả kết quả thành công vì sẽ mất audit trail và feedback linkage. Nếu transaction đã commit nhưng HTTP response bị mất, retry cùng `requestId`/payload trả stored result theo Mục 11.4.
+
+### 5.3. Khác biệt giữa endpoint BE-13 hiện tại và engine đích
+
+**[Tự đề xuất]** `FindPlaceCandidatesUseCase` hiện tại là endpoint candidate-only của BE-13. Nó gọi Google Places và trả `candidates` cho client ngay, chưa gọi Google Routes, chưa tính utility và chưa tạo recommendation run. Đây là bước trung gian trong roadmap, không phải API đầu ra cuối cùng của MeetUp Group Recommendation Engine.
+
+Khi tích hợp engine hoàn chỉnh:
+
+```text
+Hiện tại:
+Mobile -> FindPlaceCandidatesUseCase -> Google Places -> candidates -> Mobile
+
+Đích:
+Mobile -> RecommendationOrchestrator
+       -> CandidateGenerator/Google Places
+       -> CandidateMerger + residual filters
+       -> scheduled opening + weather policy
+       -> Google Routes theo travel mode/routing preference
+       -> utility + group ranking
+       -> explanation từ ETA + ranking snapshot
+       -> persist run
+       -> top-K -> Mobile
+```
+
+Candidate-only endpoint có thể được giữ cho debug/admin hoặc chuyển thành internal application service. Mobile production không nên dùng raw provider order như recommendation order.
+
+## 6. Mô hình dữ liệu đầu vào và đầu ra
+
+### 6.1. ValidatedRecommendationRequest
+
+```ts
+interface ValidatedRecommendationRequest {
+  requestId: string;
+  meetupId: string;
+  topK: number;
+  requiredCategories: string[]; // 1..maxRequiredCategories, semantics ANY/OR
+  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
+  weatherPolicy: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
+  searchRadiusMeters: number;
+  payloadHash: string;
+}
+```
+
+### 6.2. RecommendationContext
+
+```ts
+interface RecommendationContext {
+  requestId: string;
+  meetupId: string;
+  requestedAt: string;
+  scheduledAt: string;
+  topK: number;
+  requestedRoutingPreference: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
+  searchRadiusMeters: number;
+  requiredCategories: string[];
+  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
+  weatherPolicy: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
+  members: Array<{
+    participantId: string;
+    travelMode: 'TWO_WHEELER' | 'DRIVE';
+    location: {
+      latitude: number;
+      longitude: number;
+      accuracyMeters: number;
+      updatedAt: string;
+    };
+    preferences: Array<{
+      tag: string;
+      level: 'high' | 'normal' | 'avoid';
+      source: 'meetup_input' | 'profile_fallback';
+    }>;
+  }>;
+  algorithmVersion: string;
+  rankingStrategy: 'min-sum' | 'min-max' | 'fair-pareto-v1' | string;
+  configVersion: string;
+  featureSchemaVersion: string;
+  modelVersion?: string;
+}
+```
+
+### 6.3. Place provider contract
+
+Engine chỉ kích hoạt một place provider strategy trong một run. Adapter provider phải chuẩn hóa dữ liệu về contract sau; engine không đọc response Google trực tiếp.
+
+```ts
+interface CandidateSearchRequest {
+  searchCenter: { latitude: number; longitude: number };
+  searchRadiusMeters: number;
+  categoryQueries: Array<{
+    internalCategory: string;
+    textQuery: string;
+    providerType: string;
+  }>;
+  openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
+  candidateTargetCount: number;
+  candidateMaxCount: number;
+  providerCallBudget: number;
+}
+
+interface NormalizedOpeningHours {
+  source: 'CURRENT' | 'REGULAR';
+  periods: Array<{
+    openAtLocal: string;
+    closeAtLocal?: string; // thiếu close có thể biểu diễn 24/7 theo provider contract
+    exceptional?: boolean;
+  }>;
+}
+
+interface RawCandidatePlace {
+  provider: string;
+  providerPlaceId: string;
+  canonicalCandidateKey: string; // provider + ':' + providerPlaceId
+  name: string;
+  latitude: number;
+  longitude: number;
+  providerTypes: string[];
+  normalizedTags: string[];
+  formattedAddress?: string;
+  rating0To5?: number;
+  userRatingCount?: number;
+  currentOpen?: boolean;
+  currentOpeningHours?: NormalizedOpeningHours;
+  regularOpeningHours?: NormalizedOpeningHours;
+  timeZoneId?: string;
+  utcOffsetMinutes?: number;
+  businessStatus?: 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY' | 'UNKNOWN';
+  sourceCategory: string;
+  sourcePage: number;
+}
+
+interface EligibleCandidate extends RawCandidatePlace {
+  distanceFromSearchCenterMeters: number;
+  matchedRequiredCategories: string[];
+  outdoorExposure: 'INDOOR' | 'OUTDOOR' | 'UNKNOWN';
+  scheduledOpeningStatus?: 'OPEN' | 'CLOSED' | 'UNKNOWN';
+  weatherStatus?: 'AVAILABLE' | 'UNAVAILABLE' | 'OUT_OF_RANGE';
+}
+
+interface WeatherForecastRequest {
+  scheduledAt: string;
+  candidates: Array<{
+    canonicalCandidateKey: string;
+    latitude: number;
+    longitude: number;
+  }>;
+}
+
+interface WeatherForecastResult {
+  provider: string;
+  providerVersion: string;
+  items: Array<{
+    canonicalCandidateKey: string;
+    status: 'AVAILABLE' | 'UNAVAILABLE' | 'OUT_OF_RANGE';
+    observedFor?: string;
+    conditionCode?: string;
+    precipitationProbability?: number;
+    windSpeedMetersPerSecond?: number;
+  }>;
+}
+```
+
+Field mask tối thiểu của Google adapter phải bao gồm ID, display name, location, types, business status và `nextPageToken` khi bật pagination. Nếu bật place quality thì thêm rating và `userRatingCount`. Với `OPEN_AT_SCHEDULED_TIME`, thêm `currentOpeningHours`, `regularOpeningHours` và timezone/UTC offset cần thiết. Các opening fields thuộc SKU cao hơn; field mask làm thay đổi chi phí nên thuộc `providerRequestOptions` có version [6, mục “FieldMask”][8].
+
+Adapter của provider khác phải chuẩn hóa rating về `[0,5]`, category về tag nội bộ và business status về enum trên. Nếu không chuẩn hóa được trường tùy chọn, để `undefined`; utility dùng missing-data policy. Multi-provider merge trong cùng một run nằm ngoài phạm vi phiên bản đầu.
+
+### 6.4. Route feature contract
+
+```ts
+interface RouteBatchRequest {
+  origins: Array<{ participantId: string; latitude: number; longitude: number }>;
+  destinations: Array<{
+    canonicalCandidateKey: string;
+    latitude: number;
+    longitude: number;
+  }>;
+  travelMode: 'TWO_WHEELER' | 'DRIVE';
+  routingPreference: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
+  // Không gửi departureTime trong giai đoạn hiện tại.
+}
+
+interface RouteBatchResult {
+  features: RouteFeature[];
+  failures: RouteFailure[];
+}
+
+interface RouteFeature {
+  participantId: string;
+  canonicalCandidateKey: string;
+  etaSeconds: number;
+  staticDurationSeconds?: number;
+  distanceMeters: number;
+  travelMode: 'TWO_WHEELER' | 'DRIVE';
+  effectiveRoutingPreference: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
+  status: 'OK';
+}
+
+interface RouteFailure {
+  participantId: string;
+  canonicalCandidateKey: string;
+  status: 'NO_ROUTE' | 'PROVIDER_ERROR';
+  providerCode?: string;
+}
+```
+
+Candidate có `RouteFailure` với bất kỳ member nào bị loại trước ranking. `FALLBACK` không phải status của phiên bản đầu. Nếu Google trả `fallbackInfo` nhưng element vẫn hợp lệ, adapter lưu metadata để audit; engine không tự thay ETA bằng khoảng cách đường chim bay.
+
+### 6.5. Feature và utility contract
+
+```ts
+interface MemberPlaceFeature {
+  participantId: string;
+  canonicalCandidateKey: string;
+  etaSeconds: number;
+  distanceMeters: number;
+  travelMode: 'TWO_WHEELER' | 'DRIVE';
+  matchedTags: Array<{
+    tag: string;
+    level: 'high' | 'normal' | 'avoid';
+    weight: number;
+  }>;
+  rating0To5?: number;
+  userRatingCount?: number;
+  missingFlags: string[];
+}
+
+interface MemberPlaceUtility {
+  participantId: string;
+  canonicalCandidateKey: string;
+  travelUtility: number;
+  preferenceUtility: number;
+  placeQualityUtility: number;
+  memberUtility: number; // U_base, chỉ actor tương ứng được xem qua API
+  rankingUtility: number; // U_rank sau shared closing penalty, internal only
+}
+```
+
+### 6.6. RankedPlace
+
+```ts
+interface RankedPlace {
+  canonicalCandidateKey: string;
+  providerPlaceId: string;
+  rank: number;
+  groupUtility: number;
+  candidateLeastMiseryUtility: number;
+  paretoLevel: number;
+  inclusionProbability: number | null;
+  avgEtaSeconds: number;
+  maxEtaSeconds: number;
+  etaRangeSeconds: number;
+  closingStatus: 'NOT_SOON' | 'CLOSING_SOON' | 'UNKNOWN';
+  nextClosingAt: string | null;
+  secondsUntilClose: number | null;
+  closingRisk: number;
+  closingPenalty: number;
+  memberResults: Array<{
+    participantId: string;
+    etaSeconds: number;
+    staticDurationSeconds?: number;
+    distanceMeters: number;
+    travelMode: 'TWO_WHEELER' | 'DRIVE';
+    travelUtility: number;
+    preferenceUtility: number;
+    placeQualityUtility: number;
+    memberUtility: number;
+    routeStatus: 'OK';
+  }>;
+  explanation: {
+    summaryCode: string;
+    facts: Array<{
+      key: string;
+      value: string | number;
+      unit?: 'SECOND' | 'METER' | 'UTILITY_0_1' | 'PROBABILITY_0_1' | 'COUNT';
+      source: 'ROUTES' | 'PLACES' | 'WEATHER' | 'ENGINE';
+    }>;
+    warnings: string[];
+  };
+}
+```
+
+`RankedPlace` là snapshot nội bộ. Nó không phải DTO trả nguyên xi cho mobile.
+
+### 6.7. Viewer-aware API projection
+
+```ts
+interface RecommendationResultForViewer {
+  runId: string;
+  contextStatus: 'CURRENT_CONTEXT' | 'STALE_CONTEXT';
+  results: Array<{
+    rank: number;
+    candidate: PublicCandidate;
+    avgEtaSeconds: number;
+    maxEtaSeconds: number;
+    memberEtas: Array<{
+      participantId: string;
+      etaSeconds: number;
+    }>;
+    viewerFeature: null | {
+      participantId: string;
+      matchedTags: MemberPlaceFeature['matchedTags'];
+      travelUtility: number;
+      preferenceUtility: number;
+      placeQualityUtility: number;
+      memberUtility: number;
+    };
+    opening: {
+      status: 'OPEN' | 'UNKNOWN';
+      closingStatus: 'NOT_SOON' | 'CLOSING_SOON' | 'UNKNOWN';
+      nextClosingAt: string | null;
+      secondsUntilClose: number | null;
+    };
+    explanation: PublicExplanation;
+  }>;
+}
+```
+
+`memberEtas` luôn được project cho toàn bộ participant thuộc run vì nhóm đã quyết định cùng xem ETA để đánh giá fairness. `viewerFeature` được tìm bằng `participantId` tương ứng với `actorId`; organizer cũng không có ngoại lệ. Không trả `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility`, preference hoặc matched tags của người khác. Nếu actor được phép xem run nhưng không có member feature trong snapshot, `viewerFeature=null`.
+
+### 6.8. Điều kiện dữ liệu
+
+**[Tự đề xuất]** Các invariant bắt buộc:
+
+- Mọi utility nằm trong `[0,1]`.
+- Mọi candidate trong top-K phải có đúng một route `OK` cho từng member được dùng trong run. Phiên bản đầu loại candidate nếu bất kỳ member nào không có route.
+- `algorithmVersion`, `configVersion` không được null.
+- Member order phải ổn định trong toàn bộ matrix và logs.
+- `requestedK >= 1`, `effectiveK >= 1` và `effectiveK <= requestedK` đối với run thành công.
+- `candidateMaxCount >= candidateTargetCount >= requestedK` và `providerCallBudget >= requiredCategories.length`.
+- `canonicalCandidateKey` duy nhất trong một run.
+- Giá trị số dùng cho formula phải hữu hạn; config không hợp lệ làm run fail trước khi gọi provider.
+- Timestamp lưu ở UTC; UI tự chuyển múi giờ.
+- `scheduledAt` phải có trong snapshot của run thành công; mỗi member–candidate có `etaSeconds` hữu hạn, không âm và được trả cho UI dưới dạng thời lượng di chuyển.
+- `OPEN_AT_SCHEDULED_TIME` chỉ loại `CLOSED`; `UNKNOWN` luôn được giữ và cảnh báo.
+- `FILTER_OUTDOOR` chỉ loại candidate có đủ ba điều kiện: forecast `AVAILABLE`, exposure `OUTDOOR`, threshold versioned bị vi phạm.
+- Mỗi run chỉ có một `effectiveRoutingPreference`. Nếu traffic fallback xảy ra, không giữ route element `TRAFFIC_AWARE` cũ.
+- Mọi member phải có travel mode hợp lệ; giá trị thiếu resolve thành `TWO_WHEELER`, giá trị ngoài enum làm context fail.
+
+## 7. Công thức utility
+
+Các công thức trong mục này là **thiết kế của MeetUp**, không xuất hiện nguyên dạng trong [1] hoặc [2]. Chúng cần được kiểm chứng bằng dữ liệu thật.
+
+### 7.1. Travel utility
+
+#### Công thức
+
+**[Tự đề xuất]**
+
+```math
+T_{u,p} = \exp\!\left(-\frac{t^{(s)}_{u,p}}{\tau^{(s)}_t}\right)
+```
+
+#### Ký hiệu
+
+- `u`: một thành viên.
+- `p`: một candidate place.
+- `t^{(s)}_{u,p}` (`tSeconds_{u,p}` trong code): ETA từ thành viên `u` đến place `p`, tính bằng giây; phải hữu hạn và không âm.
+- `τ^{(s)}_t` (`tauSeconds` trong config): thời gian suy giảm, tính bằng giây; phải hữu hạn và lớn hơn 0.
+- `T_{u,p}`: travel utility trong `(0,1]`.
+
+#### Ý nghĩa
+
+Công thức chuyển ETA thành điểm dễ tổng hợp. ETA tăng thì utility giảm dần. Dùng hàm mũ giúp tránh phụ thuộc vào candidate nhanh nhất/chậm nhất của riêng một run, nên score giữa các run ổn định hơn min-max normalization.
+
+#### Ví dụ
+
+Với `tauSeconds = 1200` giây và ETA là `600` giây:
+
+```text
+T = exp(-600 / 1200)
+  = exp(-0.5)
+  ≈ 0.607
+```
+
+Nếu ETA là `1800` giây:
+
+```text
+T = exp(-1800 / 1200) ≈ 0.223
+```
+
+#### Tham số chỉnh được
+
+| Tham số | Tăng tham số | Giảm tham số |
+|---|---|---|
+| `tauSeconds` | Hệ thống bớt nhạy với ETA dài. | Hệ thống phạt ETA dài mạnh hơn. |
+
+Giá trị khởi tạo đề xuất: `tauSeconds = 1200`, tương đương 20 phút. Đây là giả định cần kiểm chứng, không phải số liệu từ nguồn. Engine không đổi qua lại giữa phút và giây trong formula.
+
+### 7.2. Preference utility
+
+#### Công thức
+
+**[Tự đề xuất]**
+
+```math
+P_{u,p} = \frac{\sum_{a \in A_p} s(level_{u,a}) \cdot w_a}{\sum_{a \in A_p} w_a}
+```
+
+với:
+
+```text
+s(high)   = 1.00
+s(normal) = 0.60
+s(avoid)  = 0.10
+```
+
+#### Ký hiệu
+
+- `A_p`: tập activity/context tag của place `p` có thể đối chiếu với preference.
+- `M_{u,p}`: tập con của `A_p` mà member `u` có preference sau khi áp dụng meetup-over-profile fallback.
+- `level_{u,a}`: mức preference của member `u` với tag `a`.
+- `s(level)`: ánh xạ mức preference sang utility.
+- `w_a`: độ quan trọng của tag `a`.
+- `P_{u,p}`: preference utility trong `[0,1]`.
+
+Miền hợp lệ: `w_a > 0`, mọi giá trị `s(level)` và `p_missing` nằm trong `[0,1]`. Đặt `M_{u,p}` là tập tag của place có cả mapping và preference cho member. Công thức thực thi là:
+
+```math
+P_{u,p} =
+\begin{cases}
+\frac{\sum_{a \in M_{u,p}} s(level_{u,a})w_a}{\sum_{a \in M_{u,p}} w_a}, & |M_{u,p}| > 0 \\
+p_{missing}, & |M_{u,p}| = 0
+\end{cases}
+```
+
+`p_missing` là config có version; giá trị khởi tạo đề xuất là `0.60`, bằng mức `normal`. Nhờ đó công thức không chia cho 0 và cold-start không bị hiểu nhầm là `avoid`.
+
+#### Ý nghĩa
+
+Công thức đo candidate khớp mong muốn của một thành viên đến đâu. `avoid = 0.10`, không phải `0`, nên candidate bị phạt mềm và vẫn có thể xuất hiện nếu các mặt khác rất tốt hoặc hệ thống thiếu lựa chọn.
+
+#### Ví dụ
+
+Place có hai tag `coffee` và `quiet`, cùng trọng số 1. Thành viên chọn `coffee=high`, `quiet=avoid`:
+
+```text
+P = (1.00 × 1 + 0.10 × 1) / (1 + 1)
+  = 0.55
+```
+
+#### Tham số chỉnh được
+
+| Tham số | Ảnh hưởng |
+|---|---|
+| `s(high)` | Tăng chênh lệch cho tag rất muốn. |
+| `s(normal)` | Điều chỉnh baseline của preference trung lập. |
+| `s(avoid)` | Càng gần 0 thì soft penalty càng mạnh. |
+| `w_a` | Cho phép một số tag quan trọng hơn tag khác. |
+| `p_missing` | Utility khi không có tag nào đối chiếu được; tăng giá trị này làm hệ thống ít phạt cold start hơn. |
+
+### 7.3. Place quality utility
+
+#### Công thức
+
+**[Tự đề xuất]**
+
+```math
+Q_p = \left(\frac{rating_p}{5}\right)
+      \times
+      \min\left(1, \frac{\ln(1 + reviewCount_p)}{\ln(1 + n_{ref})}\right)
+```
+
+Nếu thiếu một trong hai trường rating hoặc review count:
+
+```text
+Q_p = q_missing
+```
+
+#### Ký hiệu
+
+- `rating_p`: rating từ 0 đến 5.
+- `reviewCount_p`: số lượng đánh giá.
+- `n_ref`: số đánh giá được xem là đủ độ tin cậy tương đối.
+- `q_missing`: utility mặc định khi thiếu dữ liệu.
+- `Q_p`: place quality utility trong `[0,1]`.
+
+Miền hợp lệ: `rating_p ∈ [0,5]`, `reviewCount_p >= 0`, `n_ref > 0`, `q_missing ∈ [0,1]`. Adapter phải reject hoặc đánh missing đối với giá trị provider ngoài miền; không truyền giá trị đó vào logarit.
+
+#### Ý nghĩa
+
+Rating cao nhưng chỉ có rất ít review không nên được tin ngang với rating cao có nhiều review. Thành phần log làm mức tin cậy tăng nhanh lúc đầu rồi chậm dần.
+
+#### Ví dụ
+
+Với `rating=4.5`, `reviewCount=99`, `n_ref=999`:
+
+```text
+Q = (4.5 / 5) × min(1, ln(100) / ln(1000))
+  = 0.9 × (2/3)
+  = 0.6
+```
+
+#### Tham số chỉnh được
+
+| Tham số | Ảnh hưởng |
+|---|---|
+| `n_ref` | Tăng giá trị này làm hệ thống đòi hỏi nhiều review hơn để đạt độ tin cậy tối đa. |
+| `q_missing` | Tăng giá trị này làm hệ thống ít phạt candidate thiếu rating. |
+
+Giá trị cụ thể của `n_ref` và `q_missing` chưa xác định được từ nguồn và phải hiệu chỉnh từ dữ liệu provider. `userRatingCount` phải có trong place-provider contract/field mask nếu bật công thức này [6, mục “FieldMask”].
+
+### 7.4. Member utility tổng hợp
+
+#### Công thức
+
+**[Điều chỉnh]** Paper [1] yêu cầu có ranking/top-N cho từng thành viên nhưng không quy định ETA-based utility cho bài toán MeetUp [1, Mục 3, PDF tr. 3]. MeetUp tự xây utility như sau:
+
+```math
+U_{u,p} = \alpha T_{u,p} + \beta P_{u,p} + \gamma Q_p
+```
+
+với:
+
+```math
+\alpha + \beta + \gamma = 1
+```
+
+#### Ký hiệu
+
+- `T_{u,p}`: travel utility.
+- `P_{u,p}`: preference utility.
+- `Q_p`: place quality utility.
+- `α`, `β`, `γ`: trọng số hữu hạn, không âm.
+- `U_{u,p}`: member utility.
+
+#### Ý nghĩa
+
+Mỗi thành viên có một điểm riêng cho mỗi place. Điều này giữ lại khác biệt giữa các thành viên; không gộp location hoặc preference quá sớm thành một “người dùng trung bình”.
+
+#### Ví dụ
+
+Giả sử:
+
+```text
+α = 0.60, β = 0.30, γ = 0.10
+T = 0.607, P = 0.55, Q = 0.60
+```
+
+Khi đó:
+
+```text
+U = 0.60×0.607 + 0.30×0.55 + 0.10×0.60
+  = 0.5892
+```
+
+#### Tham số chỉnh được
+
+| Tham số | Tăng tham số sẽ |
+|---|---|
+| `α` | Ưu tiên ETA hơn. |
+| `β` | Ưu tiên preference hiện tại hơn. |
+| `γ` | Ưu tiên rating/review hơn. |
+
+Config loader phải kiểm tra từng trọng số hữu hạn, không âm và tổng bằng 1 trong sai số cấu hình. Config sai làm run fail trước provider call. Giá trị khởi tạo `0.60/0.30/0.10` là **[Tự đề xuất]**, chưa được xác nhận bằng experiment.
+
+### 7.5. Group utility và candidate least-misery utility
+
+#### Công thức
+
+**[Điều chỉnh]** [1] định nghĩa group utility là trung bình member utility và fairness là member utility thấp nhất cho một recommendation list [1, Mục 1 và Mục 3, PDF tr. 1, 3]. MeetUp chuyển hai khái niệm này xuống mức từng candidate:
+
+```math
+G_p = \frac{1}{m}\sum_{u=1}^{m} U_{u,p}
+```
+
+```math
+F_p = \min_{u \in group} U_{u,p}
+```
+
+#### Ký hiệu
+
+- `m`: số thành viên hợp lệ.
+- `U_{u,p}`: member utility.
+- `G_p`: group utility trung bình.
+- `F_p`: candidate least-misery utility; không phải list fairness nguyên bản của [1].
+
+#### Ý nghĩa
+
+`G_p` đo mức phù hợp chung. `F_p` nhìn vào member có utility thấp nhất cho riêng candidate đó. Hai giá trị này là diagnostic và tie-breaker; không được trình bày như bằng chứng rằng cả recommendation list đã công bằng theo định nghĩa của [1].
+
+#### Ví dụ
+
+Candidate A có utility `[0.90, 0.80, 0.20]`:
+
+```text
+G_A = 0.633
+F_A = 0.20
+```
+
+Candidate B có utility `[0.70, 0.65, 0.60]`:
+
+```text
+G_B = 0.650
+F_B = 0.60
+```
+
+B vừa có group utility cao hơn vừa ít gây bất lợi hơn cho người thấp nhất.
+
+#### Tham số chỉnh được
+
+Công thức không có trọng số. Team có thể thử candidate diagnostic hoặc list-fairness metric khác, nhưng production phải ghi rõ `rankingStrategy`; ký hiệu `F_p` chỉ dành cho candidate least-misery utility đã định nghĩa ở đây.
+
+### 7.6. Pareto dominance
+
+#### Công thức
+
+**[Từ bài báo]** Candidate `p` dominates `q` nếu với mọi member, rank của `p` không tệ hơn `q`, và có ít nhất một member xếp `p` tốt hơn [1, Mục 3, PDF tr. 3]:
+
+```math
+p \succ q
+\iff
+(\forall u: r_u(p) \le r_u(q))
+\land
+(\exists u: r_u(p) < r_u(q))
+```
+
+#### Ký hiệu
+
+- `r_u(p)`: rank của candidate `p` trong danh sách cá nhân của member `u`. Rank nhỏ hơn tốt hơn.
+- `p ≻ q`: `p` dominates `q`.
+
+#### Ý nghĩa
+
+Nếu tất cả thành viên đều thấy `p` ít nhất tốt bằng `q`, và có người thấy `p` tốt hơn, không có lý do hợp lý để xếp `q` trước `p`.
+
+#### Ví dụ
+
+```text
+r(p) = [1, 3, 2]
+r(q) = [2, 3, 4]
+```
+
+`p` không tệ hơn ở cả ba vị trí và tốt hơn với thành viên 1 và 3, nên `p` dominates `q`.
+
+#### Tham số chỉnh được
+
+Dominance không có tham số, nhưng member rank phụ thuộc cách xử lý tie. MeetUp lượng tử hóa `U` bằng `round(U / utilityTieEpsilon)` rồi gán cùng rank cho candidate có cùng giá trị lượng tử hóa. Cách này tạo quan hệ tie bắc cầu và replay được; không so sánh epsilon theo từng cặp.
+
+### 7.7. Monte Carlo inclusion probability
+
+#### Công thức
+
+**[Điều chỉnh]** [1] sinh nhiều random weight vector, áp dụng linear rank aggregation và đếm số lần item vào top-N [1, Mục 3, PDF tr. 4]. MeetUp tính:
+
+```math
+R_w(p) = \sum_{u=1}^{m} w_u \cdot r_u(p)
+```
+
+```math
+\hat{\pi}_p = \frac{1}{S}\sum_{s=1}^{S} I[p \in TopK_{effectiveK}(R_{w^{(s)}})]
+```
+
+#### Ký hiệu
+
+- `w_u ≥ 0` và `Σw_u = 1`: trọng số member trong một sample.
+- `R_w(p)`: aggregate rank; thấp hơn tốt hơn.
+- `S`: số sample, là số nguyên lớn hơn 0.
+- `I[...]`: bằng 1 khi điều kiện đúng, ngược lại bằng 0.
+- `π̂_p`: xác suất ước lượng candidate lọt top-K.
+
+#### Ý nghĩa
+
+Thay vì cố định một người hoặc một bộ trọng số, hệ thống thử nhiều cách phân bổ ảnh hưởng hợp lệ giữa các thành viên. Candidate thường xuyên nằm trong top-`effectiveK` qua nhiều cách phân bổ được xem là một lựa chọn ổn định.
+
+**[Tự đề xuất]** `fair-pareto-v1` lấy weight vector theo phân phối `Dirichlet(1,...,1)`, tức phân phối đều trên simplex. Cách sinh deterministic từ RNG có seed:
+
+```text
+for each member u:
+    z[u] = -ln(UniformOpen01(rng))
+w[u] = z[u] / sum(z)
+```
+
+`UniformOpen01` không được trả đúng 0 hoặc 1. Tên phân phối, RNG algorithm và seed đều phải nằm trong snapshot/config để replay.
+
+#### Ví dụ
+
+Nếu chạy `S=1.000` sample và quán A xuất hiện trong top-5 ở 730 sample:
+
+```text
+π̂_A = 730 / 1.000 = 0.73
+```
+
+#### Tham số chỉnh được
+
+| Tham số | Tăng tham số | Giảm tham số |
+|---|---|---|
+| `S` | Kết quả ổn định hơn nhưng CPU và latency tăng. | Nhanh hơn nhưng có nhiều nhiễu sampling. |
+| `utilityTieEpsilon` | Nhiều candidate được xem là tie hơn. | Ranking cá nhân nhạy hơn với chênh lệch nhỏ. |
+| Random seed | Cho phép replay chính xác một run. | Không được để trống trong dữ liệu audit. |
+
+`S`, `utilityTieEpsilon` và mọi tham số RNG phải được validate trước khi chạy. `S <= 0` hoặc `utilityTieEpsilon <= 0` làm config không hợp lệ.
+
+Giá trị `S` phải được benchmark. Chưa xác định được từ nguồn giá trị phù hợp cho quy mô và latency của MeetUp.
+
+### 7.8. Closing-soon risk và soft ranking penalty
+
+Candidate đã được xác định `CLOSED` tại `scheduledAt` vẫn bị loại ở Bước 5. Phần này chỉ áp dụng cho candidate còn `OPEN` và có `nextClosingAt` đáng tin cậy.
+
+```math
+\Delta_{close}(p) = nextClosingAt(p) - scheduledAt
+```
+
+```math
+R_{close}(p) = clamp\left(1 - \frac{\Delta_{close}(p)}{W_{close}}, 0, 1\right)
+```
+
+```math
+C_{close}(p) = \lambda_{close} \cdot R_{close}(p)
+```
+
+- `W_close = closingSoonWindowSeconds > 0`: cửa sổ được xem là sắp đóng.
+- `R_close ∈ [0,1]`: rủi ro đóng sớm; càng gần giờ đóng càng lớn.
+- `λ_close = closingPenaltyWeight ∈ [0,1]`: mức phạt tối đa.
+- Nếu opening evidence là `UNKNOWN`, không có `nextClosingAt` chắc chắn hoặc `Δ_close >= W_close`, penalty bằng 0; missing data không được biến thành bằng chứng xấu.
+
+Với ranking dựa trên utility:
+
+```math
+U_{rank}(u,p) = clamp(U_{base}(u,p) - C_{close}(p), 0, 1)
+```
+
+`T/P/Q/U_base` vẫn được giữ nguyên để audit và để actor hiểu feature của chính mình. `U_rank` chỉ là input ranking. Group utility, least-misery, member rank, Pareto level và Monte Carlo của algorithm version mới đều tính từ `U_rank`.
+
+Với hai baseline ETA, dùng score thấp hơn tốt hơn:
+
+```math
+S_{min\text{-}sum}(p) = \frac{AvgETA(p)}{\tau} + C_{close}(p)
+```
+
+```math
+S_{min\text{-}max}(p) = \frac{MaxETA(p)}{\tau} + C_{close}(p)
+```
+
+Penalty vì vậy không bao giờ giúp candidate tăng hạng, nhưng candidate vẫn có thể đứng cao nếu lợi thế ETA/preference/fairness lớn hơn rủi ro đóng sớm. Đây là soft ranking signal, không phải luật đẩy mọi `CLOSING_SOON` xuống cuối danh sách.
+
+Baseline dev/staging đề xuất cho test là `closing-policy-dev-v1`: `W_close=5.400 giây` và `λ_close=0,15`. Hai giá trị production phải được hiệu chỉnh bằng feedback/offline evaluation và phê duyệt; thay đổi một trong hai bắt buộc tăng config/algorithm version. Snapshot lưu `nextClosingAt`, `secondsUntilClose`, `closingRisk`, `closingPenalty` và policy version để replay không gọi provider lại.
+
+## 8. Thuật toán group ranking
+
+### 8.1. Baseline bắt buộc
+
+**[Tự đề xuất]** Mọi phiên bản phải giữ ba strategy để đánh giá:
+
+| Strategy | Cách xếp hạng | Mục đích |
+|---|---|---|
+| `min-sum` | `AvgETA/τ + closingPenalty` tăng dần. | Baseline hiệu quả tổng thể có cùng closing-soon policy. |
+| `min-max` | `MaxETA/τ + closingPenalty` tăng dần, rồi adjusted min-sum score. | Baseline bảo vệ người đi xa nhất có cùng closing-soon policy. |
+| `fair-pareto-v1` | XPO-inspired probability trên `U_rank`, candidate least-misery utility và group utility. | Strategy production đề xuất; thay đổi từ `U_base` sang `U_rank` phải tăng `algorithmVersion`. |
+
+### 8.2. `fair-pareto-v1`
+
+**[Từ bài báo]** NPO xét N-level Pareto set. XPO tìm Pareto level nhỏ nhất có ít nhất N item, sau đó dùng random linear aggregation để ước lượng item nào thường nằm trong top-N [1, Mục 3, PDF tr. 3–4].
+
+**[Điều chỉnh]** MeetUp thay “personal ground-truth top-N từ recommender cá nhân” bằng ranking cá nhân được tạo từ `U_{u,p}` trong session. Đây là khác biệt quan trọng; kết quả thực nghiệm của [1] trên MovieLens không thể được coi là bằng chứng trực tiếp cho MeetUp.
+
+```text
+function rankFairPareto(candidates, members, requestedK, sampleCount, seed):
+    require candidates.length > 0
+    require sampleCount > 0
+    effectiveK = min(requestedK, candidates.length)
+
+    for each member u:
+        quantizedUtility[u][p] = round(rankingUtility[u][p] / utilityTieEpsilon)
+        sort candidates by quantizedUtility descending, canonicalCandidateKey ascending
+        assign equal rank only when quantizedUtility is equal
+
+    for each candidate p:
+        candidateLeastMiseryUtility[p] = min(rankingUtility[u][p])
+        groupUtility[p] = average(rankingUtility[u][p])
+        dominationCount[p] = number of candidates q where q dominates p
+        paretoLevel[p] = dominationCount[p] + 1
+
+    x = smallest level in [1, effectiveK]
+        where count(paretoLevel[p] <= x) >= effectiveK
+    pool = candidates where paretoLevel[p] <= x
+
+    initialize inclusionCount[p] = 0
+    rng = deterministicRandom(seed)
+
+    repeat sampleCount times:
+        w = sampleDirichletOnes(rng, memberCount)
+        for each p in pool:
+            aggregateRank[p] = sum(w[u] * r_u(p))
+        sampleTopK = first effectiveK by:
+            aggregateRank ascending,
+            canonicalCandidateKey ascending
+        increment inclusionCount for each p in sampleTopK
+
+    for each p in pool:
+        inclusionProbability[p] = inclusionCount[p] / sampleCount
+
+    sort pool by:
+        inclusionProbability descending,
+        candidateLeastMiseryUtility descending,
+        groupUtility descending,
+        maxEtaSeconds ascending,
+        canonicalCandidateKey ascending
+
+    remaining = candidates not in pool
+    set inclusionProbability[p] = null for each p in remaining
+    sort remaining by:
+        paretoLevel ascending,
+        candidateLeastMiseryUtility descending,
+        groupUtility descending,
+        maxEtaSeconds ascending,
+        canonicalCandidateKey ascending
+    append remaining
+    return full ranking
+```
+
+`effectiveK` bảo đảm ranker vẫn chạy khi Route Matrix chỉ còn ít hơn `requestedK` candidate. Theo định nghĩa N-level Pareto set trong [1, Mục 3, PDF tr. 3–4], level `effectiveK` luôn đủ chứa top-`effectiveK` của một Pareto aggregation strategy; do đó `x` tồn tại khi candidate list không rỗng.
+
+### 8.3. Vì sao thêm tie-breaker
+
+**[Tự đề xuất]** Monte Carlo probability có thể bằng nhau, đặc biệt khi candidate ít hoặc sample count thấp. MeetUp thêm các tie-breaker deterministic:
+
+1. Candidate least-misery utility cao hơn.
+2. Group utility cao hơn.
+3. Max ETA thấp hơn.
+4. Canonical candidate key để replay cho ra cùng thứ tự.
+
+Các tie-breaker này không nằm trong XPO gốc. Vì vậy tên module phải là `fair-pareto-v1`, không gọi là triển khai XPO nguyên bản.
+
+### 8.4. Diversity re-ranking
+
+**[Tự đề xuất]** Chưa bật trong phiên bản đầu. Nếu top-K có quá nhiều địa điểm gần như trùng nhau, có thể thêm re-ranker sau group ranker. Re-ranker không được đưa candidate bị hard-filter trở lại và không được hạ candidate có fairness vượt trội chỉ để tăng diversity. Công thức cụ thể còn mở.
+
+## 9. Vote và feedback
+
+### 9.1. Ranh giới nghiệp vụ
+
+**[Điều chỉnh]** Survey xem consensus negotiation là giai đoạn sau khi recommendation được tạo và trình bày [2, Mục 3.1, PDF tr. 7]. Trong MeetUp, vote là cơ chế consensus của sản phẩm nhưng không phải một phần của scoring trong cùng run.
+
+```text
+context hiện tại
+  -> recommendation run
+  -> top-K được hiển thị
+  -> impression
+  -> vote / đổi vote
+  -> organizer chốt
+  -> navigation / favorite / meetup completed
+  -> feedback cho evaluation và model tương lai
+```
+
+### 9.2. Event cần ghi
+
+**[Tự đề xuất]**
+
+| Event | Ý nghĩa | Trường tối thiểu |
+|---|---|---|
+| `RecommendationShown` | Top-K thật sự xuất hiện trên thiết bị. | `eventId`, `runId`, `participantId`, `items[{canonicalCandidateKey, rank}]`, `shownAt`. |
+| `PlaceVoted` | Thành viên vote một candidate. Phiên bản đầu coi vote là chọn candidate, không có thang điểm. | `eventId`, `runId`, `participantId`, `canonicalCandidateKey`, `votedAt`. |
+| `VoteChanged` | Thành viên đổi từ candidate cũ sang mới. | `eventId`, `runId`, `participantId`, `fromCanonicalCandidateKey`, `toCanonicalCandidateKey`, `changedAt`. |
+| `MeetupPlaceSelected` | Người có quyền chốt địa điểm. | `eventId`, `runId`, `canonicalCandidateKey`, `selectedBy`, `selectedAt`. |
+| `NavigationOpened` | Thành viên mở dẫn đường. | `eventId`, `runId`, `participantId`, `canonicalCandidateKey`, `openedAt`. |
+| `FavoriteAdded` | Thành viên lưu candidate. | `eventId`, `runId`, `participantId`, `canonicalCandidateKey`, `createdAt`. |
+| `MeetupCompleted` | Meetup kết thúc theo trạng thái nghiệp vụ. | `eventId`, `runId`, `meetupId`, `completedAt`. |
+
+`eventId` là idempotency key của event. Database có unique constraint theo `eventId`; retry cùng payload không ghi trùng, còn cùng `eventId` khác payload bị từ chối. Mọi event gắn candidate phải kiểm tra candidate thuộc run; impression/vote phải kiểm tra candidate nằm trong danh sách đã trả cho participant đó.
+
+### 9.3. Nguyên tắc tạo label
+
+**[Tự đề xuất]** Không cộng các event thành “điểm chân lý” ngay trong production. `OfflineDatasetBuilder` tạo label theo version để có thể thử nhiều định nghĩa.
+
+Label khởi tạo cho offline experiment lấy **mức cao nhất** trong các event hợp lệ của candidate trong cùng run:
+
+```text
+selected final place = 3
+received at least one vote = 2
+favorite or navigation without vote = 1
+shown but no positive action = 0
+not shown = unknown, không coi là negative
+```
+
+`favorite` hoặc `navigation` chỉ tạo label `1` khi candidate chưa có vote hoặc selection; vote tạo `2`; final selection luôn ghi đè thành `3`. Event của nhiều participant được hợp nhất bằng maximum, đồng thời giữ các count riêng làm feature phân tích, không làm feature của chính run đó.
+
+Lý do không coi “not shown” là negative: người dùng chưa có cơ hội nhìn thấy candidate đó. Đây là biện pháp giảm exposure bias do team tự đề xuất, không loại bỏ hoàn toàn exposure bias.
+
+## 10. Offline evaluation và learning-to-rank
+
+### 10.1. Kiến trúc hai giai đoạn
+
+**[Tự đề xuất]** Hệ thống phát triển theo hai giai đoạn:
+
+```mermaid
+flowchart TD
+    A[Rule-based feature + fair-pareto-v1] --> B[Production recommendations]
+    B --> C[Impression and feedback logs]
+    C --> D[Offline dataset]
+    D --> E[Replay rule-based strategies]
+    D --> F[Train learning-to-rank model]
+    F --> G[Shadow evaluation]
+    G --> H{Đạt quality và guardrail?}
+    H -- Không --> F
+    H -- Có --> I[A/B test]
+    I --> J{Đạt online criteria?}
+    J -- Không --> A
+    J -- Có --> K[LTR group relevance score<br/>+ versioned fairness re-ranking]
+```
+
+### 10.2. Training unit
+
+**[Tự đề xuất]** Một `recommendationRunId` là một query group trong LTR. Các candidate của cùng run cạnh tranh với nhau. Không trộn candidate của hai meetup thành cùng một ranking query.
+
+Feature ban đầu:
+
+- Số thành viên hợp lệ.
+- Giờ và ngày trong tuần.
+- Category match theo từng member và thống kê nhóm.
+- ETA min/mean/max/range/stddev.
+- Travel utility min/mean.
+- Preference utility min/mean.
+- Place quality utility.
+- Pareto level và domination count.
+- Candidate rank từ `min-sum`, `min-max`, `fair-pareto-v1`.
+- Cờ missing data và provider status.
+
+Không dùng các feature xuất hiện sau recommendation, như vote count hoặc final selection, làm input cho model của cùng run.
+
+### 10.3. Vai trò của LTR
+
+**[Tự đề xuất]** LTR không thay `MemberUtilityScorer`. Model học một **group-level candidate relevance score** từ group/candidate features, sau đó một fairness re-ranker có version tạo thứ tự cuối:
+
+```text
+candidate generation
+  -> hard constraints
+  -> route/features
+  -> member utility (giữ để đo fairness và giải thích)
+  -> LTR relevance score
+  -> versioned fairness re-ranking
+  -> explanation
+```
+
+Model học “khả năng được nhóm chọn” từ dữ liệu cũ. Fairness layer tiếp tục giữ guardrail để model không chỉ tối ưu lựa chọn phổ biến. `ModelRegistry` chỉ nối vào `LTRGroupScorer`; nó không ghi đè `T`, `P`, `Q` hoặc `U`.
+
+Phiên bản tài liệu này chưa chốt công thức kết hợp LTR score với fairness. Vì vậy model chỉ được chạy `shadow` cho đến khi có một `ltrRankingStrategyVersion` định nghĩa đầy đủ input, normalization, fairness constraint, tie-breaker và fallback. Không được promote model chỉ bằng cách nối raw LTR score vào `fair-pareto-v1`.
+
+Khi một LTR strategy đã được promote nhưng model artifact không load được, feature schema không khớp hoặc score không hữu hạn, orchestrator chạy `fair-pareto-v1` trên cùng feature snapshot, ghi warning `LTR_FALLBACK_TO_BASELINE` và lưu cả `requestedModelVersion` lẫn strategy thực tế đã dùng.
+
+### 10.4. Điều kiện trước khi huấn luyện
+
+**[Tự đề xuất]** Chưa đặt số lượng run tối thiểu cứng vì chưa có bằng chứng từ nguồn. Chỉ bắt đầu khi:
+
+- Event coverage đủ để ghép impression với selection đáng tin cậy.
+- Có nhiều hơn một category, nhóm và vùng địa lý trong dữ liệu.
+- Có train/validation/test split theo thời gian.
+- Baseline replay ổn định.
+- Team kiểm tra không có location chính xác hoặc dữ liệu nhạy cảm không cần thiết trong training export.
+
+### 10.5. Model lifecycle
+
+**[Tự đề xuất]**
+
+```text
+candidate -> shadow -> A/B test -> production -> retired
+```
+
+Mỗi model version lưu:
+
+- Khoảng thời gian dataset.
+- Feature schema version.
+- Label definition version.
+- Hyperparameters.
+- Offline metrics theo group size/category.
+- Commit SHA và artifact checksum.
+- Người phê duyệt và thời điểm đổi trạng thái.
+
+## 11. Lưu trữ, API và versioning
+
+### 11.1. Bảng dữ liệu đề xuất
+
+**[Tự đề xuất]** Tận dụng các bảng hiện có và bổ sung trường/bảng sau khi migration được review:
+
+| Bảng | Mục đích | Trường quan trọng |
+|---|---|---|
+| `recommendation_runs` | Metadata một run. | `request_id`, `payload_hash`, `requested_at`, `scheduled_at_snapshot`, opening/weather policy, requested/effective routing preference, `ranking_strategy`, versions, `random_seed`, `requested_k`, `effective_k`, `status`, latency fields. |
+| `recommendation_candidates` | Toàn bộ candidate đã xét, kể cả không vào top-K. | `run_id`, `canonical_candidate_key`, `provider`, `provider_place_id`, `filter_status`, `filter_reason`, `final_rank`. |
+| `recommendation_member_features` | Feature/utility cho từng member–candidate. | ETA, static duration, distance, travel mode, `T`, `P`, `Q`, `U`, route status. |
+| `recommendation_places` | Kết quả tổng hợp và explanation. | scheduled opening status/evidence, `next_closing_at`, closing risk/penalty/policy version, weather status/evidence, group utility, fairness, Pareto level, inclusion probability. |
+| `recommendation_impressions` | Candidate nào thực sự được hiển thị. | `event_id`, participant, canonical candidate key, rank, timestamp. |
+| `recommendation_feedback_events` | Event sau hiển thị. | `event_id`, event type, actor, canonical candidate key, timestamp, metadata đã lọc. |
+| `recommendation_algorithm_configs` | Cấu hình bất biến theo version. | weights, thresholds, sample count, checksum. |
+| `recommendation_model_versions` | Registry metadata cho LTR. | state, artifact URI, feature schema, metrics. |
+
+Trong implementation BE-23, `recommendation_places` tham chiếu trực tiếp `recommendation_candidates` và chứa một row cho mỗi candidate đã được xếp full rank. `explanation` là JSONB có `summaryCode`, facts gắn `unit/source` và warnings. API chỉ project các row có `rank <= effective_k`; candidate bị filter hoặc thiếu route không có row `recommendation_places` và không thể lọt vào response.
+
+### 11.2. API đề xuất
+
+#### Tạo recommendation run
+
+```http
+POST /meetups/{meetupId}/recommendation-runs
+Idempotency-Key: <requestId>
+```
+
+```json
+{
+  "topK": 5,
+  "filters": {
+    "categories": ["coffee"],
+    "openingFilter": "OPEN_AT_SCHEDULED_TIME",
+    "weatherPolicy": "WARN_ONLY",
+    "radiusMeters": 5000
+  }
+}
+```
+
+Phiên bản đầu dùng response đồng bộ để khớp flow ở Mục 4–5. Run được persist trước khi trả `200 OK`. Nếu vượt timeout, trả lỗi retryable gắn `requestId`; retry cùng payload lấy lại run đã hoàn tất hoặc tiếp tục trạng thái hiện có. Async `202 Accepted` chỉ được thêm bằng một API/version mới có durable job, polling/event contract và state machine riêng.
+
+#### Lấy kết quả
+
+```http
+GET /meetups/{meetupId}/recommendation-runs/{runId}
+```
+
+Route này phục vụ cả trước và sau vote/finalize; không thêm route “member feature sau vote”. Trước finalize, actor phải là participant `accepted` hiện tại. Sau finalize/kết thúc, actor phải thuộc participant snapshot của run và còn quyền xem meetup/history. `invited`, `rejected`, outsider hoặc actor bị thu hồi quyền đều nhận 403/404 theo chính sách chống enumeration.
+
+GET chỉ đọc snapshot đã persist và gọi `RecommendationResultPresenter.presentForViewer(actorId, run)`. Nó không gọi Places/Routes, không tính lại utility và không thay rank. Vote/finalize response phải trả `runId` cùng `selectedCanonicalCandidateKey`; mobile dùng hai giá trị này để gọi lại GET và đánh dấu candidate đã chọn. `Cache-Control: no-store` là bắt buộc; mọi cache trung gian phải tách theo authorization.
+
+#### Ghi impression
+
+```http
+POST /recommendation-runs/{runId}/impressions
+```
+
+Vote vẫn dùng API nghiệp vụ vote hiện có, nhưng payload phải chứa `runId` để liên kết feedback. Finalize không sao chép feature sang bảng vote; run snapshot là nguồn để xem lại, còn retention policy phải bảo vệ run đã vote/chọn cho đến khi policy được phê duyệt.
+
+### 11.3. Versioning
+
+**[Tự đề xuất]** Một kết quả chỉ replay được khi có đủ:
+
+```text
+algorithmVersion
+configVersion
+featureSchemaVersion
+modelVersion (nullable)
+providerRequestOptions
+providerAdapterVersion
+categoryMappingVersion
+scheduledAtSnapshot
+openingEvaluatorVersion
+weatherProviderVersion / weatherThresholdVersion (nullable khi OFF)
+requestedRoutingPreference
+effectiveRoutingPreference
+memberTravelModes
+closingPolicyVersion
+closingSoonWindowSeconds
+closingPenaltyWeight
+randomSeed
+candidateSnapshot
+```
+
+Thay đổi công thức, tie-breaker hoặc preprocessing bắt buộc tăng version phù hợp.
+
+### 11.4. Run state và transaction
+
+**[Tự đề xuất]** Sau Step 1, backend tạo duy nhất một `recommendation_runs` record bằng unique key `(meetup_id, request_id)` và lưu `payload_hash`.
+
+```text
+RUNNING -> COMPLETED
+RUNNING -> FAILED
+```
+
+- `COMPLETED` và `FAILED` là terminal state; không ghi đè run cũ bằng kết quả của request khác.
+- Retry cùng key/payload khi run `COMPLETED` trả stored result.
+- Retry cùng key/payload khi run `RUNNING` trả `409 RECOMMENDATION_RUN_IN_PROGRESS` cùng `runId`; client có thể retry GET.
+- Retry cùng key/payload khi run `FAILED` trả lỗi đã lưu. Muốn chạy lại phải dùng `requestId` mới.
+- Ghi candidate/features/ranking và chuyển `RUNNING -> COMPLETED` trong cùng transaction. Nếu transaction fail, run không được đánh `COMPLETED`.
+- Nếu persist thành công nhưng HTTP response bị mất, retry idempotent trả lại kết quả đã persist.
+- Run đã hoàn tất là immutable. Khi `meetup.scheduledAt` khác `scheduled_at_snapshot`, API trả thêm `contextStatus=STALE_CONTEXT`; không tự đổi ranked data hay terminal state. Vote/chốt phải yêu cầu run mới theo rule nghiệp vụ đã duyệt.
+
+## 12. Xử lý lỗi, hiệu năng và quyền riêng tư
+
+### 12.1. Route Matrix limits và chi phí
+
+Google tính phí Compute Route Matrix theo số element, tức origins × destinations [4, mục “Usage and billing”]. Rate limit được công bố là 3.000 element/phút; giới hạn request thông thường là 625 element, hoặc 100 khi dùng `TRAFFIC_AWARE_OPTIMAL` [4, mục “Usage limits”].
+
+`TWO_WHEELER` là tính năng beta và Google yêu cầu hiển thị cảnh báo cho route hai bánh; tính năng này thuộc nhóm giá cao hơn theo tài liệu billing hiện hành [4, mục “SKU details”; 5, mục “Available route matrix vehicle types”].
+
+**[Tự đề xuất]** Biện pháp kiểm soát:
+
+- Giới hạn candidate trước Route Matrix.
+- Tính `elementCount` và estimated cost class trước khi gọi.
+- Chia batch hai chiều theo element limit và waypoint-encoding limit.
+- Đặt timeout và circuit breaker cho provider.
+- Cache ngắn hạn chỉ khi origin cell, destination cell, travel mode và routing preference khớp; thêm departure bucket chỉ khi route request thực sự gửi departure time. Không dùng provider Place ID làm khóa bắt buộc để route provider không phụ thuộc place provider.
+- Không cache quá lâu vì ETA có thể đổi theo bối cảnh giao thông.
+- `TRAFFIC_AWARE` được bật/tắt bằng `ROUTES_ROUTING_PREFERENCE` ở deployment. Giá trị ngoài enum làm ứng dụng fail fast khi boot; không im lặng dùng mặc định sai.
+- Weather filter chạy trước Routes để candidate chắc chắn không phù hợp không tiêu tốn matrix element. `weatherPolicy=OFF` không gọi weather provider.
+
+### 12.2. Lỗi từng element
+
+Google có thể trả lỗi cho toàn response hoặc chỉ một số element [3, mục “Response errors”].
+
+**[Tự đề xuất]** Chính sách phiên bản đầu:
+
+- Place provider: first-page query của bất kỳ required category nào lỗi sau retry thì run `failed`; page sau lỗi thì dừng pagination và ghi warning nếu đã có ít nhất `candidateTargetCount`, ngược lại run `failed`.
+- Route Matrix toàn request/batch lỗi: run chuyển `failed`, cho phép retry có backoff.
+- Với requested `TRAFFIC_AWARE`, lỗi traffic-aware sau retry có thể fallback **toàn matrix** sang `TRAFFIC_UNAWARE`; ghi warning và effective preference. Fallback lỗi thì run `failed`.
+- Một element lỗi: đánh `NO_ROUTE`.
+- Candidate có bất kỳ member `NO_ROUTE`: loại khỏi ranking và lưu lý do.
+- Nếu số candidate còn lại dưới `requestedK`: đặt `effectiveK` bằng số lượng thực có, tiếp tục ranking và trả warning; không tạo ETA giả.
+- Utility/config sinh giá trị không hữu hạn: run `failed` với `INVALID_ALGORITHM_CONFIG` hoặc `INVALID_FEATURE_VALUE`; không cho `NaN` đi vào sort.
+- Explanation lỗi: run `failed` trước persist kết quả thành công; không trả explanation được tạo một phần.
+- Opening evaluator thiếu/không parse được data: giữ candidate với `OPENING_STATUS_UNKNOWN`; chỉ evaluator xác định `CLOSED` mới hard-filter.
+- Weather provider lỗi/timeout/out-of-range: giữ candidate, ghi warning và effective policy; không fail run. Nếu `FILTER_OUTDOOR` làm rỗng candidate, hạ xuống `WARN_ONLY` và ghi `WEATHER_FILTER_RELAXED`.
+- Impression/feedback lỗi sau khi kết quả đã hiển thị: retry bằng `eventId`; không chạy lại recommendation.
+
+### 12.3. Quyền riêng tư
+
+**[Tự đề xuất]**
+
+- Chỉ đọc latest location khi meetup và quyền còn hiệu lực.
+- Không ghi raw member coordinates vào log ứng dụng, analytics hoặc training dataset.
+- Provider request có thể cần tọa độ để tính route, nhưng payload không được xuất hiện trong log thông thường.
+- `recommendation_member_features` ưu tiên lưu ETA/distance, không lưu origin coordinate lâu dài.
+- Mọi participant được phép xem `memberEtas`, nhưng presenter chỉ trả matched tags/preference/utility của chính actor. Organizer không có quyền xem feature riêng của người khác.
+- Group utility, candidate least-misery và ranking utility không nằm trong public DTO vì nhóm nhỏ có thể suy ra utility cá nhân từ aggregate.
+- Explanation công khai không chứa tọa độ, tên người hoặc numeric utility của người khác.
+- Dataset offline thay participant ID bằng pseudonymous ID theo export.
+
+### 12.4. Determinism và replay
+
+**[Tự đề xuất]** Cùng candidate snapshot, utility config, algorithm version và random seed phải tạo cùng ranking. External provider có thể trả dữ liệu khác theo thời gian, nên replay dùng snapshot đã lưu, không gọi provider lại.
+
+## 13. Quyết định thiết kế
+
+| Quyết định đã chốt | Lý do | Phương án đã cân nhắc | Vì sao chưa chọn | Trade-off |
+|---|---|---|---|---|
+| Modular monolith trước | Dễ tích hợp với NestJS và transaction hiện tại. | Microservice recommendation riêng. | Chưa có bằng chứng về tải hoặc chu kỳ deploy cần tách. | Coupling runtime cao hơn, nhưng vận hành đơn giản hơn. |
+| Một active place provider strategy mỗi run | Tránh merge taxonomy, rating scale và identity chưa được định nghĩa. | Gọi nhiều place provider song song. | Chưa có canonical cross-provider identity và source weighting. | Ít khả năng fallback nguồn hơn; đổi provider vẫn thực hiện qua adapter contract. |
+| Text Search theo từng category trong v1 | Có pagination và `OPEN_AT_REQUEST_TIME`; phù hợp adapter hiện tại. | Nearby Search một request nhiều types. | Nearby tối đa 20 result/request và không có `openNow` request filter trong contract đã kiểm tra [7]. | Nhiều category làm tăng số provider call; cần budget và deterministic merge. |
+| Hỗ trợ `OPEN_AT_SCHEDULED_TIME` bằng evaluator backend | `scheduledAt` là giờ gặp; `openNow` không trả lời câu hỏi địa điểm có mở lúc đó hay không. Places có current/regular hours và timezone data [8]. | Dùng `openNow`; coi thiếu data là đóng. | Sai semantics hoặc loại nhầm candidate. | Tăng field cost và logic timezone; `regularOpeningHours` không bảo đảm special day ngoài cửa sổ current hours. |
+| Vote sau recommendation | Vote là quyết định trên danh sách đã tạo. | Dùng vote hiện tại để thay đổi ranking trong cùng run. | Tạo vòng lặp khó giải thích và không đúng flow sản phẩm đã chốt. | Recommendation không thích nghi trong cùng phiên. |
+| `avoid` là soft penalty | Vẫn có kết quả khi candidate ít hoặc preference xung đột. | Hard filter. | Một member có thể loại toàn bộ lựa chọn. | Có khả năng item bị `avoid` vẫn xuất hiện; UI phải giải thích. |
+| `CLOSING_SOON` là soft ranking penalty | Nơi còn mở vẫn là lựa chọn hợp lệ nhưng rủi ro trải nghiệm cao hơn. | Hard-filter; chỉ cảnh báo không đổi rank. | Hard-filter dễ làm rỗng tập; warning-only không phản ánh quyết định đã chốt làm candidate tụt hạng. | Cần version window/weight; candidate có lợi thế lớn vẫn có thể đứng cao. |
+| Viewer-aware result trên cùng GET route | Run đã persist đủ ETA/feature; projection theo actor tránh recompute và tránh route trùng. | Route feature riêng sau vote; trả toàn bộ member feature cho organizer. | Route mới tạo hai nguồn contract; organizer không có căn cứ xem preference riêng của người khác. | Presenter và authorization phức tạp hơn; response không cache dùng chung. |
+| Travel mode từng member chỉ gồm `TWO_WHEELER`/`DRIVE`; thiếu thì mặc định xe máy | Thực tế nhóm có thể dùng hai phương tiện khác nhau nhưng vẫn giữ contract và batch hữu hạn. | Một mode cho cả nhóm; hỗ trợ mọi mode ngay. | Một mode kém chính xác; mọi mode làm scope/semantics tăng mạnh. | Nhiều route batch hơn; `TWO_WHEELER` vẫn beta và cần cảnh báo [4][5]. |
+| Traffic-aware là deployment config | Cho phép tắt để giảm latency/chi phí; Google phân biệt `TRAFFIC_UNAWARE` và `TRAFFIC_AWARE` [9]. | Cho mobile bật từng request; luôn bật. | Khó kiểm soát cost và làm run khó so sánh. | Cần snapshot requested/effective preference và fallback rõ ràng. |
+| Không gửi `scheduledAt` làm Routes `departureTime` ở giai đoạn này | `scheduledAt` là giờ đến, không phải giờ đi; Compute Route Matrix không có arrival-time semantics tương đương cho use case này. | Gửi thẳng `scheduledAt`; giải phương trình lặp ETA–departure. | Cách thứ nhất sai nghĩa; cách thứ hai là feature traffic tương lai riêng. | Traffic-aware hiện tại có thể không đại diện cho giờ meetup tương lai. |
+| Không thêm congestion penalty vào utility | Traffic-aware `duration` đã ảnh hưởng `T`; cộng penalty sẽ tính cùng tín hiệu hai lần. | Thêm score từ `duration-staticDuration`. | Chưa có bằng chứng cần trọng số riêng. | Congestion chỉ hiện trong explanation/metric, không có preference độc lập. |
+| Weather policy chạy trước Routes, mặc định an toàn là không loại khi thiếu dữ liệu | Tiết kiệm route element và tránh biến provider failure thành empty result. | Weather là utility; fail-closed. | Chưa có trọng số được kiểm chứng; fail-closed dễ loại sai. | Cần taxonomy outdoor và threshold có version; filter có cơ chế relax. |
+| Không tích hợp calendar | `scheduledAt` đã là thời điểm meetup cần cho engine. | Google/Outlook Calendar, FreeBusy, `latestArrivalAt`. | Chưa có nhu cầu, consent/OAuth và contract trong phạm vi hiện tại. | Không tự tìm slot rảnh hoặc dựa trên lịch cá nhân. |
+| Utility riêng từng member | Giữ khác biệt và hỗ trợ fairness. | Gộp location/preference thành một group profile trước. | Có thể che mất người bất lợi. | Tăng số feature và computation. |
+| XPO-inspired, không tuyên bố XPO nguyên bản | Dùng được ý tưởng Pareto trong khi dữ liệu MeetUp khác paper. | Triển khai nguyên XPO. | Paper giả định personal top-N/ground truth; MeetUp chưa có recommender cá nhân [1, Mục 3]. | Cần tự đánh giá lại, không được dùng kết quả MovieLens làm bằng chứng trực tiếp. |
+| Ba baseline song song | Có mốc so sánh và fallback. | Chỉ triển khai một công thức production. | Không biết cải tiến có thật sự tốt hơn. | Tốn thêm test và maintenance. |
+| Rule explanation trước AI text | Trung thực và tái lập. | LLM tự giải thích recommendation. | Có nguy cơ sinh lý do không dùng trong ranking. | Văn bản ít tự nhiên hơn. |
+| LTR là tầng mở rộng | Cần feedback thật trước khi học. | Dùng ML ngay từ đầu. | Cold start và thiếu label. | Chậm có cá nhân hóa học máy nhưng giảm rủi ro. |
+| Full candidate logging | Cần offline replay và phân tích funnel. | Chỉ lưu top-K. | Không thể so sánh algorithm khác trên cùng run. | Tăng dung lượng; phải kiểm soát retention. |
+| Loại candidate nếu một route lỗi | Không che giấu bất lợi hoặc bịa ETA. | Dùng khoảng cách đường chim bay làm fallback. | Hai đại lượng không tương đương, dễ xếp hạng sai. | Có thể trả ít hơn K khi provider thiếu route. |
+| `effectiveK = min(requestedK, routableCandidateCount)` | Ranker luôn có miền hợp lệ khi route filtering làm thiếu candidate. | Fail nếu còn ít hơn K. | Mất toàn bộ kết quả dù vẫn có lựa chọn hợp lệ. | UI phải hiển thị warning khi số kết quả ít hơn yêu cầu. |
+
+## 14. Đánh giá chất lượng
+
+### 14.1. Ba lớp metric
+
+**[Tự đề xuất]** Không dùng một metric duy nhất. Theo dõi ba lớp:
+
+1. Chất lượng recommendation/fairness.
+2. Hành vi sau recommendation.
+3. Độ tin cậy và chi phí hệ thống.
+
+### 14.2. Metric utility và fairness
+
+#### MeetUp list utility theo member
+
+**[Điều chỉnh]** [1] định nghĩa member utility của recommendation list bằng độ tương tự với personal ground-truth list. MeetUp v1 chưa có personal ground truth, nên không gọi metric dưới đây là utility nguyên bản của [1]. Báo cáo phải tách discounted average của `U_base` (chất lượng ETA/preference/place) và `U_rank` (sau closing penalty) để biết closing policy cải thiện an toàn mà không che mất fairness gốc:
+
+```math
+d_i = \frac{1}{\log_2(i+1)}
+```
+
+```math
+MeetUpListUtility_u@K
+= \frac{\sum_{i=1}^{effectiveK} d_i U_{u,p_i}}
+       {\sum_{i=1}^{effectiveK} d_i}
+```
+
+Ví dụ một member có utility `[0.90, 0.40]` ở top-2:
+
+```text
+d1 = 1
+d2 = 1/log2(3) ≈ 0.631
+MeetUpListUtility@2
+  = (1×0.90 + 0.631×0.40) / (1 + 0.631)
+  ≈ 0.707
+```
+
+#### Minimum và average MeetUp list utility
+
+```math
+MinMeetUpListUtility@K = \min_u MeetUpListUtility_u@K
+```
+
+```math
+AvgMeetUpListUtility@K = \frac{1}{m}\sum_u MeetUpListUtility_u@K
+```
+
+Minimum phản ánh member có list utility thấp nhất; average phản ánh mức chung. Dashboard có thể báo thêm `mean(F_p)` trong top-K nhưng phải đặt tên `MeanCandidateLeastMisery@K`, không gọi đó là list fairness của [1]. Khi có personal ground-truth list đủ tốt, team mới bổ sung metric similarity đúng theo [1] và ghi metric version riêng.
+
+#### ETA metrics
+
+**[Tự đề xuất]**
+
+```math
+AvgETASeconds_p = \frac{1}{m}\sum_u t^{(s)}_{u,p}
+```
+
+```math
+MaxETASeconds_p = \max_u t^{(s)}_{u,p}
+```
+
+```math
+ETARangeSeconds_p = \max_u t^{(s)}_{u,p} - \min_u t^{(s)}_{u,p}
+```
+
+Ví dụ ETA `[600, 900, 1.500]` giây, tương ứng `[10, 15, 25]` phút:
+
+```text
+AvgETASeconds = 1.000
+MaxETASeconds = 1.500
+ETARangeSeconds = 900
+```
+
+`AvgETASeconds` đo tổng hiệu quả, `MaxETASeconds` đo người đi lâu nhất, `ETARangeSeconds` đo chênh lệch. UI có thể đổi sang phút để hiển thị; engine và snapshot giữ giây.
+
+### 14.3. Metric ranking từ feedback
+
+#### HitRate@K
+
+```math
+HitRate@K = \frac{1}{R}\sum_{j=1}^{R} I[target_j \in TopK_j]
+```
+
+- `R`: số run đủ điều kiện đánh giá; nếu `R=0`, metric là `N/A`, không phải 0.
+- `target_j`: địa điểm cuối cùng được chọn trong run `j`.
+
+Ví dụ 8/10 shadow rankings chứa địa điểm cuối cùng được chọn trong top-5 thì `HitRate@5 = 0.8`.
+
+#### NDCG@K
+
+**[Tự đề xuất]** Dùng label graded ở Mục 9.3:
+
+```math
+DCG@K = \sum_{i=1}^{K}\frac{2^{rel_i}-1}{\log_2(i+1)}
+```
+
+```math
+NDCG@K = \frac{DCG@K}{IDCG@K}
+```
+
+- `rel_i`: label relevance của candidate ở rank `i`.
+- `IDCG@K`: DCG của thứ tự tốt nhất có thể cho cùng candidate set có label quan sát được.
+
+Ví dụ top-3 có relevance `[3,0,2]`:
+
+```text
+DCG@3 = 7/log2(2) + 0/log2(3) + 3/log2(4)
+      = 7 + 0 + 1.5
+      = 8.5
+```
+
+NDCG graded chỉ được dùng để so sánh thứ tự trên **cùng impressed candidate set**. Candidate `not shown = unknown` không được gán relevance 0 và không tham gia NDCG. Vì vậy metric này đánh giá re-ordering trong tập đã hiển thị, không đánh giá counterfactual retrieval của candidate chưa từng được xem. Run có `IDCG@K=0` bị loại khỏi NDCG và phải báo riêng `NDCGEvaluableRunCoverage`.
+
+Tham số `K` dùng `min(UI K, impressedCandidateCount)`. Label definition phải có version.
+
+#### Vote coverage và selection conversion
+
+**[Tự đề xuất]**
+
+```math
+VoteCoverage = \frac{membersWhoVoted}{membersWhoSawRecommendations}
+```
+
+```math
+SelectionConversion = \frac{runsWithFinalSelection}{successfulRunsShown}
+```
+
+Mỗi tử/mẫu đếm entity duy nhất trong evaluation window, không đếm số event retry. Nếu mẫu số bằng 0, metric là `N/A`. Các metric này phản ánh funnel, không chứng minh riêng thuật toán tốt hay xấu vì còn chịu ảnh hưởng UI và hành vi nhóm.
+
+### 14.4. Metric hệ thống
+
+**[Tự đề xuất]**
+
+| Metric | Cách tính | Ngưỡng ban đầu |
+|---|---|---|
+| Successful run rate | Run `completed` / run hợp lệ | ≥ 95% trong môi trường demo ổn định. |
+| Route element coverage | Element `OK` / element yêu cầu | ≥ 95%; nếu thấp phải phân tích theo provider/region. |
+| Route-complete candidate coverage | Candidate có route `OK` cho mọi member / candidate gửi tới Routes | Theo dõi theo group size; chưa đặt ngưỡng cho đến khi có dữ liệu. |
+| End-to-end p95 latency | Từ nhận request đến persist kết quả | ≤ 5 giây cho nhóm 2–6 và tối đa 20 candidate. |
+| Explanation coverage | Top-K có explanation có cấu trúc / tổng top-K | 100%. |
+| Replay consistency | Run replay có cùng full ranking / run kiểm tra | 100% khi dùng cùng snapshot/version/seed. |
+| Stale-location violation | Số run dùng stale location | 0. |
+| Unauthorized-location access | Số truy cập location trái quyền | 0. |
+| Matrix elements per run | `members × candidates` | Theo dõi distribution và budget; chưa có ngưỡng cố định. |
+| Scheduled-opening unknown rate | Candidate dùng `OPEN_AT_SCHEDULED_TIME` nhưng evaluator trả `UNKNOWN` / candidate được đánh giá | Theo provider/category/time horizon; chưa đặt ngưỡng. |
+| Stale-context rate | Run được đọc khi `scheduledAt` hiện tại khác snapshot / run được đọc | Theo dõi; vote/chốt từ stale run phải bằng 0. |
+| Traffic fallback rate | Run requested `TRAFFIC_AWARE` nhưng effective `TRAFFIC_UNAWARE` / run requested traffic-aware | Theo dõi theo provider/status; chưa đặt ngưỡng. |
+| Traffic delta | `duration - staticDuration` theo route element có đủ hai giá trị | Chỉ metric/explanation; không cộng utility. |
+| Weather availability | Candidate có forecast `AVAILABLE` / candidate cần weather | Báo theo forecast horizon/provider; chưa đặt ngưỡng. |
+| Weather filter relaxation rate | Run phát `WEATHER_FILTER_RELAXED` / run dùng `FILTER_OUTDOOR` | Theo dõi để điều chỉnh taxonomy/threshold; chưa đặt ngưỡng. |
+
+Các ngưỡng trên là **[Tự đề xuất]** cho giai đoạn đầu, không lấy từ [1]–[7]. Team phải điều chỉnh sau benchmark.
+
+### 14.5. Tiêu chí so sánh strategy
+
+**[Tự đề xuất]** Không promote strategy mới chỉ vì một metric tăng. Một strategy thử nghiệm phải:
+
+- Không vi phạm privacy, stale-location và replay guardrail.
+- Cải thiện fairness hoặc feedback metric chính trên test theo thời gian.
+- Không làm p95 latency vượt ngưỡng.
+- Không làm AvgETA hoặc provider cost xấu đi quá mức đã được product owner chấp thuận.
+- Có kết quả theo group size và category, không chỉ số trung bình toàn bộ.
+
+Mức “xấu đi quá mức” chưa được chốt và là câu hỏi mở.
+
+## 15. Kế hoạch triển khai
+
+### Giai đoạn 1 — Pipeline và baseline
+
+**[Tự đề xuất]**
+
+- Tạo module recommendation và contracts.
+- Triển khai ContextBuilder, category mapping, CandidateGenerator, CandidateMerger, ConstraintFilter và place-provider contract.
+- Triển khai RouteBatchPlanner hai chiều và RouteMatrixProvider bằng `latLng`.
+- Triển khai utility formulas có config version.
+- Triển khai `min-sum`, `min-max`, `fair-pareto-v1`.
+- Lưu full candidate set, random seed và explanations.
+- Unit test bằng matrix nhỏ tính tay được.
+
+### Giai đoạn 1.1 — Temporal context và `scheduledAt`
+
+- Snapshot `scheduledAt` và trả `contextStatus=STALE_CONTEXT` khi meetup đổi thời gian.
+- Triển khai `ScheduledOpeningEvaluator` và `OPEN_AT_SCHEDULED_TIME` với `OPEN/CLOSED/UNKNOWN`.
+- Lưu opening evidence/evaluator version; không dùng `openNow` cho lịch tương lai.
+
+### Giai đoạn 1.2 — Traffic và travel mode
+
+- Validate `ROUTES_ROUTING_PREFERENCE` khi boot; snapshot requested/effective value.
+- Hỗ trợ `TWO_WHEELER`/`DRIVE` theo member, chia matrix theo mode.
+- Thêm `staticDuration`, traffic fallback toàn matrix và warning.
+- Không gửi `scheduledAt` làm `departureTime`; chưa làm future-traffic second pass.
+
+### Giai đoạn 1.3 — Weather context
+
+- Chốt provider adapter và forecast horizon trước khi bật ngoài `OFF`.
+- Triển khai `OFF`, `WARN_ONLY`, `FILTER_OUTDOOR` sau opening và trước Routes.
+- Version taxonomy outdoor/threshold; thêm `WEATHER_FILTER_RELAXED`.
+- Weather chưa tham gia utility; chỉ eligibility và explanation/warning.
+
+### Giai đoạn 1.4 — Closing-soon và viewer-aware result
+
+- Thêm `ClosingSoonEvaluator` sau scheduled opening: `CLOSED` vẫn bị loại, `CLOSING_SOON` được giữ và tạo risk/penalty theo Mục 7.8.
+- Bump algorithm/config version; persist closing evidence/penalty và replay từ snapshot.
+- Đổi result presenter thành `presentForViewer`: mọi participant thấy ETA, actor chỉ thấy preference/utility của mình; group/least-misery utility không còn trong public DTO.
+- Mở quyền GET run từ requester-only sang participant-aware; vote/finalize trả `runId` để dùng lại cùng GET sau khi có kết quả, không thêm route feature riêng.
+
+### Giai đoạn 2 — Observability và feedback
+
+- Ghi impression, vote, selection, navigation và favorite bằng `eventId` idempotent.
+- Dashboard latency, error, element usage và funnel.
+- Replay command cho một `runId`.
+- Data retention và privacy review.
+
+### Giai đoạn 3 — Offline evaluation
+
+- Dataset builder theo thời gian.
+- So sánh ba strategy trên cùng candidate snapshots.
+- Báo cáo metric theo group size/category.
+- Hiệu chỉnh utility weights và thresholds bằng validation set; không chỉnh trên test set.
+
+### Giai đoạn 4 — LTR mở rộng
+
+- Feature schema và label version.
+- Huấn luyện model candidate.
+- Shadow evaluation.
+- A/B test theo meetup, không chia cùng một meetup cho hai strategy.
+- Giữ `fair-pareto-v1` làm fallback.
+
+## 16. Hạn chế và câu hỏi còn mở
+
+### 16.1. Hạn chế đã biết
+
+1. **[Điều chỉnh]** [1] đánh giá NPO/XPO bằng MovieLens và personal top-N lists. MeetUp dùng session utility từ ETA/preference. Hiệu quả được báo trong paper không chuyển trực tiếp sang domain địa điểm.
+2. **[Tự đề xuất]** Utility weights và mapping `high/normal/avoid` chưa được kiểm chứng với người dùng.
+3. **[Tự đề xuất]** Rating/review có thể thiên lệch theo popularity và provider coverage.
+4. **[Tự đề xuất]** Route Matrix là dependency có phí, quota và lỗi vùng địa lý.
+5. Route `TWO_WHEELER` đang beta và phải hiển thị cảnh báo [5].
+6. **[Tự đề xuất]** Vote phản ánh lựa chọn trong danh sách đã hiển thị, không cho biết người dùng sẽ nghĩ gì về candidate chưa từng thấy.
+7. **[Tự đề xuất]** Organizer có quyền chốt nên final selection không nhất thiết phản ánh đồng thuận của mọi thành viên.
+8. **[Tự đề xuất]** Top-K nhỏ giúp UI đơn giản nhưng hạn chế quan sát preference và tạo exposure bias.
+9. **[Tự đề xuất]** `TRAFFIC_AWARE` không dự báo đúng traffic tại một meetup xa trong tương lai vì giai đoạn này không gửi `departureTime`.
+10. **[Tự đề xuất]** `regularOpeningHours` không phản ánh chắc chắn ngày lễ/ngoại lệ ngoài cửa sổ của `currentOpeningHours`.
+11. **[Tự đề xuất]** Weather provider, forecast horizon, outdoor taxonomy và threshold production chưa được chốt; policy phải giữ `OFF` cho đến khi có contract/version được duyệt.
+12. **[Tự đề xuất]** `closing-policy-dev-v1` chỉ là baseline dev/staging; window/weight production chưa có feedback để hiệu chỉnh.
+
+### 16.2. Câu hỏi cần chốt
+
+| Câu hỏi | Vì sao quan trọng | Cách trả lời đề xuất |
+|---|---|---|
+| `tauSeconds` và utility weights nên là bao nhiêu? | Quyết định độ nhạy ETA/preference. | Benchmark + validation trên feedback thật. |
+| Candidate count trước Route Matrix là bao nhiêu? | Ảnh hưởng chất lượng, latency và chi phí. | Load test 20/30/50 candidates. |
+| Có cho candidate thiếu opening hours vào top-K không? | Thiếu dữ liệu không đồng nghĩa đã đóng. | Product decision + theo dõi conversion. |
+| Khi `scheduledAt` ngoài cửa sổ `currentOpeningHours`, có chấp nhận `regularOpeningHours` để hard-filter không? | Regular hours có thể sai vào ngày lễ hoặc đóng cửa đột xuất. | Hiện dùng regular hours nhưng gắn evidence/warning; Product duyệt có đổi thành `UNKNOWN` hay không. |
+| Route element lỗi có nên loại cả candidate lâu dài? | Có thể làm kết quả quá ít. | Thu thập tỷ lệ lỗi và thiết kế fallback có nhãn nếu cần. |
+| Khi nào bật diversity re-ranking? | Top-K cùng loại có thể kém hữu ích. | User test và metric category coverage. |
+| Định nghĩa label LTR cuối cùng là gì? | Vote, selection và navigation có ý nghĩa khác nhau. | So sánh nhiều label version offline. |
+| Ngưỡng dữ liệu tối thiểu để train là bao nhiêu? | Dữ liệu ít gây overfit và kết quả không ổn định. | Learning curve; chưa xác định được từ nguồn. |
+| Travel mode của member được nhập/lưu qua API nào? | Route engine đã có contract `TWO_WHEELER`/`DRIVE`, nhưng nguồn ghi preference chưa được chốt trong tài liệu hiện có. | Chốt owner, DTO và persistence; cho đến đó ContextBuilder mặc định `TWO_WHEELER`. |
+| Weather provider, forecast horizon và threshold nào được duyệt? | Quyết định availability, cost và khi nào được hard-filter outdoor. | Adapter benchmark + Product/Tech Lead duyệt; trước đó production dùng `OFF`. |
+| Quy tắc phân loại `INDOOR/OUTDOOR/UNKNOWN` theo category nào? | Sai taxonomy có thể loại nhầm địa điểm. | Version mapping và test theo category; unknown không bị loại. |
+| Khi nào triển khai future-traffic second pass? | Traffic hiện tại có thể không đúng lúc meetup diễn ra. | Chỉ mở sau khi có thuật toán suy ra departure time, budget và benchmark; không gửi thẳng `scheduledAt`. |
+| Mức đánh đổi fairness–ETA nào product chấp nhận? | Không có strategy tốt tuyệt đối cho mọi nhóm. | User study và A/B test. |
+| LTR score kết hợp fairness bằng công thức nào? | Chưa có contract đủ để promote model khỏi shadow. | So sánh re-ranking strategies offline, chốt `ltrRankingStrategyVersion` rồi mới A/B. |
+| Có cần multi-place-provider retrieval không? | Merge nhiều nguồn cần canonical identity và conflict policy. | Chỉ mở scope sau khi một-provider pipeline có metric ổn định. |
+| Retention cho candidate/feature snapshot là bao lâu? | Cân bằng audit, training và privacy. | Security/privacy review trước production. |
+| `closingSoonWindowSeconds` và `closingPenaltyWeight` production là bao nhiêu? | Quá mạnh làm mất lựa chọn tốt; quá nhẹ khiến warning không ảnh hưởng rank. | Bắt đầu dev bằng 5.400 giây/0,15, đo conversion/final selection và fairness rồi Product phê duyệt. |
+
+## 17. Tài liệu tham khảo
+
+[1] Dimitris Sacharidis. “Top-N Group Recommendations with Fairness.” *Proceedings of the 34th ACM/SIGAPP Symposium on Applied Computing (SAC ’19)*, 2019, pp. 1663–1670. DOI: [10.1145/3297280.3297442](https://doi.org/10.1145/3297280.3297442). Bản PDF được dùng để đối chiếu trang: [dsachar.net](https://dsachar.net/publication/2019-sac-sac/2019-sac-sac.pdf).
+
+[2] Thi Ngoc Trang Tran, Alexander Felfernig, Viet Man Le. “An overview of consensus models for group decision-making and group recommender systems.” *User Modeling and User-Adapted Interaction*, vol. 34, 2024, pp. 489–547. Published online 22/09/2023. DOI: [10.1007/s11257-023-09380-z](https://doi.org/10.1007/s11257-023-09380-z).
+
+[3] Google Maps Platform. “Get a route matrix — Routes API.” Tài liệu chính thức, truy cập ngày 26/10/2026. [https://developers.google.com/maps/documentation/routes/compute_route_matrix](https://developers.google.com/maps/documentation/routes/compute_route_matrix).
+
+[4] Google Maps Platform. “Routes API Usage and Billing.” Tài liệu chính thức, truy cập ngày 26/10/2026. [https://developers.google.com/maps/documentation/routes/usage-and-billing](https://developers.google.com/maps/documentation/routes/usage-and-billing).
+
+[5] Google Maps Platform. “Available route matrix vehicle types.” Tài liệu chính thức, truy cập ngày 26/10/2026. [https://developers.google.com/maps/documentation/routes/vehicles-rm](https://developers.google.com/maps/documentation/routes/vehicles-rm).
+
+[6] Google Maps Platform. “Text Search (New) — Places API (New).” Tài liệu chính thức, truy cập ngày 27/10/2026. [https://developers.google.com/maps/documentation/places/web-service/text-search](https://developers.google.com/maps/documentation/places/web-service/text-search).
+
+[7] Google Maps Platform. “Nearby Search (New) — Places API (New).” Tài liệu chính thức, truy cập ngày 27/10/2026. [https://developers.google.com/maps/documentation/places/web-service/nearby-search](https://developers.google.com/maps/documentation/places/web-service/nearby-search).
+
+[8] Google Maps Platform. “REST Resource: places — Places API (New)” và “Place Data Fields (New).” Tài liệu chính thức, truy cập ngày 30/10/2026. [Place resource](https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places), [data fields](https://developers.google.com/maps/documentation/places/web-service/data-fields).
+
+[9] Google Maps Platform. “RoutingPreference — Routes API.” Tài liệu chính thức, truy cập ngày 30/10/2026. [https://developers.google.com/maps/documentation/routes/reference/rest/v2/RoutingPreference](https://developers.google.com/maps/documentation/routes/reference/rest/v2/RoutingPreference).
+
+[10] Google Maps Platform. “Method: computeRouteMatrix — Routes API.” Tài liệu chính thức, truy cập ngày 30/10/2026. [https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRouteMatrix](https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRouteMatrix).

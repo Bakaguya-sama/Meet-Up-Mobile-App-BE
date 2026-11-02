@@ -16,6 +16,10 @@ import type {
 import { LOCATION_STORE } from './application/ports/location.port';
 import type { LocationPort } from './application/ports/location.port';
 import { GetLatestLocationQuery } from './application/queries/get-latest-location.query';
+import {
+  LocationMeetupReader,
+  MeetupLocationReader,
+} from './application/public/meetup-location-reader';
 import { LocationAccessService } from './application/services/location-access.service';
 import { PublishLocationUseCase } from './application/use-cases/publish-location.use-case';
 import { MeetupLocationAdapter } from './infrastructure/adapters/meetup-location.adapter';
@@ -63,12 +67,19 @@ import { LocationGateway } from './presentation/websocket/location.gateway';
         new GetLatestLocationQuery(access, locations),
       inject: [LocationAccessService, LOCATION_STORE],
     },
+    {
+      provide: MeetupLocationReader,
+      useFactory: (access: LocationAccessService, locations: LocationPort) =>
+        new LocationMeetupReader(access, locations),
+      inject: [LocationAccessService, LOCATION_STORE],
+    },
     LocationGateway,
   ],
   exports: [
     LocationAccessService,
     PublishLocationUseCase,
     GetLatestLocationQuery,
+    MeetupLocationReader,
   ],
 })
 export class LocationsModule {}

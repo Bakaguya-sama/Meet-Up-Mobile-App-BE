@@ -3,14 +3,22 @@ import type {
   RealtimeMessage,
   RealtimePublisherPort,
 } from '../../shared-kernel/application/realtime-publisher.port';
+import type { Server } from 'socket.io';
 
-/** Temporary transport for S0; the authenticated Socket.IO gateway replaces it in BE-06. */
 @Injectable()
 export class RealtimePublisherAdapter implements RealtimePublisherPort {
-  readonly messages: RealtimeMessage[] = [];
+  private server?: Pick<Server, 'to'>;
+
+  bindServer(server: Pick<Server, 'to'>): void {
+    this.server = server;
+  }
 
   publish(message: RealtimeMessage): Promise<void> {
-    this.messages.push(message);
+    if (!this.server)
+      return Promise.reject(
+        new Error('Realtime Socket.IO server is not ready'),
+      );
+    this.server.to(message.room).emit(message.eventName, message.payload);
     return Promise.resolve();
   }
 }

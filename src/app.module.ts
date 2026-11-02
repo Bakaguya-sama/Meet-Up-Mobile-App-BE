@@ -11,6 +11,7 @@ import { FriendsModule } from './bounded-contexts/friends/friends.module';
 import { MeetupsModule } from './bounded-contexts/meetups/meetups.module';
 import { LocationsModule } from './bounded-contexts/locations/locations.module';
 import { NotificationsModule } from './bounded-contexts/notifications/notifications.module';
+import { RecommendationsModule } from './bounded-contexts/recommendations/recommendations.module';
 
 const runtimeModules =
   process.env.NODE_ENV === 'test'
@@ -24,6 +25,7 @@ const runtimeModules =
         MeetupsModule,
         LocationsModule,
         NotificationsModule,
+        RecommendationsModule,
       ];
 
 @Module({
