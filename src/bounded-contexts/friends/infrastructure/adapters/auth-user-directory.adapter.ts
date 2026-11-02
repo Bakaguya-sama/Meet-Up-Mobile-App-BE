@@ -18,4 +18,8 @@ export class AuthUserDirectoryAdapter implements FriendUserDirectoryPort {
   findActiveByIds(ids: string[]) {
     return this.users.findActiveByIds(ids);
   }
+
+  findActiveByPublicHandle(publicHandle: string) {
+    return this.users.findActiveByPublicHandle(publicHandle);
+  }
 }
