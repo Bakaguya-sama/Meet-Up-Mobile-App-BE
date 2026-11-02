@@ -260,7 +260,17 @@ export class FriendsController {
       },
     },
   })
-  rotatePublicHandle(@CurrentUser('id') actorId: string) {
+  @ApiTooManyRequestsResponse({ description: 'QR handle rate limit exceeded' })
+  async rotatePublicHandle(
+    @CurrentUser('id') actorId: string,
+    @Req() request: Request,
+  ) {
+    await assertFriendQrRateLimit(
+      this.rateLimiter,
+      this.config,
+      request,
+      actorId,
+    );
     return this.publicHandle.rotate(actorId);
   }
 
@@ -271,7 +281,17 @@ export class FriendsController {
     summary: 'Disable the authenticated user’s stable QR handle',
   })
   @ApiNoContentResponse({ description: 'Public handle disabled' })
-  async disablePublicHandle(@CurrentUser('id') actorId: string) {
+  @ApiTooManyRequestsResponse({ description: 'QR handle rate limit exceeded' })
+  async disablePublicHandle(
+    @CurrentUser('id') actorId: string,
+    @Req() request: Request,
+  ) {
+    await assertFriendQrRateLimit(
+      this.rateLimiter,
+      this.config,
+      request,
+      actorId,
+    );
     await this.publicHandle.disable(actorId);
   }
 
