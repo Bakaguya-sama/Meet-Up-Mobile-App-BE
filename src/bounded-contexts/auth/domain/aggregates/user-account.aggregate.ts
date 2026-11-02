@@ -1,4 +1,5 @@
 import { AuthError } from '../errors/auth.error';
+import { PublicHandle } from '../values/public-handle';
 
 export interface AccountState {
   id: string;
@@ -58,6 +59,20 @@ export class UserAccount {
       }
       this.state.avatarUrl = input.avatarUrl;
     }
+    this.state.updatedAt = now;
+  }
+
+  rotatePublicHandle(handle: PublicHandle, now: Date): void {
+    this.assertCanAuthenticate();
+    this.state.publicHandle = handle.value;
+    this.state.publicHandleDisabledAt = null;
+    this.state.updatedAt = now;
+  }
+
+  disablePublicHandle(now: Date): void {
+    this.assertCanAuthenticate();
+    if (!this.state.publicHandle || this.state.publicHandleDisabledAt) return;
+    this.state.publicHandleDisabledAt = now;
     this.state.updatedAt = now;
   }
 
