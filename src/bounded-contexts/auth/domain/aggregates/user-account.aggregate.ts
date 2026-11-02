@@ -2,6 +2,8 @@ import { AuthError } from '../errors/auth.error';
 
 export interface AccountState {
   id: string;
+  publicHandle?: string | null;
+  publicHandleDisabledAt?: Date | null;
   email: string;
   passwordHash: string | null;
   displayName: string;
