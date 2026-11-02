@@ -2,11 +2,13 @@ import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
+  Matches,
   IsString,
   IsUUID,
   Length,
   Max,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export class FriendPageRequest {
@@ -41,6 +43,13 @@ export class SendFriendRequest {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.toLowerCase() : value,
   )
+  @ValidateIf((_object, value) => value !== undefined)
   @IsUUID()
-  recipientId: string;
+  recipientId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @Length(43, 43)
+  @Matches(/^[A-Za-z0-9_-]{43}$/)
+  recipientPublicHandle?: string;
 }

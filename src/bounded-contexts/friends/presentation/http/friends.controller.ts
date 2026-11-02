@@ -1,10 +1,12 @@
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
   Header,
   HttpCode,
+  Inject,
   Param,
   ParseUUIDPipe,
   Post,
@@ -42,6 +44,9 @@ import { ResolvePublicQrProfileQuery } from '../../application/queries/resolve-p
 import { SendFriendRequestUseCase } from '../../application/use-cases/send-friend-request.use-case';
 import { RespondFriendRequestUseCase } from '../../application/use-cases/respond-friend-request.use-case';
 import { UnfriendUseCase } from '../../application/use-cases/unfriend.use-case';
+import { FRIEND_USER_DIRECTORY } from '../../application/ports/user-directory.port';
+import type { FriendUserDirectoryPort } from '../../application/ports/user-directory.port';
+import { FriendshipError } from '../../domain/errors/friendship.error';
 import { ManagePublicHandleUseCase } from '../../../auth/application/use-cases/manage-public-handle.use-case';
 import {
   ApiFriendPage,
@@ -50,6 +55,7 @@ import {
   searchPageSchema,
   sendFriendRequestSchema,
   publicQrProfileSchema,
+  qrFriendRequestCreatedSchema,
 } from './friends.openapi';
 
 @ApiTags('Friends')
@@ -73,6 +79,8 @@ export class FriendsController {
     private readonly unfriendUseCase: UnfriendUseCase,
     private readonly publicHandle: ManagePublicHandleUseCase,
     private readonly resolvePublicQrProfile: ResolvePublicQrProfileQuery,
+    @Inject(FRIEND_USER_DIRECTORY)
+    private readonly friendUsers: FriendUserDirectoryPort,
   ) {}
 
   @Get('search')
@@ -178,16 +186,47 @@ export class FriendsController {
   @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: 'Send a friend request' })
   @ApiBody({ schema: sendFriendRequestSchema })
-  @ApiCreatedResponse({ schema: friendshipSchema })
+  @ApiCreatedResponse({
+    schema: {
+      oneOf: [friendshipSchema, qrFriendRequestCreatedSchema],
+    },
+  })
   @ApiNotFoundResponse({ description: 'Recipient unavailable' })
   @ApiConflictResponse({
     description: 'This pair already has a friendship or request',
   })
-  send(@CurrentUser('id') actorId: string, @Body() input: SendFriendRequest) {
-    return this.sendRequest.execute({
+  async send(
+    @CurrentUser('id') actorId: string,
+    @Body() input: SendFriendRequest,
+  ) {
+    const hasRecipientId = typeof input.recipientId === 'string';
+    const hasPublicHandle = typeof input.recipientPublicHandle === 'string';
+    if (hasRecipientId === hasPublicHandle) {
+      throw new BadRequestException(
+        'Provide exactly one recipient selector',
+      );
+    }
+    if (hasRecipientId) {
+      return this.sendRequest.execute({
+        actorId,
+        recipientId: input.recipientId!,
+      });
+    }
+
+    const recipient = await this.friendUsers.findActiveByPublicHandle(
+      input.recipientPublicHandle!,
+    );
+    if (!recipient) {
+      throw new FriendshipError(
+        'FRIEND_USER_NOT_FOUND',
+        'An active user account could not be found',
+      );
+    }
+    const result = await this.sendRequest.execute({
       actorId,
-      recipientId: input.recipientId,
+      recipientId: recipient.id,
     });
+    return { status: result.status, requestedAt: result.requestedAt };
   }
 
   @Post('requests/:requestId/accept')

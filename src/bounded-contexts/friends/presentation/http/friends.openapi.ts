@@ -95,8 +95,35 @@ export const publicQrProfileSchema = {
 };
 export const sendFriendRequestSchema = {
   type: 'object' as const,
-  required: ['recipientId'],
-  properties: { recipientId: uuid },
+  oneOf: [
+    {
+      type: 'object' as const,
+      required: ['recipientId'],
+      properties: { recipientId: uuid },
+      additionalProperties: false,
+    },
+    {
+      type: 'object' as const,
+      required: ['recipientPublicHandle'],
+      properties: {
+        recipientPublicHandle: {
+          type: 'string' as const,
+          minLength: 43,
+          maxLength: 43,
+          pattern: '^[A-Za-z0-9_-]{43}$',
+        },
+      },
+      additionalProperties: false,
+    },
+  ],
+};
+export const qrFriendRequestCreatedSchema = {
+  type: 'object' as const,
+  required: ['status', 'requestedAt'],
+  properties: {
+    status: { type: 'string' as const, enum: ['pending'] },
+    requestedAt: timestamp,
+  },
 };
 
 export function ApiFriendPage() {
