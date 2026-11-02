@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { MeetupError } from '../errors/meetup.error';
 
 export const MEETUP_STATUSES = [
@@ -211,6 +212,61 @@ export class Meetup {
         'A user is already invited or participating',
       );
     }
+  }
+
+  assertCanCreateInviteLink(
+    actorId: string,
+    expiresAt: Date,
+    now: Date,
+  ): void {
+    this.assertOrganizer(actorId);
+    this.assertEditable();
+    this.assertInvitationOpen(now);
+    if (
+      !Number.isFinite(expiresAt.getTime()) ||
+      expiresAt <= now ||
+      expiresAt > this.state.invitationDeadlineAt
+    ) {
+      throw new MeetupError(
+        'INVALID_INPUT',
+        'Invite link expiry must be in the future and at or before the invitation deadline',
+      );
+    }
+  }
+
+  acceptViaInviteLink(actorId: string, now: Date): boolean {
+    const normalizedActorId = actorId.toLowerCase();
+    const existing = this.state.participants.find(
+      (participant) => participant.userId === normalizedActorId,
+    );
+    if (existing?.status === 'accepted') return false;
+
+    this.assertEditable();
+    this.assertInvitationOpen(now);
+    if (existing && existing.status !== 'invited') {
+      throw new MeetupError(
+        'MEETUP_MEMBER_CONFLICT',
+        'This account cannot join this meetup through an invite link',
+      );
+    }
+
+    const participant: ParticipantState = existing ?? {
+      id: randomUUID(),
+      userId: normalizedActorId,
+      status: 'accepted',
+      invitedById: this.state.organizerId,
+      respondedAt: new Date(now),
+      joinedAt: new Date(now),
+      leftAt: null,
+      preferences: [],
+    };
+    participant.status = 'accepted';
+    participant.respondedAt = new Date(now);
+    participant.joinedAt = new Date(now);
+    participant.leftAt = null;
+    this.state.participants.push(...(existing ? [] : [participant]));
+    this.recordMember(participant, now);
+    return true;
   }
 
   invite(
