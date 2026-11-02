@@ -52,6 +52,7 @@ import { FRIEND_USER_DIRECTORY } from '../../application/ports/user-directory.po
 import type { FriendUserDirectoryPort } from '../../application/ports/user-directory.port';
 import { FriendshipError } from '../../domain/errors/friendship.error';
 import { CreateFriendQrSessionUseCase } from '../../application/use-cases/create-friend-qr-session.use-case';
+import { ManageFriendQrSessionUseCase } from '../../application/use-cases/manage-friend-qr-session.use-case';
 import { RedisRateLimiter } from '../../../../infrastructure/redis/redis-rate-limiter.service';
 import { ManagePublicHandleUseCase } from '../../../auth/application/use-cases/manage-public-handle.use-case';
 import {
@@ -62,6 +63,7 @@ import {
   sendFriendRequestSchema,
   publicQrProfileSchema,
   qrFriendRequestCreatedSchema,
+  temporaryQrProfileSchema,
 } from './friends.openapi';
 
 @ApiTags('Friends')
@@ -88,6 +90,7 @@ export class FriendsController {
     @Inject(FRIEND_USER_DIRECTORY)
     private readonly friendUsers: FriendUserDirectoryPort,
     private readonly createQrSession: CreateFriendQrSessionUseCase,
+    private readonly manageQrSession: ManageFriendQrSessionUseCase,
     private readonly rateLimiter: RedisRateLimiter,
     private readonly config: ConfigService,
   ) {}
@@ -154,11 +157,62 @@ export class FriendsController {
   @ApiOperation({ summary: 'Resolve a stable public QR profile' })
   @ApiOkResponse({ schema: publicQrProfileSchema })
   @ApiNotFoundResponse({ description: 'Public profile is unavailable' })
-  resolveQrProfile(
+  @ApiTooManyRequestsResponse({ description: 'QR profile rate limit exceeded' })
+  async resolveQrProfile(
     @CurrentUser('id') actorId: string,
     @Param('publicHandle') publicHandle: string,
+    @Req() request: Request,
   ) {
+    await assertFriendQrRateLimit(
+      this.rateLimiter,
+      this.config,
+      request,
+      actorId,
+      publicHandle,
+    );
     return this.resolvePublicQrProfile.execute({ actorId, publicHandle });
+  }
+
+  @Get('qr-sessions/:token')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Resolve an active temporary friend QR session' })
+  @ApiOkResponse({ schema: temporaryQrProfileSchema })
+  @ApiNotFoundResponse({ description: 'QR session is unavailable' })
+  @ApiTooManyRequestsResponse({ description: 'QR session rate limit exceeded' })
+  async previewTemporaryQr(
+    @CurrentUser('id') actorId: string,
+    @Param('token') token: string,
+    @Req() request: Request,
+  ) {
+    await assertFriendQrRateLimit(
+      this.rateLimiter,
+      this.config,
+      request,
+      actorId,
+      token,
+    );
+    return this.manageQrSession.preview(actorId, token);
+  }
+
+  @Delete('qr-sessions/:sessionId')
+  @HttpCode(204)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Revoke an owned temporary friend QR session' })
+  @ApiNoContentResponse({ description: 'QR session revoked' })
+  @ApiNotFoundResponse({ description: 'QR session is unavailable' })
+  @ApiTooManyRequestsResponse({ description: 'QR session rate limit exceeded' })
+  async revokeTemporaryQr(
+    @CurrentUser('id') actorId: string,
+    @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
+    @Req() request: Request,
+  ) {
+    await assertFriendQrRateLimit(
+      this.rateLimiter,
+      this.config,
+      request,
+      actorId,
+    );
+    await this.manageQrSession.revoke(actorId, sessionId);
   }
 
   @Post('qr-sessions')
@@ -237,19 +291,41 @@ export class FriendsController {
   async send(
     @CurrentUser('id') actorId: string,
     @Body() input: SendFriendRequest,
+    @Req() request: Request,
   ) {
     const hasRecipientId = typeof input.recipientId === 'string';
     const hasPublicHandle = typeof input.recipientPublicHandle === 'string';
-    if (hasRecipientId === hasPublicHandle) {
-      throw new BadRequestException(
-        'Provide exactly one recipient selector',
-      );
+    const hasQrSessionToken = typeof input.qrSessionToken === 'string';
+    const selectorCount = [
+      hasRecipientId,
+      hasPublicHandle,
+      hasQrSessionToken,
+    ].filter(Boolean).length;
+    if (selectorCount !== 1) {
+      throw new BadRequestException('Provide exactly one recipient selector');
     }
     if (hasRecipientId) {
       return this.sendRequest.execute({
         actorId,
         recipientId: input.recipientId!,
       });
+    }
+
+    const qrSelector = input.recipientPublicHandle ?? input.qrSessionToken!;
+    await assertFriendQrRateLimit(
+      this.rateLimiter,
+      this.config,
+      request,
+      actorId,
+      qrSelector,
+    );
+
+    if (hasQrSessionToken) {
+      const recipientId = await this.manageQrSession.resolveRecipientId(
+        input.qrSessionToken!,
+      );
+      const result = await this.sendRequest.execute({ actorId, recipientId });
+      return { status: result.status, requestedAt: result.requestedAt };
     }
 
     const recipient = await this.friendUsers.findActiveByPublicHandle(
@@ -329,5 +405,21 @@ export class FriendsController {
       actorId,
       requestId: friendshipId,
     });
+  }
+}
+
+async function assertFriendQrRateLimit(
+  limiter: RedisRateLimiter,
+  config: ConfigService,
+  request: Request,
+  actorId: string,
+  tokenOrHandle?: string,
+) {
+  const limit = config.getOrThrow<number>('friendQr.rateLimit');
+  const ip = request.ip || request.socket.remoteAddress || 'unknown';
+  await limiter.assertAllowed('friend-qr:ip', ip, limit);
+  await limiter.assertAllowed('friend-qr:account', actorId, limit);
+  if (tokenOrHandle) {
+    await limiter.assertAllowed('friend-qr:token', tokenOrHandle, limit);
   }
 }

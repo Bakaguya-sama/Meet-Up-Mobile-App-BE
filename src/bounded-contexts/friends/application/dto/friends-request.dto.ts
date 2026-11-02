@@ -52,4 +52,10 @@ export class SendFriendRequest {
   @Length(43, 43)
   @Matches(/^[A-Za-z0-9_-]{43}$/)
   recipientPublicHandle?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @Length(43, 43)
+  @Matches(/^[A-Za-z0-9_-]{43}$/)
+  qrSessionToken?: string;
 }

@@ -115,6 +115,19 @@ export const sendFriendRequestSchema = {
       },
       additionalProperties: false,
     },
+    {
+      type: 'object' as const,
+      required: ['qrSessionToken'],
+      properties: {
+        qrSessionToken: {
+          type: 'string' as const,
+          minLength: 43,
+          maxLength: 43,
+          pattern: '^[A-Za-z0-9_-]{43}$',
+        },
+      },
+      additionalProperties: false,
+    },
   ],
 };
 export const qrFriendRequestCreatedSchema = {
@@ -123,6 +136,19 @@ export const qrFriendRequestCreatedSchema = {
   properties: {
     status: { type: 'string' as const, enum: ['pending'] },
     requestedAt: timestamp,
+  },
+};
+export const temporaryQrProfileSchema = {
+  type: 'object' as const,
+  required: ['displayName', 'avatarUrl', 'friendship'],
+  properties: {
+    displayName: { type: 'string' as const },
+    avatarUrl: { type: 'string' as const, nullable: true },
+    friendship: {
+      type: 'string' as const,
+      enum: ['pending', 'accepted', 'rejected', 'blocked'],
+      nullable: true,
+    },
   },
 };
 
