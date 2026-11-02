@@ -48,7 +48,7 @@ On refresh, replace both stored tokens and serialize refresh requests on the cli
 
 ## Friends (BE-03)
 
-Authenticated APIs support user search, sending/accepting/rejecting friend requests, pending request lists and accepted friends. Apply the new migration with `npm run migration:run` before starting the API. See [BE-03 API and test guide](docs/10_be03_friends_api.md) and the **Friends** group in Swagger for the full contract.
+Authenticated APIs support user search, sending/accepting/rejecting friend requests, pending request lists and accepted friends. Apply the new migration with `npm run migration:run` before starting the API. See [BE-03 API and test guide](docs/friends/friends_api.md) and the **Friends** group in Swagger for the full contract.
 
 ## Location privacy
 

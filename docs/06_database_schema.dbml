@@ -56,6 +56,8 @@
     password_hash varchar(255) // Null for an account that only uses Google OAuth.
     display_name varchar(100) [not null]
     avatar_url varchar(1000)
+    public_handle varchar(128) [unique, note: 'BE-34 planned public QR handle. Nullable: disabled/not provisioned. It is opaque and never an internal account ID.']
+    public_handle_disabled_at timestamptz [note: 'Non-null means handle must not resolve. Rotate replaces public_handle and clears this value.']
     is_locked boolean [not null, default: false]
     locked_reason varchar(500)
     last_login_at timestamptz
@@ -162,6 +164,7 @@
     title varchar(150) [not null]
     description varchar(1000)
     scheduled_at timestamptz [not null]
+    invitation_deadline_at timestamptz [not null, note: 'Must be at or before scheduled_at.']
     vote_deadline_at timestamptz
     search_radius_m integer [not null]
     status meetup_status [not null, default: 'draft']
@@ -177,6 +180,29 @@
       (organizer_id, status)
       (scheduled_at, status)
     }
+  }
+
+  // BE-33 planned durable invite-link state. Raw token is never persisted.
+  Table meetup_invite_links {
+    id uuid [pk]
+    meetup_id uuid [not null]
+    created_by_id uuid [not null]
+    token_hash char(64) [not null, unique, note: 'HMAC/SHA-256 lookup fingerprint, never raw token.']
+    expires_at timestamptz [not null]
+    revoked_at timestamptz
+    revoked_by_id uuid
+    use_count integer [not null, default: 0, note: 'Increments only when a distinct actor first becomes accepted through this link.']
+    last_used_at timestamptz
+    created_at timestamptz [not null]
+    updated_at timestamptz [not null]
+
+    Indexes {
+      (meetup_id, revoked_at)
+      (expires_at)
+      (created_by_id, created_at)
+    }
+
+    Note: 'A non-revoked, non-expired link permits multiple distinct actors. create(revokePrevious=true) revokes active links and creates the replacement in one transaction.'
   }
 
   Table meetup_participants {
@@ -572,6 +598,9 @@
   Ref: user_accounts.id < privacy_settings.user_id
   Ref: user_accounts.id < meetup_sessions.organizer_id
   Ref: user_accounts.id < meetup_sessions.chosen_by_id
+  Ref: meetup_sessions.id < meetup_invite_links.meetup_id
+  Ref: user_accounts.id < meetup_invite_links.created_by_id
+  Ref: user_accounts.id < meetup_invite_links.revoked_by_id
   Ref: meetup_sessions.id < meetup_participants.meetup_id
   Ref: user_accounts.id < meetup_participants.user_id
   Ref: user_accounts.id < meetup_participants.invited_by_id

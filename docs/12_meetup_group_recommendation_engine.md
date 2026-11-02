@@ -330,10 +330,11 @@ flowchart TD
     Raw --> Merge["Union pages và category queries<br/>dedup bằng canonical candidate key"]
     Merge --> ResidualFilter["Backend residual hard filter<br/>required fields, exact radius, category, policy,<br/>business status nếu provider trả về"]
     ResidualFilter --> OpeningPolicy{"openingFilter là<br/>OPEN_AT_SCHEDULED_TIME?"}
-    OpeningPolicy -->|Không| WeatherEnrich["Weather enrichment tại scheduledAt"]
+    OpeningPolicy -->|Không| ClosingRisk["ClosingSoonEvaluator<br/>UNKNOWN khi không có scheduled evidence"]
     OpeningPolicy -->|Có| Opening["ScheduledOpeningEvaluator<br/>OPEN / CLOSED / UNKNOWN"]
     Opening --> OpeningFilter["Loại CLOSED; giữ UNKNOWN + warning"]
-    OpeningFilter --> WeatherEnrich
+    OpeningFilter --> ClosingRisk["Tính nextClosingAt, closingRisk<br/>OPEN nhưng sắp đóng: giữ + soft penalty"]
+    ClosingRisk --> WeatherEnrich["Weather enrichment tại scheduledAt"]
     WeatherEnrich --> WeatherPolicy{"weatherPolicy"}
     WeatherPolicy -->|OFF hoặc provider unavailable| WeatherPass["Giữ candidate; ghi snapshot/warning cần thiết"]
     WeatherPolicy -->|WARN_ONLY| WeatherWarn["Giữ candidate + weather warning"]
@@ -368,7 +369,8 @@ flowchart TD
     Travel --> MemberUtility["7.4 Member utility<br/>T cộng P cộng Q thành U"]
     Preference --> MemberUtility
     Quality --> MemberUtility
-    MemberUtility --> GroupMetrics["7.5 Group utility và candidate least-misery<br/>U thành G và F"]
+    MemberUtility --> ClosingPenalty["7.8 Closing-soon adjustment<br/>U base thành U rank; không hard-filter"]
+    ClosingPenalty --> GroupMetrics["7.5 Group utility và candidate least-misery<br/>U rank thành G và F"]
     GroupMetrics --> Pareto["7.6 Pareto dominance<br/>U thành member rank rồi Pareto level"]
     Pareto --> MonteCarlo["7.7 Monte Carlo inclusion probability"]
     MonteCarlo --> Rank["Group Ranker<br/>full ranking và top-K"]
@@ -377,7 +379,7 @@ flowchart TD
     Persist -->|transaction lỗi| PersistFailed["Giữ run không COMPLETED<br/>trả lỗi retryable"]
     Persist --> Freshness{"scheduledAt hiện tại<br/>còn bằng snapshot?"}
     Freshness -->|Không| Stale["Trả contextStatus=STALE_CONTEXT<br/>yêu cầu run mới"]
-    Freshness -->|Có| Response["Mobile nhận top-K, ETA và explanation"]
+    Freshness -->|Có| Response["Viewer-aware response<br/>mọi member thấy ETA; actor chỉ thấy feature của mình"]
 
     Response --> Impression["Impression: candidate thực sự được hiển thị"]
     Impression --> Feedback["Vote, đổi vote, chốt,<br/>navigation, favorite"]
@@ -630,6 +632,8 @@ Trong đó latitude/longitude đổi sang radian, `R = 6.371.000 m`. Giữ candi
 4. Kết quả `OPEN`: giữ candidate. `CLOSED`: loại với `CLOSED_AT_SCHEDULED_TIME`. `UNKNOWN`: giữ candidate và thêm `OPENING_STATUS_UNKNOWN`.
 5. Thiếu hours, thiếu timezone, periods không parse được hoặc thời điểm nằm ngoài dữ liệu có thể xác định chắc chắn đều là `UNKNOWN`; không tự coi là `CLOSED`.
 
+Với candidate `OPEN`, `ClosingSoonEvaluator` tìm lần chuyển sang đóng kế tiếp sau `scheduledAt` từ cùng evidence/timezone. Nếu khoảng còn mở nhỏ hơn `closingSoonWindowSeconds`, candidate **không bị loại** nhưng nhận warning `CLOSING_SOON` và soft penalty ở Mục 7.8. Nếu không xác định chắc `nextClosingAt`, trạng thái là `UNKNOWN`, không tự áp penalty. Cách này chỉ nói “địa điểm sắp đóng”, không suy diễn meetup cần kéo dài bao lâu.
+
 `openNow` không được dùng trong bước này vì nó chỉ phản ánh thời điểm request [6].
 
 #### Bước 6 — Weather enrichment và policy
@@ -696,11 +700,12 @@ Nếu `effectiveK = 0`, trả `NO_ROUTABLE_CANDIDATES`. Nếu `effectiveK < requ
 | 7.2 `P(u,p)` — Preference utility | Sau khi có place tags đã chuẩn hóa và preference meetup. | Tag của place và `high/normal/avoid` của member. | Một thành phần của member utility; `avoid` bị phạt tại đây. |
 | 7.3 `Q(p)` — Place quality utility | Sau khi có metadata Places. | Rating và review count, hoặc cờ dữ liệu thiếu. | Một thành phần chung của member utility cho mọi member. |
 | 7.4 `U(u,p)` — Member utility | Sau khi 7.1, 7.2, 7.3 hoàn tất cho cặp member–candidate. | `T(u,p)`, `P(u,p)`, `Q(p)` và config weights. | Ranking riêng của từng member. |
-| 7.5 `G(p), F(p)` — Group utility/candidate least-misery | Sau khi có `U(u,p)` cho tất cả member hợp lệ của candidate. | Utility vector của một candidate. | Explanation, diagnostic và tie-breaker của group ranker. |
+| 7.8 Closing-soon adjustment | Sau khi có `U(u,p)` và scheduled opening evidence, trước mọi strategy ranking. | `nextClosingAt`, `scheduledAt`, `closingSoonWindowSeconds`, `closingPenaltyWeight`. | `closingRisk`, `closingPenalty`, `U_rank(u,p)` hoặc adjusted ETA score. |
+| 7.5 `G(p), F(p)` — Group utility/candidate least-misery | Sau khi có `U_rank(u,p)` cho tất cả member hợp lệ của candidate. | Ranking utility vector của một candidate. | Explanation nội bộ, diagnostic và tie-breaker của group ranker. |
 | 7.6 Pareto dominance | Sau khi sort utility thành rank riêng từng member. | `r_u(p)` của toàn bộ candidate đủ route. | `paretoLevel` và pool cho XPO-inspired ranking. |
 | 7.7 `π̂(p)` — Inclusion probability | Sau Pareto pool selection. | Pareto pool, member ranks, `effectiveK`, random seed, sample count. | Primary score của `fair-pareto-v1`; `null` cho candidate ngoài pool. |
 
-`FeatureBuilder` chịu trách nhiệm lấy và chuẩn hóa input cho 7.1–7.3. `MemberUtilityScorer` chạy 7.1–7.4. `GroupRanker` chạy 7.5–7.7 đúng một lần. Vì vậy, utility **không** được tính khi candidate vừa được Places trả về; lúc đó hệ thống chưa có ETA, route validity và đôi khi chưa có metadata cần thiết.
+`FeatureBuilder` chịu trách nhiệm lấy và chuẩn hóa input cho 7.1–7.3. `MemberUtilityScorer` chạy 7.1–7.4. `ClosingSoonAdjuster` chạy 7.8 và không sửa các feature gốc `T/P/Q/U_base`. `GroupRanker` chạy 7.5–7.7 đúng một lần trên ranking input đã điều chỉnh. Vì vậy, utility **không** được tính khi candidate vừa được Places trả về; lúc đó hệ thống chưa có ETA, route validity và đôi khi chưa có metadata cần thiết.
 
 #### Bước 9 — Group ranking
 
@@ -710,7 +715,7 @@ Nếu `effectiveK = 0`, trả `NO_ROUTABLE_CANDIDATES`. Nếu `effectiveK < requ
 
 **[Từ bài báo]** Presentation/explanation giúp thành viên hiểu vì sao item được chọn; survey nêu ví dụ hiển thị prediction của từng người và cả nhóm [2, Mục 3.1, PDF tr. 6].
 
-**[Điều chỉnh]** MeetUp hiển thị ETA từng người, utility thấp nhất, điểm preference và cảnh báo dữ liệu. Explanation không được tạo lý do không có trong feature snapshot.
+**[Điều chỉnh]** MeetUp hiển thị ETA từng người và cảnh báo dữ liệu cho mọi participant. Preference, matched tags và utility chỉ được project cho chính actor đang đọc response. Explanation công khai không chứa numeric group utility/least-misery vì nhóm nhỏ có thể dùng chúng để suy ra utility người khác. Explanation không được tạo lý do không có trong feature snapshot.
 
 `summaryCode` là code deterministic theo ranking strategy, không phải câu do AI sinh:
 
@@ -721,7 +726,7 @@ FAIR_PARETO_RANKED
 LTR_RANKED
 ```
 
-`facts` tối thiểu gồm rank, `effectiveK`, ETA mean/max, candidate least-misery utility, group utility, opening/weather status và Pareto level/inclusion probability khi strategy có dùng chúng. Khi traffic-aware có dữ liệu, explanation có thể nêu chênh lệch `duration-staticDuration`, nhưng không gọi đó là “đường thoáng nhất” nếu engine không so sánh alternative routes. Mỗi fact ghi `unit` và `source` (`ROUTES`, `PLACES`, `WEATHER`, `ENGINE`). Client map `summaryCode` sang template đã review. Không được nói “gần nhất”, “công bằng nhất” hoặc “được mọi người thích” nếu snapshot không chứng minh đúng mệnh đề đó.
+Snapshot nội bộ tối thiểu có rank, `effectiveK`, ETA mean/max, candidate least-misery utility, group utility, opening/weather status, closing risk/penalty và Pareto level/inclusion probability khi strategy có dùng chúng. Public facts chỉ project rank, ETA tổng hợp, opening/weather/closing warning và fact không làm lộ utility riêng. Khi traffic-aware có dữ liệu, explanation có thể nêu chênh lệch `duration-staticDuration`, nhưng không gọi đó là “đường thoáng nhất” nếu engine không so sánh alternative routes. Mỗi fact ghi `unit` và `source` (`ROUTES`, `PLACES`, `WEATHER`, `ENGINE`). Client map `summaryCode` sang template đã review. Không được nói “gần nhất”, “công bằng nhất” hoặc “được mọi người thích” nếu snapshot không chứng minh đúng mệnh đề đó.
 
 #### Bước 11 — Persist và trả kết quả
 
@@ -956,7 +961,8 @@ interface MemberPlaceUtility {
   travelUtility: number;
   preferenceUtility: number;
   placeQualityUtility: number;
-  memberUtility: number;
+  memberUtility: number; // U_base, chỉ actor tương ứng được xem qua API
+  rankingUtility: number; // U_rank sau shared closing penalty, internal only
 }
 ```
 
@@ -974,6 +980,11 @@ interface RankedPlace {
   avgEtaSeconds: number;
   maxEtaSeconds: number;
   etaRangeSeconds: number;
+  closingStatus: 'NOT_SOON' | 'CLOSING_SOON' | 'UNKNOWN';
+  nextClosingAt: string | null;
+  secondsUntilClose: number | null;
+  closingRisk: number;
+  closingPenalty: number;
   memberResults: Array<{
     participantId: string;
     etaSeconds: number;
@@ -999,7 +1010,45 @@ interface RankedPlace {
 }
 ```
 
-### 6.7. Điều kiện dữ liệu
+`RankedPlace` là snapshot nội bộ. Nó không phải DTO trả nguyên xi cho mobile.
+
+### 6.7. Viewer-aware API projection
+
+```ts
+interface RecommendationResultForViewer {
+  runId: string;
+  contextStatus: 'CURRENT_CONTEXT' | 'STALE_CONTEXT';
+  results: Array<{
+    rank: number;
+    candidate: PublicCandidate;
+    avgEtaSeconds: number;
+    maxEtaSeconds: number;
+    memberEtas: Array<{
+      participantId: string;
+      etaSeconds: number;
+    }>;
+    viewerFeature: null | {
+      participantId: string;
+      matchedTags: MemberPlaceFeature['matchedTags'];
+      travelUtility: number;
+      preferenceUtility: number;
+      placeQualityUtility: number;
+      memberUtility: number;
+    };
+    opening: {
+      status: 'OPEN' | 'UNKNOWN';
+      closingStatus: 'NOT_SOON' | 'CLOSING_SOON' | 'UNKNOWN';
+      nextClosingAt: string | null;
+      secondsUntilClose: number | null;
+    };
+    explanation: PublicExplanation;
+  }>;
+}
+```
+
+`memberEtas` luôn được project cho toàn bộ participant thuộc run vì nhóm đã quyết định cùng xem ETA để đánh giá fairness. `viewerFeature` được tìm bằng `participantId` tương ứng với `actorId`; organizer cũng không có ngoại lệ. Không trả `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility`, preference hoặc matched tags của người khác. Nếu actor được phép xem run nhưng không có member feature trong snapshot, `viewerFeature=null`.
+
+### 6.8. Điều kiện dữ liệu
 
 **[Tự đề xuất]** Các invariant bắt buộc:
 
@@ -1374,6 +1423,49 @@ Nếu chạy `S=1.000` sample và quán A xuất hiện trong top-5 ở 730 samp
 
 Giá trị `S` phải được benchmark. Chưa xác định được từ nguồn giá trị phù hợp cho quy mô và latency của MeetUp.
 
+### 7.8. Closing-soon risk và soft ranking penalty
+
+Candidate đã được xác định `CLOSED` tại `scheduledAt` vẫn bị loại ở Bước 5. Phần này chỉ áp dụng cho candidate còn `OPEN` và có `nextClosingAt` đáng tin cậy.
+
+```math
+\Delta_{close}(p) = nextClosingAt(p) - scheduledAt
+```
+
+```math
+R_{close}(p) = clamp\left(1 - \frac{\Delta_{close}(p)}{W_{close}}, 0, 1\right)
+```
+
+```math
+C_{close}(p) = \lambda_{close} \cdot R_{close}(p)
+```
+
+- `W_close = closingSoonWindowSeconds > 0`: cửa sổ được xem là sắp đóng.
+- `R_close ∈ [0,1]`: rủi ro đóng sớm; càng gần giờ đóng càng lớn.
+- `λ_close = closingPenaltyWeight ∈ [0,1]`: mức phạt tối đa.
+- Nếu opening evidence là `UNKNOWN`, không có `nextClosingAt` chắc chắn hoặc `Δ_close >= W_close`, penalty bằng 0; missing data không được biến thành bằng chứng xấu.
+
+Với ranking dựa trên utility:
+
+```math
+U_{rank}(u,p) = clamp(U_{base}(u,p) - C_{close}(p), 0, 1)
+```
+
+`T/P/Q/U_base` vẫn được giữ nguyên để audit và để actor hiểu feature của chính mình. `U_rank` chỉ là input ranking. Group utility, least-misery, member rank, Pareto level và Monte Carlo của algorithm version mới đều tính từ `U_rank`.
+
+Với hai baseline ETA, dùng score thấp hơn tốt hơn:
+
+```math
+S_{min\text{-}sum}(p) = \frac{AvgETA(p)}{\tau} + C_{close}(p)
+```
+
+```math
+S_{min\text{-}max}(p) = \frac{MaxETA(p)}{\tau} + C_{close}(p)
+```
+
+Penalty vì vậy không bao giờ giúp candidate tăng hạng, nhưng candidate vẫn có thể đứng cao nếu lợi thế ETA/preference/fairness lớn hơn rủi ro đóng sớm. Đây là soft ranking signal, không phải luật đẩy mọi `CLOSING_SOON` xuống cuối danh sách.
+
+Baseline dev/staging đề xuất cho test là `closing-policy-dev-v1`: `W_close=5.400 giây` và `λ_close=0,15`. Hai giá trị production phải được hiệu chỉnh bằng feedback/offline evaluation và phê duyệt; thay đổi một trong hai bắt buộc tăng config/algorithm version. Snapshot lưu `nextClosingAt`, `secondsUntilClose`, `closingRisk`, `closingPenalty` và policy version để replay không gọi provider lại.
+
 ## 8. Thuật toán group ranking
 
 ### 8.1. Baseline bắt buộc
@@ -1382,9 +1474,9 @@ Giá trị `S` phải được benchmark. Chưa xác định được từ ngu�
 
 | Strategy | Cách xếp hạng | Mục đích |
 |---|---|---|
-| `min-sum` | ETA trung bình tăng dần. | Baseline hiệu quả tổng thể. |
-| `min-max` | ETA lớn nhất tăng dần, rồi ETA trung bình. | Baseline bảo vệ người đi xa nhất. |
-| `fair-pareto-v1` | XPO-inspired probability, candidate least-misery utility, group utility. | Strategy production đề xuất; list fairness phải được đo riêng ở evaluation. |
+| `min-sum` | `AvgETA/τ + closingPenalty` tăng dần. | Baseline hiệu quả tổng thể có cùng closing-soon policy. |
+| `min-max` | `MaxETA/τ + closingPenalty` tăng dần, rồi adjusted min-sum score. | Baseline bảo vệ người đi xa nhất có cùng closing-soon policy. |
+| `fair-pareto-v1` | XPO-inspired probability trên `U_rank`, candidate least-misery utility và group utility. | Strategy production đề xuất; thay đổi từ `U_base` sang `U_rank` phải tăng `algorithmVersion`. |
 
 ### 8.2. `fair-pareto-v1`
 
@@ -1399,13 +1491,13 @@ function rankFairPareto(candidates, members, requestedK, sampleCount, seed):
     effectiveK = min(requestedK, candidates.length)
 
     for each member u:
-        quantizedUtility[u][p] = round(memberUtility[u][p] / utilityTieEpsilon)
+        quantizedUtility[u][p] = round(rankingUtility[u][p] / utilityTieEpsilon)
         sort candidates by quantizedUtility descending, canonicalCandidateKey ascending
         assign equal rank only when quantizedUtility is equal
 
     for each candidate p:
-        candidateLeastMiseryUtility[p] = min(memberUtility[u][p])
-        groupUtility[p] = average(memberUtility[u][p])
+        candidateLeastMiseryUtility[p] = min(rankingUtility[u][p])
+        groupUtility[p] = average(rankingUtility[u][p])
         dominationCount[p] = number of candidates q where q dominates p
         paretoLevel[p] = dominationCount[p] + 1
 
@@ -1615,7 +1707,7 @@ Mỗi model version lưu:
 | `recommendation_runs` | Metadata một run. | `request_id`, `payload_hash`, `requested_at`, `scheduled_at_snapshot`, opening/weather policy, requested/effective routing preference, `ranking_strategy`, versions, `random_seed`, `requested_k`, `effective_k`, `status`, latency fields. |
 | `recommendation_candidates` | Toàn bộ candidate đã xét, kể cả không vào top-K. | `run_id`, `canonical_candidate_key`, `provider`, `provider_place_id`, `filter_status`, `filter_reason`, `final_rank`. |
 | `recommendation_member_features` | Feature/utility cho từng member–candidate. | ETA, static duration, distance, travel mode, `T`, `P`, `Q`, `U`, route status. |
-| `recommendation_places` | Kết quả tổng hợp và explanation. | scheduled opening status/evidence, weather status/evidence, group utility, fairness, Pareto level, inclusion probability. |
+| `recommendation_places` | Kết quả tổng hợp và explanation. | scheduled opening status/evidence, `next_closing_at`, closing risk/penalty/policy version, weather status/evidence, group utility, fairness, Pareto level, inclusion probability. |
 | `recommendation_impressions` | Candidate nào thực sự được hiển thị. | `event_id`, participant, canonical candidate key, rank, timestamp. |
 | `recommendation_feedback_events` | Event sau hiển thị. | `event_id`, event type, actor, canonical candidate key, timestamp, metadata đã lọc. |
 | `recommendation_algorithm_configs` | Cấu hình bất biến theo version. | weights, thresholds, sample count, checksum. |
@@ -1652,13 +1744,17 @@ Phiên bản đầu dùng response đồng bộ để khớp flow ở Mục 4–
 GET /meetups/{meetupId}/recommendation-runs/{runId}
 ```
 
+Route này phục vụ cả trước và sau vote/finalize; không thêm route “member feature sau vote”. Trước finalize, actor phải là participant `accepted` hiện tại. Sau finalize/kết thúc, actor phải thuộc participant snapshot của run và còn quyền xem meetup/history. `invited`, `rejected`, outsider hoặc actor bị thu hồi quyền đều nhận 403/404 theo chính sách chống enumeration.
+
+GET chỉ đọc snapshot đã persist và gọi `RecommendationResultPresenter.presentForViewer(actorId, run)`. Nó không gọi Places/Routes, không tính lại utility và không thay rank. Vote/finalize response phải trả `runId` cùng `selectedCanonicalCandidateKey`; mobile dùng hai giá trị này để gọi lại GET và đánh dấu candidate đã chọn. `Cache-Control: no-store` là bắt buộc; mọi cache trung gian phải tách theo authorization.
+
 #### Ghi impression
 
 ```http
 POST /recommendation-runs/{runId}/impressions
 ```
 
-Vote vẫn dùng API nghiệp vụ vote hiện có, nhưng payload phải chứa `runId` để liên kết feedback.
+Vote vẫn dùng API nghiệp vụ vote hiện có, nhưng payload phải chứa `runId` để liên kết feedback. Finalize không sao chép feature sang bảng vote; run snapshot là nguồn để xem lại, còn retention policy phải bảo vệ run đã vote/chọn cho đến khi policy được phê duyệt.
 
 ### 11.3. Versioning
 
@@ -1678,6 +1774,9 @@ weatherProviderVersion / weatherThresholdVersion (nullable khi OFF)
 requestedRoutingPreference
 effectiveRoutingPreference
 memberTravelModes
+closingPolicyVersion
+closingSoonWindowSeconds
+closingPenaltyWeight
 randomSeed
 candidateSnapshot
 ```
@@ -1746,7 +1845,9 @@ Google có thể trả lỗi cho toàn response hoặc chỉ một số element 
 - Không ghi raw member coordinates vào log ứng dụng, analytics hoặc training dataset.
 - Provider request có thể cần tọa độ để tính route, nhưng payload không được xuất hiện trong log thông thường.
 - `recommendation_member_features` ưu tiên lưu ETA/distance, không lưu origin coordinate lâu dài.
-- Explanation không chứa tọa độ hoặc tên người nếu không cần.
+- Mọi participant được phép xem `memberEtas`, nhưng presenter chỉ trả matched tags/preference/utility của chính actor. Organizer không có quyền xem feature riêng của người khác.
+- Group utility, candidate least-misery và ranking utility không nằm trong public DTO vì nhóm nhỏ có thể suy ra utility cá nhân từ aggregate.
+- Explanation công khai không chứa tọa độ, tên người hoặc numeric utility của người khác.
 - Dataset offline thay participant ID bằng pseudonymous ID theo export.
 
 ### 12.4. Determinism và replay
@@ -1763,6 +1864,8 @@ Google có thể trả lỗi cho toàn response hoặc chỉ một số element 
 | Hỗ trợ `OPEN_AT_SCHEDULED_TIME` bằng evaluator backend | `scheduledAt` là giờ gặp; `openNow` không trả lời câu hỏi địa điểm có mở lúc đó hay không. Places có current/regular hours và timezone data [8]. | Dùng `openNow`; coi thiếu data là đóng. | Sai semantics hoặc loại nhầm candidate. | Tăng field cost và logic timezone; `regularOpeningHours` không bảo đảm special day ngoài cửa sổ current hours. |
 | Vote sau recommendation | Vote là quyết định trên danh sách đã tạo. | Dùng vote hiện tại để thay đổi ranking trong cùng run. | Tạo vòng lặp khó giải thích và không đúng flow sản phẩm đã chốt. | Recommendation không thích nghi trong cùng phiên. |
 | `avoid` là soft penalty | Vẫn có kết quả khi candidate ít hoặc preference xung đột. | Hard filter. | Một member có thể loại toàn bộ lựa chọn. | Có khả năng item bị `avoid` vẫn xuất hiện; UI phải giải thích. |
+| `CLOSING_SOON` là soft ranking penalty | Nơi còn mở vẫn là lựa chọn hợp lệ nhưng rủi ro trải nghiệm cao hơn. | Hard-filter; chỉ cảnh báo không đổi rank. | Hard-filter dễ làm rỗng tập; warning-only không phản ánh quyết định đã chốt làm candidate tụt hạng. | Cần version window/weight; candidate có lợi thế lớn vẫn có thể đứng cao. |
+| Viewer-aware result trên cùng GET route | Run đã persist đủ ETA/feature; projection theo actor tránh recompute và tránh route trùng. | Route feature riêng sau vote; trả toàn bộ member feature cho organizer. | Route mới tạo hai nguồn contract; organizer không có căn cứ xem preference riêng của người khác. | Presenter và authorization phức tạp hơn; response không cache dùng chung. |
 | Travel mode từng member chỉ gồm `TWO_WHEELER`/`DRIVE`; thiếu thì mặc định xe máy | Thực tế nhóm có thể dùng hai phương tiện khác nhau nhưng vẫn giữ contract và batch hữu hạn. | Một mode cho cả nhóm; hỗ trợ mọi mode ngay. | Một mode kém chính xác; mọi mode làm scope/semantics tăng mạnh. | Nhiều route batch hơn; `TWO_WHEELER` vẫn beta và cần cảnh báo [4][5]. |
 | Traffic-aware là deployment config | Cho phép tắt để giảm latency/chi phí; Google phân biệt `TRAFFIC_UNAWARE` và `TRAFFIC_AWARE` [9]. | Cho mobile bật từng request; luôn bật. | Khó kiểm soát cost và làm run khó so sánh. | Cần snapshot requested/effective preference và fallback rõ ràng. |
 | Không gửi `scheduledAt` làm Routes `departureTime` ở giai đoạn này | `scheduledAt` là giờ đến, không phải giờ đi; Compute Route Matrix không có arrival-time semantics tương đương cho use case này. | Gửi thẳng `scheduledAt`; giải phương trình lặp ETA–departure. | Cách thứ nhất sai nghĩa; cách thứ hai là feature traffic tương lai riêng. | Traffic-aware hiện tại có thể không đại diện cho giờ meetup tương lai. |
@@ -1792,7 +1895,7 @@ Google có thể trả lỗi cho toàn response hoặc chỉ một số element 
 
 #### MeetUp list utility theo member
 
-**[Điều chỉnh]** [1] định nghĩa member utility của recommendation list bằng độ tương tự với personal ground-truth list. MeetUp v1 chưa có personal ground truth, nên không gọi metric dưới đây là utility nguyên bản của [1]. Thay vào đó, v1 dùng discounted average của candidate-level `U_{u,p}`:
+**[Điều chỉnh]** [1] định nghĩa member utility của recommendation list bằng độ tương tự với personal ground-truth list. MeetUp v1 chưa có personal ground truth, nên không gọi metric dưới đây là utility nguyên bản của [1]. Báo cáo phải tách discounted average của `U_base` (chất lượng ETA/preference/place) và `U_rank` (sau closing penalty) để biết closing policy cải thiện an toàn mà không che mất fairness gốc:
 
 ```math
 d_i = \frac{1}{\log_2(i+1)}
@@ -1976,6 +2079,13 @@ Mức “xấu đi quá mức” chưa được chốt và là câu hỏi mở.
 - Version taxonomy outdoor/threshold; thêm `WEATHER_FILTER_RELAXED`.
 - Weather chưa tham gia utility; chỉ eligibility và explanation/warning.
 
+### Giai đoạn 1.4 — Closing-soon và viewer-aware result
+
+- Thêm `ClosingSoonEvaluator` sau scheduled opening: `CLOSED` vẫn bị loại, `CLOSING_SOON` được giữ và tạo risk/penalty theo Mục 7.8.
+- Bump algorithm/config version; persist closing evidence/penalty và replay từ snapshot.
+- Đổi result presenter thành `presentForViewer`: mọi participant thấy ETA, actor chỉ thấy preference/utility của mình; group/least-misery utility không còn trong public DTO.
+- Mở quyền GET run từ requester-only sang participant-aware; vote/finalize trả `runId` để dùng lại cùng GET sau khi có kết quả, không thêm route feature riêng.
+
 ### Giai đoạn 2 — Observability và feedback
 
 - Ghi impression, vote, selection, navigation và favorite bằng `eventId` idempotent.
@@ -2013,6 +2123,7 @@ Mức “xấu đi quá mức” chưa được chốt và là câu hỏi mở.
 9. **[Tự đề xuất]** `TRAFFIC_AWARE` không dự báo đúng traffic tại một meetup xa trong tương lai vì giai đoạn này không gửi `departureTime`.
 10. **[Tự đề xuất]** `regularOpeningHours` không phản ánh chắc chắn ngày lễ/ngoại lệ ngoài cửa sổ của `currentOpeningHours`.
 11. **[Tự đề xuất]** Weather provider, forecast horizon, outdoor taxonomy và threshold production chưa được chốt; policy phải giữ `OFF` cho đến khi có contract/version được duyệt.
+12. **[Tự đề xuất]** `closing-policy-dev-v1` chỉ là baseline dev/staging; window/weight production chưa có feedback để hiệu chỉnh.
 
 ### 16.2. Câu hỏi cần chốt
 
@@ -2034,6 +2145,7 @@ Mức “xấu đi quá mức” chưa được chốt và là câu hỏi mở.
 | LTR score kết hợp fairness bằng công thức nào? | Chưa có contract đủ để promote model khỏi shadow. | So sánh re-ranking strategies offline, chốt `ltrRankingStrategyVersion` rồi mới A/B. |
 | Có cần multi-place-provider retrieval không? | Merge nhiều nguồn cần canonical identity và conflict policy. | Chỉ mở scope sau khi một-provider pipeline có metric ổn định. |
 | Retention cho candidate/feature snapshot là bao lâu? | Cân bằng audit, training và privacy. | Security/privacy review trước production. |
+| `closingSoonWindowSeconds` và `closingPenaltyWeight` production là bao nhiêu? | Quá mạnh làm mất lựa chọn tốt; quá nhẹ khiến warning không ảnh hưởng rank. | Bắt đầu dev bằng 5.400 giây/0,15, đo conversion/final selection và fairness rồi Product phê duyệt. |
 
 ## 17. Tài liệu tham khảo
 

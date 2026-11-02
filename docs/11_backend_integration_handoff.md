@@ -197,6 +197,53 @@ GET /api/v1/meetups/:meetupId/recommendation-runs/:runId
 
 POST chỉ trả `200` sau khi candidate, member feature, full rank, explanation, trạng thái `COMPLETED` và outbox row đã commit. GET chỉ đọc snapshot đã lưu; không gọi lại Google hoặc tính lại ranking. Cả hai trả `results` theo rank và chỉ chứa tối đa `effectiveK`; không trả mảng candidate/member-feature nội bộ hay raw provider order.
 
-Mỗi `results[]` có `rank`, `avgEtaSeconds`, `maxEtaSeconds`, `groupUtility`, `candidateLeastMiseryUtility`, `candidate`, `memberResults[]` và `explanation`. `memberResults[].etaSeconds` là thời lượng để UI giúp participant tự căn giờ đi. `explanation.facts[]` có `key`, `value`, `unit` khi áp dụng và `source` (`ROUTES`, `PLACES`, `WEATHER`, `ENGINE`).
+Contract đích là viewer-aware:
+
+- `memberEtas[]` chỉ có `participantId`, `etaSeconds` và được trả cho mọi participant có quyền xem run.
+- `viewerFeature` chỉ chứa matched tags và `travel/preference/placeQuality/memberUtility` của chính actor; organizer không được xem feature người khác.
+- `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility` và feature của người khác vẫn được persist nội bộ nhưng không nằm trong public DTO.
+- `opening.closingStatus`, `nextClosingAt`, `secondsUntilClose` và warning `CLOSING_SOON` là public vì đây là thuộc tính chung của địa điểm. Numeric closing penalty chỉ dùng nội bộ.
+
+GET phải đổi từ requester-only sang membership-aware. Trước finalize, chỉ participant `accepted` đọc được. Sau finalize/kết thúc, participant thuộc snapshot và còn quyền history đọc được. Route này dùng cả trước và sau vote; không tạo route feature riêng. API finalize trả `runId` và `selectedCanonicalCandidateKey`, mobile gọi lại GET để xem kết quả cuối theo projection của chính actor.
 
 Retry cùng key/payload của run `COMPLETED` trả đúng run và result đã lưu, không thêm row/event. Run `RUNNING` trả `409 RECOMMENDATION_RUN_IN_PROGRESS`; run `FAILED` trả lại failure code đã lưu. Nếu `scheduledAt` hiện tại khác snapshot, GET trả `STALE_CONTEXT` nhưng không sửa kết quả cũ.
+
+## 10. Link mời meetup
+
+Link mời là extension của BE-08, không thay thế lời mời trực tiếp theo account/FCM.
+
+```http
+POST   /api/v1/meetups/:meetupId/invite-links
+GET    /api/v1/meetup-invites/:token/preview
+POST   /api/v1/meetup-invites/:token/accept
+DELETE /api/v1/meetups/:meetupId/invite-links/:linkId
+```
+
+- `POST` body là `{ "expiresAt": "ISO-8601", "revokePrevious": false }`; `expiresAt` phải ở tương lai và không vượt `invitationDeadlineAt`. `revokePrevious` mặc định `false`. Khi `true`, transaction thu hồi **mọi** link hiệu lực của meetup rồi tạo link mới; đây là rotate chính thức, không có endpoint rotate riêng.
+- Token là opaque random secret entropy cao. Response create trả `{ id, inviteUrl, expiresAt, revokedAt: null }`; `inviteUrl`/raw token chỉ xuất hiện đúng lần này. PostgreSQL chỉ lưu `token_hash`, `meetup_id`, `created_by_id`, `expires_at`, `revoked_at`, `use_count`, timestamps và audit metadata cần thiết.
+- Một link hiệu lực được nhiều actor khác nhau accept. `use_count` chỉ tăng khi actor lần đầu trở thành `accepted` qua link đó; retry/cùng actor đã accepted trả membership hiện có, không tăng count hoặc phát event mới. Preview công khai chỉ trả `{ title, scheduledAt, expiresAt }`; không trả participant list, location hoặc preference. Accept yêu cầu JWT và kiểm state/deadline ở thời điểm commit.
+- Rate limit theo token/IP/account; lỗi token dùng contract chống enumeration. Event `MeetupInviteLinkAccepted.v1` phát sau commit; không đặt raw token trong outbox/log/event.
+- Event `MeetupInviteLinkAccepted.v1` phát sau commit; không đặt raw token trong outbox/log/event.
+
+## 11. QR kết bạn hybrid
+
+Backend không sinh hoặc lưu bitmap QR; mobile mã hóa HTTPS universal/app link từ payload backend.
+
+**QR hồ sơ ổn định** dùng public handle ngẫu nhiên/không chứa user ID nội bộ:
+
+```http
+GET  /api/v1/friends/qr-profiles/:publicHandle
+POST /api/v1/friends/public-handle/rotate
+```
+
+`public_handle` là cột `unique`, nullable ở `user_accounts`; không có bảng QR/profile riêng. Preview yêu cầu actor đăng nhập và chỉ trả `{ publicHandle, displayName, avatarUrl, friendship }`, không trả internal `userAccountId`. Chủ tài khoản có thể tắt/rotate handle; handle cũ không resolve sau rotate. Sau preview, mobile dùng `POST /api/v1/friends/requests` với `{ recipientPublicHandle: publicHandle }`; controller resolve handle qua public directory rồi gọi use case friendship hiện có. Scan không tự tạo friendship.
+
+**QR tạm thời** dùng phiên Redis TTL:
+
+```http
+POST   /api/v1/friends/qr-sessions
+GET    /api/v1/friends/qr-sessions/:token
+DELETE /api/v1/friends/qr-sessions/:sessionId
+```
+
+Redis dùng key dẫn xuất từ token hash/HMAC, không dùng raw token làm key hoặc value. Key giữ owner, session ID, expiry và revoke state với TTL; không cần bảng QR riêng. Resolve chỉ trả `{ displayName, avatarUrl, friendship }` và không trả internal ID. Sau preview, mobile gọi `POST /api/v1/friends/requests` với `{ qrSessionToken: token }`; controller resolve token rồi gọi cùng friend-request service. Self/duplicate/pending/accepted/blocked/rate-limit dùng đúng rule BE-03. Token, email, số điện thoại, tọa độ và access token không được ghi log hoặc nhúng trong QR.

@@ -22,11 +22,11 @@ Người tạo meetup và thành viên meetup đều là Người dùng. Google 
 
 ### 3.1 Tạo và chốt meetup
 
-1. Người tạo nhập tên, thời gian, loại địa điểm, bán kính và mời một hoặc nhiều bạn.
+1. Người tạo nhập tên, thời gian, loại địa điểm, bán kính và mời một hoặc nhiều người bằng lời mời trực tiếp hoặc liên kết mời có thời hạn.
 2. Hệ thống tạo meetup ở trạng thái **Đang mời**, gửi thông báo.
 3. Người được mời chấp nhận hoặc từ chối. Khi chấp nhận, họ chọn sở thích tạm thời cho meetup; profile chỉ dùng để điền sẵn khi họ chưa chọn. Nếu đã bật chia sẻ vị trí trong hồ sơ, vị trí hợp lệ tự được dùng cho meetup.
-4. Khi có ít nhất 2 người tham gia và có đủ vị trí còn hiệu lực, người tạo bấm **Tìm địa điểm**. Engine tính chính xác với tối đa 20 người, chạy batch với 21–50 người và gom cụm khi trên 50 người.
-5. Hệ thống tìm địa điểm, lấy ETA và hiển thị tối đa 5 nơi cùng lý do xếp hạng.
+4. Khi có ít nhất 2 người tham gia và có đủ vị trí còn hiệu lực, người tạo bấm **Tìm địa điểm**. Engine luôn yêu cầu Route Matrix đầy đủ cho mọi thành viên hợp lệ; khi ma trận lớn, backend chia batch theo giới hạn provider nhưng không đổi sang ETA ước lượng theo cụm.
+5. Hệ thống tìm địa điểm, lấy ETA và hiển thị tối đa 5 nơi cùng lý do xếp hạng. Địa điểm mở tại giờ meetup nhưng sắp đóng vẫn được giữ, được cảnh báo và chịu soft penalty nên có thể tụt hạng.
 6. Thành viên vote. Đến hạn vote, người tạo chốt một nơi (hoặc hệ thống gợi ý nơi có nhiều vote nhất khi người tạo bấm chốt).
 7. Hệ thống thông báo, meetup thành **Đã chốt**; mỗi người có thể mở Google Maps để đi.
 8. Đến khi kết thúc hoặc hủy, hệ thống ngừng phát vị trí vào room meetup và chuyển trạng thái **Đã kết thúc** hoặc **Đã hủy**.
@@ -38,6 +38,17 @@ Sau khi có danh sách đề xuất, người dùng có thể bật lọc “đa
 Người dùng có thể bật phát hiện bạn ở gần. Khi hai người là bạn bè, cùng bật tính năng và ở trong bán kính đã chọn, hệ thống chỉ gửi lời gợi ý tạo meetup. Thông báo không chứa tọa độ, địa chỉ hoặc vị trí chính xác của người kia.
 
 Khi người dùng yêu cầu, hệ thống dùng điểm xếp hạng, ETA trung bình/lớn nhất, trạng thái mở cửa và sở thích để tạo lời giải thích ngắn. Dịch vụ AI chỉ nhận dữ liệu tổng hợp như “3 thành viên, Max ETA 15 phút”; không nhận latitude/longitude, lịch sử GPS hoặc tên thật.
+
+### 3.5 Liên kết mời meetup và QR kết bạn
+
+Người tạo meetup có thể tạo liên kết mời HTTPS/deep link để chia sẻ ngoài ứng dụng. Một link đang hiệu lực được **nhiều người khác nhau** dùng cho đến khi hết hạn hoặc bị thu hồi; retry của cùng actor không tạo membership hoặc lần dùng mới. Liên kết dùng token ngẫu nhiên có thời hạn và chỉ cho tham gia khi meetup còn nhận thành viên. Backend chỉ lưu hash của token; chuỗi token gốc chỉ xuất hiện trong URL trả cho người tạo. Tạo link mới với `revokePrevious=true` là thao tác rotate: trong cùng transaction thu hồi mọi link đang hiệu lực của meetup rồi tạo link mới. Lời mời trực tiếp theo tài khoản vẫn được giữ để gửi FCM cho người nhận cụ thể.
+
+QR kết bạn dùng mô hình hybrid:
+
+- **QR hồ sơ ổn định:** mã hóa URL chứa public handle không chứa email, số điện thoại hoặc user ID nội bộ. `public_handle` là cột unique, nullable trong `user_accounts`; không tạo bảng QR/profile riêng. Người quét xem hồ sơ công khai tối thiểu rồi chủ động bấm gửi lời mời kết bạn bằng handle, không nhận internal user ID. Chủ hồ sơ có thể tắt hoặc xoay public handle để vô hiệu QR cũ.
+- **QR tạm thời:** mã hóa token ngẫu nhiên có TTL trong Redis cho tình huống gặp trực tiếp. Token chỉ resolve ra hồ sơ công khai tối thiểu sau khi người quét đăng nhập; hết hạn/thu hồi thì không dùng được. Kết quả cuối vẫn đi qua cùng luật tạo friendship hiện có.
+
+Không lưu ảnh QR trong database. PostgreSQL chỉ lưu public handle và friendship; Redis chỉ giữ phiên QR tạm thời. Riêng link mời meetup cần bảng bền vững vì phải hỗ trợ thu hồi, hết hạn, audit và thống kê số lần dùng.
 
 ### 3.4 Sở thích meetup
 
@@ -77,8 +88,13 @@ Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ET
 | BR-17 | Phát hiện bạn ở gần yêu cầu cả hai người cùng bật tính năng, là bạn bè và có vị trí còn hiệu lực. Hệ thống không tự bật chia sẻ vị trí vì tính năng này. |
 | BR-18 | Gợi ý bạn ở gần được giới hạn tối đa một lần cho cùng một cặp trong 2 giờ để tránh làm phiền. |
 | BR-19 | Meetup không giới hạn số thành viên. Chỉ thành viên có trạng thái tham gia và vị trí còn hiệu lực được dùng để tính recommendation. |
-| BR-20 | Tối đa 20 thành viên tính ETA chính xác. Với 21–50 người, Route Matrix chia batch. Trên 50 người, hệ thống gom cụm vị trí và UI ghi rõ kết quả là ước lượng theo cụm. |
+| BR-20 | Mọi candidate được xếp hạng phải có ETA hợp lệ cho mọi thành viên có location hợp lệ. Route Matrix chia batch theo giới hạn origin × destination của provider; số thành viên lớn có thể làm run bị từ chối/giới hạn bởi cost policy nhưng không được thay ETA thật bằng cluster estimate trong v1. |
 | BR-21 | Nếu thành viên đã chọn ít nhất một tag meetup, chỉ các tag meetup đã chọn được tính; tag thiếu không tính, không mặc định `normal` và không fallback từng tag. Chỉ khi chưa chọn tag meetup nào mới fallback toàn bộ sang các tag đã lưu trong profile. Xóa toàn bộ lựa chọn meetup đưa thành viên về fallback profile. |
+| BR-22 | Candidate `CLOSED` tại `scheduledAt` bị loại. Candidate vẫn `OPEN` nhưng sẽ đóng trong cửa sổ `closingSoonWindowSeconds` không bị loại; engine tính `closingRisk` có version, áp soft penalty vào ranking và trả warning `CLOSING_SOON`. Thiếu/không chắc giờ đóng không bị phạt như thể đã biết chắc. |
+| BR-23 | Mọi thành viên được phép xem kết quả đều thấy ETA của mọi thành viên trong run. Preference, matched tags và utility chỉ được trả cho chính người đang gọi API; organizer không được xem feature riêng của người khác. Group utility/least-misery chỉ là dữ liệu nội bộ, không trả công khai vì có thể suy ra utility cá nhân ở nhóm nhỏ. |
+| BR-24 | Sau khi vote/chốt, không tính lại feature và không cần endpoint feature mới. Thành viên dùng `runId` của kết quả vote/finalize để gọi lại GET recommendation run; backend dựng response theo actor từ snapshot bất biến. Người ngoài, người chỉ được mời hoặc bị từ chối không được đọc run. |
+| BR-25 | Link mời meetup chỉ do organizer tạo/thu hồi, phải có hạn dùng không vượt `invitationDeadlineAt`, không chứa meetup ID nhạy cảm trong token và chỉ lưu `token_hash`. Một link hiệu lực được nhiều actor khác nhau dùng; cùng actor accept lại là idempotent và không tăng `useCount`. `POST` tạo link với `revokePrevious=true` atomically thu hồi mọi link hiệu lực trước khi tạo link mới. Accept yêu cầu đăng nhập và tuân state/deadline của meetup. |
+| BR-26 | QR hồ sơ chỉ mở preview tối thiểu rồi dùng luồng gửi friend request hiện có; không tự kết bạn khi scan. `public_handle` unique/nullable ở `user_accounts`; preview và request QR dùng handle hoặc QR session token, không trả/nhận internal user ID. QR tạm thời dùng token entropy cao và Redis TTL. Cả hai loại đều áp dụng luật self/duplicate/block/rate-limit của friendship và không chứa email, số điện thoại, tọa độ hoặc access token. |
 
 ## 5. Công thức xếp hạng đơn giản
 
@@ -97,7 +113,7 @@ Với mỗi nơi `p`, hệ thống tính ETA của từng người bằng Google
 
 Hệ thống không dùng `priceLevel`, Budget filter hoặc PricePenalty. `priceLevel` là mức phân loại tham khảo từ Google Places, không phải giá thực tế; dùng nó để loại hoặc hạ hạng địa điểm có thể tạo gợi ý sai.
 
-Các trọng số đặt trong cấu hình backend để nhóm có thể thử nghiệm. UI phải hiển thị Avg ETA, Max ETA và ETA từng người; không cần tiết lộ toàn bộ công thức cho người dùng cuối.
+Các trọng số đặt trong cấu hình backend để nhóm có thể thử nghiệm. UI phải hiển thị Avg ETA, Max ETA và ETA từng người. Candidate sắp đóng cửa được áp soft penalty có version theo thiết kế tại `12_meetup_group_recommendation_engine.md`; không được hard-filter chỉ vì `CLOSING_SOON`. UI không cần tiết lộ toàn bộ công thức cho người dùng cuối.
 
 ## 6. Đặc tả use case
 
@@ -153,9 +169,9 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 **Tác nhân:** Người tạo meetup; Google Maps Platform.  
 **Điều kiện trước:** Có tối thiểu 2 thành viên và 2 vị trí còn hiệu lực; meetup chưa chốt.  
-**Luồng chính:** Người tạo bấm tìm; backend đọc sở thích meetup, tính điểm trung tâm, lấy nơi ứng viên, chọn chiến lược exact/batch/cluster theo số người, lấy route matrix, chấm điểm theo thuật toán cố định và trả top 5.  
+**Luồng chính:** Người tạo bấm tìm; backend đọc sở thích meetup, tính search-center medoid, lấy nơi ứng viên, chia Route Matrix theo batch khi cần, chấm điểm theo thuật toán có version và trả top 5. Candidate mở nhưng sắp đóng chịu soft penalty và có warning; candidate đóng tại `scheduledAt` bị loại.
 **Ngoại lệ:** Thiếu vị trí, API giới hạn/lỗi, không tìm thấy nơi phù hợp.  
-**Kết quả:** Danh sách có tên, ảnh nếu có, rating, giờ mở cửa, Avg ETA, Max ETA, ETA từng người và lý do xếp hạng.
+**Kết quả:** Danh sách có tên, ảnh nếu có, rating, giờ mở cửa, Avg ETA, Max ETA, ETA từng người và lý do xếp hạng. Response cho một viewer chỉ chứa preference/utility của chính viewer đó.
 
 ### UC-08 Vote và chốt địa điểm
 
@@ -164,6 +180,8 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 **Luồng chính:** Thành viên chọn một nơi; hệ thống phát số vote mới; hết hạn hoặc khi đủ phản hồi, người tạo chốt.  
 **Ngoại lệ:** Vote sau hạn, vote nơi không nằm trong danh sách hiện tại, người tạo không có quyền với meetup khác.  
 **Kết quả:** Địa điểm và thời gian được chốt, mọi thành viên nhận FCM.
+
+Sau khi có kết quả, API vote/finalize trả `runId` và candidate được chọn. Mobile dùng cùng `GET /api/v1/meetups/:meetupId/recommendation-runs/:runId` để xem lại ETA và feature của chính mình; không có route “feature sau vote” riêng và không recompute run.
 
 ### UC-09 Thiết lập sở thích meetup
 
@@ -220,16 +238,38 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 **Luồng chính:** Xem báo cáo, khóa/mở khóa tài khoản, xem số liệu người dùng/meetup và trạng thái dịch vụ.  
 **Kết quả:** Có công cụ xử lý vi phạm mà không làm phức tạp phần mobile.
 
+### UC-16 Chia sẻ liên kết mời meetup
+
+**Tác nhân:** Người tạo meetup, Người nhận liên kết.
+
+**Điều kiện trước:** Meetup còn nhận thành viên; organizer đã đăng nhập.
+
+**Luồng chính:** Organizer tạo link có hạn; backend trả raw URL một lần và lưu hash token. Link có thể được nhiều người dùng cho đến expiry/revoke. Người nhận mở link, đăng nhập, xem preview tối thiểu và xác nhận tham gia. Backend kiểm tra token, deadline, trạng thái meetup rồi thêm/chuyển participant sang `accepted` trong transaction; accept lại của cùng actor trả membership hiện có và không tăng `useCount`. Organizer có thể thu hồi hoặc rotate bằng cách tạo link mới với `revokePrevious=true`, thao tác này thu hồi mọi link hiệu lực trước đó trong cùng transaction.
+
+**Ngoại lệ:** Token sai/hết hạn/đã thu hồi, meetup đã khóa/hủy/kết thúc, actor đã bị loại theo policy hoặc request vượt rate limit.
+**Kết quả:** Người nhận tham gia meetup qua link nhưng mọi luật membership hiện có vẫn được giữ; không lộ danh sách thành viên hoặc vị trí trong preview công khai.
+
+### UC-17 Kết bạn bằng QR hybrid
+
+**Tác nhân:** Người dùng tạo QR, Người dùng quét QR.
+
+**Điều kiện trước:** Hai bên đã đăng nhập khi gửi lời mời kết bạn.
+
+**Luồng chính:** Với QR hồ sơ, app mã hóa public profile URL; người quét xem preview tối thiểu rồi gửi request với `recipientPublicHandle`, không phải internal ID. Với QR tạm thời, backend tạo token TTL trong Redis; app mã hóa URL token, người quét resolve token rồi gửi request với `qrSessionToken`. Controller resolve public handle/session token và cả hai nhánh gọi cùng service tạo friendship.
+
+**Ngoại lệ:** QR tắt/hết hạn/thu hồi, tự quét, đã có friendship/pending request, bị block hoặc rate limit.
+**Kết quả:** Tạo pending friend request hoặc trả trạng thái quan hệ hiện có; không lưu ảnh QR và không nhúng dữ liệu cá nhân nhạy cảm vào mã.
+
 ## 7. Dữ liệu cần lưu
 
 | Nhóm | Dữ liệu chính | Nơi lưu |
 |---|---|---|
 | Tài khoản | User, refresh token, profile, trạng thái khóa | PostgreSQL |
-| Quan hệ | Friendship, lời mời bạn bè | PostgreSQL |
-| Meetup | Meetup, MeetupMember, MeetupMemberPreference, Vote, PlaceSnapshot, FavoritePlace, ChatMessage | PostgreSQL |
+| Quan hệ | Friendship, lời mời bạn bè, `user_accounts.public_handle` ổn định (unique/nullable) | PostgreSQL |
+| Meetup | Meetup, MeetupMember, MeetupMemberPreference, Vote, PlaceSnapshot, FavoritePlace, ChatMessage, hash/token metadata của link mời | PostgreSQL |
 | Profile | UserPreference dùng để điền sẵn preference meetup | PostgreSQL |
 | Quyền | PrivacySetting, thời hạn chia sẻ | PostgreSQL |
 | Context mở rộng | NearbyPreference, ngưỡng gần, lần gợi ý gần nhất, AI explanation cache đã ẩn dữ liệu nhạy cảm | PostgreSQL hoặc Redis TTL |
-| Realtime | LatestLocation, presence, active meetup, socket room | Redis có TTL |
+| Realtime | LatestLocation, presence, active meetup, socket room, phiên QR kết bạn tạm thời | Redis có TTL |
 
 `PlaceSnapshot` chỉ lưu thông tin nơi đã được chọn hoặc danh sách đã dùng cho meetup; không cần lưu toàn bộ lịch sử truy vấn.

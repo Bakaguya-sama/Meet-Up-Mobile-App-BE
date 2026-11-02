@@ -32,6 +32,10 @@
 | PB-22 | Admin tối giản và báo cáo người dùng | Planned | 5 | Khóa tài khoản, xem số liệu cơ bản | PB-01 |
 | PB-23 | Đo độ trễ, pin, privacy và load test | Core | 8 | Có log, kịch bản test, kết quả demo | PB-07, PB-13 |
 | PB-24 | Weather hoặc voice meetup | Could | 13 | Chỉ chọn một tính năng nếu toàn bộ Planned đã ổn | PB-13 |
+| PB-25 | Cảnh báo sắp đóng cửa và soft ranking penalty | Planned | 8 | Không loại candidate còn mở; warning có evidence; penalty có version làm candidate có thể tụt hạng | PB-13, PB-16 |
+| PB-26 | Kết quả recommendation theo người xem | Core | 8 | Mọi participant thấy ETA; chỉ actor thấy preference/utility của mình; xem lại cùng run sau vote | PB-13, PB-14 |
+| PB-27 | Liên kết mời meetup có hạn và thu hồi | Planned | 8 | Token entropy cao, chỉ lưu hash; preview tối thiểu; accept idempotent và đúng deadline/state | PB-09, PB-10 |
+| PB-28 | QR kết bạn hybrid | Planned | 8 | QR hồ sơ ổn định và QR token Redis TTL đều đi qua luật friendship; không nhúng PII | PB-03, PB-04 |
 
 ## Sprint đề xuất 12 tuần
 
@@ -42,8 +46,8 @@
 | 2 | 4–5 | Xin quyền, chia sẻ và xem vị trí an toàn | PB-05 đến PB-08 |
 | 3 | 6–7 | Tạo meetup, mời và chia sẻ theo meetup | PB-09 đến PB-11 |
 | 4 | 8–9 | Top địa điểm có ETA công bằng | PB-12 đến PB-13 |
-| 5 | 10 | Vote, chốt, FCM, lọc đang mở cửa và lịch sử | PB-14 đến PB-18 |
-| 6 | 11 | Chat, AI giải thích, phát hiện bạn ở gần | PB-19 đến PB-21 |
+| 5 | 10 | Vote, chốt, FCM, lọc mở cửa, closing-soon, viewer projection và lịch sử | PB-14 đến PB-18, PB-25, PB-26 |
+| 6 | 11 | Chat, AI, nearby, link mời và QR kết bạn | PB-19 đến PB-21, PB-27, PB-28 |
 | 7 | 12 | Admin, kiểm thử, sửa lỗi, Docker, demo | PB-22, PB-23, deployment |
 
 ## Definition of Done
@@ -58,6 +62,7 @@ Excel là nguồn phân công Backend chính. Hiện nhóm có hai người Back
 |---|---|---|
 | Socket và vị trí | Backend 2 | Nền tảng Socket sở hữu kết nối, xác thực khi kết nối, room, presence và cách phát event. Chức năng vị trí chỉ nhận `location:update`, kiểm quyền, lưu Redis TTL và phát `LocationUpdated`. |
 | Meetup và xếp hạng | Backend 1 / Backend 2 | Backend 1 quản lý trạng thái và thành viên meetup. Backend 2 sở hữu thuật toán xếp hạng cố định theo ETA, sở thích meetup và rating. |
+| Chia sẻ nghiệp vụ | Backend 1 | Link mời meetup lưu hash token bền vững; QR hồ sơ dùng public handle; QR tạm thời dùng Redis TTL. Ảnh QR do mobile dựng từ URL và không lưu ở backend. |
 | Vote và realtime | Backend 1 / Backend 2 | Backend 1 sở hữu luật vote/chốt và phát `VoteUpdated`. Backend 2 chỉ cung cấp kênh Socket để gửi event. |
 | FCM | Backend 2 | Chỉ sở hữu token thiết bị, worker và hàm gửi chung. Luồng meetup, vote hoặc nearby quyết định lúc nào cần phát event, không tự gọi logic FCM. |
 | Nearby friend | Backend 2 | Phải dùng quyền từ privacy, vị trí realtime và nền tảng FCM. Không tự đọc hoặc phát tọa độ chính xác. |
@@ -65,6 +70,6 @@ Excel là nguồn phân công Backend chính. Hiện nhóm có hai người Back
 
 ### Event cần chốt trước khi làm song song
 
-`LocationUpdated`, `MeetupMemberChanged`, `PreferenceUpdated`, `RecommendationReady`, `VoteUpdated`, `MeetupFinalized`.
+`LocationUpdated`, `MeetupMemberChanged`, `PreferenceUpdated`, `RecommendationReady`, `VoteUpdated`, `MeetupFinalized`, `MeetupInviteLinkAccepted`.
 
 Mỗi event cần có tên, payload tối thiểu, người phát, người nhận và trường hợp không được phát do thiếu quyền. Không đưa token, tọa độ chính xác hoặc dữ liệu AI nhạy cảm vào log/event không cần thiết.

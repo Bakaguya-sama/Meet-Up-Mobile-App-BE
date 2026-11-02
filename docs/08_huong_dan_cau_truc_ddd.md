@@ -71,9 +71,9 @@ Context nhận mũi tên cần thông tin hoặc contract từ context ở ngu�
 | Context/module | Loại domain | Sở hữu nghiệp vụ và dữ liệu |
 |---|---|---|
 | `auth` | Generic/Supporting | Đăng ký, đăng nhập, OAuth, session/refresh token, trạng thái tài khoản, hồ sơ, preference mặc định và privacy setting. Không sở hữu vị trí hiện thời. |
-| `friends` | Supporting | Lời mời kết bạn, chấp nhận/từ chối/chặn và kiểm tra quan hệ bạn bè. |
-| `meetups` | **Core** | Vòng đời meetup, organizer, participant, preference theo meetup, vote, chốt/hủy/kết thúc, lịch sử. |
-| `recommendations` | **Core** | Chọn chiến lược exact/batch/cluster, lấy ứng viên, ETA, xếp hạng, place snapshot và lời giải thích theo luật. |
+| `friends` | Supporting | Lời mời kết bạn, chấp nhận/từ chối/chặn, kiểm tra quan hệ, public handle và QR session tạm thời. Quét QR chỉ resolve hồ sơ tối thiểu rồi đi qua cùng luật friend request. |
+| `meetups` | **Core** | Vòng đời meetup, organizer, participant, preference theo meetup, vote, chốt/hủy/kết thúc, lịch sử và link mời có expiry/revoke. |
+| `recommendations` | **Core** | Lấy ứng viên, Route Matrix được batch nhưng giữ ETA thật cho từng member–candidate, opening/closing-soon, xếp hạng, place snapshot, projection kết quả theo viewer và lời giải thích theo luật. |
 | `locations` | Supporting | Nhận/kiểm tra vị trí, latest location TTL, presence và quyền phát vị trí realtime. Không lưu lịch sử GPS. |
 | `chat` | Supporting | Phòng chat theo meetup, quyền đọc/gửi, tin nhắn và attachment metadata. |
 | `notifications` | Generic | Device token, delivery, FCM adapter, worker; không tự quyết định nghiệp vụ nào cần gửi. |
@@ -682,8 +682,11 @@ Domain error có mã ổn định như `MEETUP_ALREADY_FINALIZED`; global except
 - `accuracy > 100m` được đánh dấu và không dùng để kết luận đã đến.
 - Chỉ organizer chốt; không sửa participant/filter sau khi chốt.
 - Một participant có tối đa một vote; vote mới thay vote cũ trước deadline.
-- Hòa phiếu ưu tiên Max ETA thấp hơn, rồi score thấp hơn/tốt hơn theo công thức.
-- Strategy là exact với `<= 20`, batch với `21..50`, cluster với `> 50` participant hợp lệ.
+- Hòa phiếu ưu tiên Max ETA thấp hơn, rồi tie-break deterministic theo algorithm/config version của run.
+- Không có strategy cluster trong v1. Route Matrix được chia batch theo giới hạn provider nhưng mọi candidate được xếp hạng vẫn phải có ETA thật cho mọi participant hợp lệ.
+- Candidate `CLOSED` bị loại; `CLOSING_SOON` được giữ, có warning và soft penalty làm score xấu đi; missing/unknown opening hours không bị phạt.
+- Mọi participant có quyền được thấy ETA của mọi participant; response chỉ trả preference/utility của actor hiện tại và không lộ utility aggregate.
+- Sau vote/finalize, client dùng lại GET recommendation run với `runId`; không tạo route feature riêng hoặc recompute run.
 - Meetup preference ưu tiên profile fallback.
 - Người rời meetup không gửi chat mới.
 - Nearby yêu cầu opt-in hai phía và cooldown 2 giờ.
@@ -693,7 +696,9 @@ Tên test nên mô tả luật nghiệp vụ, ví dụ:
 
 ```ts
 it('rejects finalization when actor is not the organizer', () => {});
-it('uses cluster strategy when more than 50 valid participants join', () => {});
+it('batches a large route matrix without replacing member eta by a cluster estimate', () => {});
+it('lowers a closing-soon candidate rank without filtering it out', () => {});
+it('returns only the current viewer preference and utility', () => {});
 ```
 
 ## 14. Quy tắc bảo mật và dữ liệu riêng tư
