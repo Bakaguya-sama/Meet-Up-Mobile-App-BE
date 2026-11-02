@@ -11,7 +11,10 @@ Base URL: `/api/v1/friends`. Tất cả endpoint yêu cầu `Authorization: Bear
 | GET | `/search` | `q` (tên/email), `offset`, `limit` | 200, trang người dùng và quan hệ hiện tại |
 | GET | `/` | `offset`, `limit` | 200, trang bạn bè `accepted` |
 | GET | `/requests` | `direction=received\|sent`, `offset`, `limit` | 200, trang lời mời `pending` |
-| POST | `/requests` | Chính xác một trong `{ "recipientId": "<uuid>" }`, `{ "recipientPublicHandle": "<opaque handle>" }`, `{ "qrSessionToken": "<opaque token>" }` | 201, friendship |
+| POST | `/requests` | Chính xác một trong `recipientId` hoặc `recipientPublicHandle` | 201; selector QR chỉ trả `{ status, requestedAt }` |
+| GET | `/qr-profiles/:publicHandle` | Stable handle | 200, hồ sơ tối thiểu và trạng thái friendship; không có account ID |
+| POST | `/public-handle/rotate` | Không cần body | 200, public handle mới |
+| DELETE | `/public-handle` | Không cần body | 204, handle bị vô hiệu hóa |
 | POST | `/requests/:requestId/accept` | Không cần body | 200, friendship `accepted` |
 | POST | `/requests/:requestId/reject` | Không cần body | 200, friendship `rejected` |
 | DELETE | `/:friendshipId` | Không cần body | 204, friendship bị hủy |
@@ -20,7 +23,7 @@ Pagination: `offset=0`, `limit=20` mặc định; `offset` từ 0–100000, `lim
 
 Tìm kiếm không phân biệt hoa/thường, khớp một phần tên/email, trim khoảng trắng; `q` dài 1–255 ký tự sau trim. `%`, `_`, `\` là ký tự tìm kiếm bình thường. Loại chính actor, tài khoản bị khóa và đã xóa. Chỉ trả `id`, `displayName`, `avatarUrl` và `friendship` (`null` nếu chưa có quan hệ); không trả email hoặc thông tin xác thực.
 
-`POST /requests` yêu cầu đúng một selector recipient. `recipientId` chỉ dành cho search/direct flow hiện có. QR stable dùng `recipientPublicHandle`; QR temporary dùng `qrSessionToken`. Controller resolve handle/token qua public directory hoặc Redis, sau đó gọi cùng `CreateFriendRequestUseCase`; aggregate không có nhánh QR riêng. Body có 0 hoặc hơn 1 selector trả `400`. Raw QR token phải được redaction trước logging.
+`POST /requests` yêu cầu đúng một selector: `{ "recipientId": "<uuid>" }` hoặc `{ "recipientPublicHandle": "<opaque handle>" }`. Selector handle resolve người nhận đang hoạt động rồi dùng lại friend-request use case hiện có. Nhánh QR chỉ trả `{ status, requestedAt }`, không có account ID. Selector rỗng, null hoặc có nhiều giá trị trả `400`; handle không hợp lệ/vô hiệu hóa hoặc account không hoạt động trả lỗi người nhận không khả dụng. `qrSessionToken` sẽ được thêm sau khi hoàn tất Redis session.
 
 Friendship gồm `id`, `userAId`, `userBId`, `requestedById`, `status`, `requestedAt`, `respondedAt`, `updatedAt`. Timestamp trả ISO 8601. Danh sách quan hệ thêm `user` là hồ sơ của phía còn lại; `user=null` nếu tài khoản đó đã bị khóa/xóa sau khi tạo quan hệ. Quan hệ vẫn được giữ, không làm lệch pagination. Dùng `requestedById` để phân biệt lời mời đến/đi trong kết quả tìm kiếm.
 
@@ -79,6 +82,7 @@ Contract dự kiến:
 ```http
 GET  /api/v1/friends/qr-profiles/:publicHandle
 POST /api/v1/friends/public-handle/rotate
+DELETE /api/v1/friends/public-handle
 POST /api/v1/friends/requests
 ```
 
