@@ -15,6 +15,7 @@ import { ResolvePublicQrProfileQuery } from './application/queries/resolve-publi
 import { SearchUsersQuery } from './application/queries/search-users.query';
 import { SendFriendRequestUseCase } from './application/use-cases/send-friend-request.use-case';
 import { CreateFriendQrSessionUseCase } from './application/use-cases/create-friend-qr-session.use-case';
+import { ManageFriendQrSessionUseCase } from './application/use-cases/manage-friend-qr-session.use-case';
 import { RespondFriendRequestUseCase } from './application/use-cases/respond-friend-request.use-case';
 import { UnfriendUseCase } from './application/use-cases/unfriend.use-case';
 import { AuthUserDirectoryAdapter } from './infrastructure/adapters/auth-user-directory.adapter';
@@ -51,6 +52,20 @@ import { PrivacySelectedFriendPurge } from '../auth/application/public/privacy-s
           config.getOrThrow<string>('app.publicAppBaseUrl'),
         ),
       inject: [FRIEND_QR_SESSION_STORE, ConfigService],
+    },
+    {
+      provide: ManageFriendQrSessionUseCase,
+      useFactory: (
+        sessions: FriendQrSessionStorePort,
+        friendships: FriendshipStorePort,
+        users: FriendUserDirectoryPort,
+      ) =>
+        new ManageFriendQrSessionUseCase(sessions, friendships, users),
+      inject: [
+        FRIEND_QR_SESSION_STORE,
+        FRIENDSHIP_STORE,
+        FRIEND_USER_DIRECTORY,
+      ],
     },
     { provide: FRIEND_USER_DIRECTORY, useClass: AuthUserDirectoryAdapter },
     {

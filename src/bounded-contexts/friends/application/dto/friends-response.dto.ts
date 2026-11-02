@@ -39,3 +39,9 @@ export interface PublicQrProfileDto {
   avatarUrl: string | null;
   friendship: FriendshipStatus | null;
 }
+
+export interface TemporaryQrProfileDto {
+  displayName: string;
+  avatarUrl: string | null;
+  friendship: FriendshipStatus | null;
+}
