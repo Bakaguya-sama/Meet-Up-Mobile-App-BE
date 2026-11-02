@@ -12,6 +12,13 @@ export const configuration = () => ({
   redis: {
     url: process.env.REDIS_URL ?? 'redis://localhost:6379',
   },
+  meetupInvites: {
+    rateLimit: Number(process.env.MEETUP_INVITE_RATE_LIMIT),
+  },
+  friendQr: {
+    sessionTtlSeconds: Number(process.env.FRIEND_QR_SESSION_TTL_SECONDS),
+    rateLimit: Number(process.env.FRIEND_QR_RATE_LIMIT),
+  },
   googleMaps: {
     apiKey: process.env.GOOGLE_MAPS_API_KEY ?? '',
   },

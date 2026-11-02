@@ -68,6 +68,21 @@ const environmentSchema = Joi.object({
   REDIS_URL: Joi.string()
     .uri({ scheme: ['redis', 'rediss'] })
     .default('redis://localhost:6379'),
+  FRIEND_QR_SESSION_TTL_SECONDS: Joi.when('NODE_ENV', {
+    is: 'test',
+    then: Joi.number().integer().min(60).max(86400).optional(),
+    otherwise: Joi.number().integer().min(60).max(86400).required(),
+  }),
+  MEETUP_INVITE_RATE_LIMIT: Joi.when('NODE_ENV', {
+    is: 'test',
+    then: Joi.number().integer().min(1).max(100000).optional(),
+    otherwise: Joi.number().integer().min(1).max(100000).required(),
+  }),
+  FRIEND_QR_RATE_LIMIT: Joi.when('NODE_ENV', {
+    is: 'test',
+    then: Joi.number().integer().min(1).max(100000).optional(),
+    otherwise: Joi.number().integer().min(1).max(100000).required(),
+  }),
   GOOGLE_MAPS_API_KEY: Joi.string().allow('').optional(),
   FIREBASE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   FIREBASE_PROJECT_ID: Joi.when('FIREBASE_ENABLED', {
