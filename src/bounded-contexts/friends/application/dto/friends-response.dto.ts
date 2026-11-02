@@ -32,3 +32,10 @@ export interface FriendshipListItemDto extends FriendshipDto {
   /** Null when the other account is no longer available. */
   user: FriendUserDto | null;
 }
+
+export interface PublicQrProfileDto {
+  publicHandle: string;
+  displayName: string;
+  avatarUrl: string | null;
+  friendship: FriendshipStatus | null;
+}

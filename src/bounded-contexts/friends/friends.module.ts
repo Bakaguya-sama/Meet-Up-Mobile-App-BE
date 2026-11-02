@@ -6,6 +6,7 @@ import type { FriendshipStorePort } from './application/ports/persistence/friend
 import { FRIEND_USER_DIRECTORY } from './application/ports/user-directory.port';
 import type { FriendUserDirectoryPort } from './application/ports/user-directory.port';
 import { ListFriendshipsQuery } from './application/queries/list-friendships.query';
+import { ResolvePublicQrProfileQuery } from './application/queries/resolve-public-qr-profile.query';
 import { SearchUsersQuery } from './application/queries/search-users.query';
 import { SendFriendRequestUseCase } from './application/use-cases/send-friend-request.use-case';
 import { RespondFriendRequestUseCase } from './application/use-cases/respond-friend-request.use-case';
@@ -64,6 +65,14 @@ import { PrivacySelectedFriendPurge } from '../auth/application/public/privacy-s
         store: FriendshipStorePort,
         users: FriendUserDirectoryPort,
       ) => new ListFriendshipsQuery(store, users),
+      inject: [FRIENDSHIP_STORE, FRIEND_USER_DIRECTORY],
+    },
+    {
+      provide: ResolvePublicQrProfileQuery,
+      useFactory: (
+        store: FriendshipStorePort,
+        users: FriendUserDirectoryPort,
+      ) => new ResolvePublicQrProfileQuery(store, users),
       inject: [FRIENDSHIP_STORE, FRIEND_USER_DIRECTORY],
     },
   ],
