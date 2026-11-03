@@ -52,9 +52,13 @@ import { FRIEND_USER_DIRECTORY } from '../../application/ports/user-directory.po
 import type { FriendUserDirectoryPort } from '../../application/ports/user-directory.port';
 import { FriendshipError } from '../../domain/errors/friendship.error';
 import { CreateFriendQrSessionUseCase } from '../../application/use-cases/create-friend-qr-session.use-case';
-import { ManageFriendQrSessionUseCase } from '../../application/use-cases/manage-friend-qr-session.use-case';
+import { PreviewFriendQrSessionUseCase } from '../../application/use-cases/preview-friend-qr-session.use-case';
+import { ResolveFriendQrSessionRecipientUseCase } from '../../application/use-cases/resolve-friend-qr-session-recipient.use-case';
+import { RevokeFriendQrSessionUseCase } from '../../application/use-cases/revoke-friend-qr-session.use-case';
 import { RedisRateLimiter } from '../../../../infrastructure/redis/redis-rate-limiter.service';
-import { ManagePublicHandleUseCase } from '../../../auth/application/use-cases/manage-public-handle.use-case';
+import { GetPublicHandleUseCase } from '../../../auth/application/use-cases/get-public-handle.use-case';
+import { RotatePublicHandleUseCase } from '../../../auth/application/use-cases/rotate-public-handle.use-case';
+import { DisablePublicHandleUseCase } from '../../../auth/application/use-cases/disable-public-handle.use-case';
 import {
   ApiFriendPage,
   friendshipPageSchema,
@@ -85,12 +89,16 @@ export class FriendsController {
     private readonly sendRequest: SendFriendRequestUseCase,
     private readonly respondRequest: RespondFriendRequestUseCase,
     private readonly unfriendUseCase: UnfriendUseCase,
-    private readonly publicHandle: ManagePublicHandleUseCase,
+    private readonly getPublicHandleUseCase: GetPublicHandleUseCase,
+    private readonly rotatePublicHandleUseCase: RotatePublicHandleUseCase,
+    private readonly disablePublicHandleUseCase: DisablePublicHandleUseCase,
     private readonly resolvePublicQrProfile: ResolvePublicQrProfileQuery,
     @Inject(FRIEND_USER_DIRECTORY)
     private readonly friendUsers: FriendUserDirectoryPort,
     private readonly createQrSession: CreateFriendQrSessionUseCase,
-    private readonly manageQrSession: ManageFriendQrSessionUseCase,
+    private readonly previewQrSession: PreviewFriendQrSessionUseCase,
+    private readonly resolveQrSessionRecipient: ResolveFriendQrSessionRecipientUseCase,
+    private readonly revokeQrSession: RevokeFriendQrSessionUseCase,
     private readonly rateLimiter: RedisRateLimiter,
     private readonly config: ConfigService,
   ) {}
@@ -191,7 +199,7 @@ export class FriendsController {
       actorId,
       token,
     );
-    return this.manageQrSession.preview(actorId, token);
+    return this.previewQrSession.execute(actorId, token);
   }
 
   @Delete('qr-sessions/:sessionId')
@@ -212,7 +220,7 @@ export class FriendsController {
       request,
       actorId,
     );
-    await this.manageQrSession.revoke(actorId, sessionId);
+    await this.revokeQrSession.execute(actorId, sessionId);
   }
 
   @Post('qr-sessions')
@@ -271,7 +279,7 @@ export class FriendsController {
       request,
       actorId,
     );
-    return this.publicHandle.rotate(actorId);
+    return this.rotatePublicHandleUseCase.execute(actorId);
   }
 
   @Get('public-handle')
@@ -304,7 +312,7 @@ export class FriendsController {
       request,
       actorId,
     );
-    return this.publicHandle.current(actorId);
+    return this.getPublicHandleUseCase.execute(actorId);
   }
 
   @Delete('public-handle')
@@ -325,7 +333,7 @@ export class FriendsController {
       request,
       actorId,
     );
-    await this.publicHandle.disable(actorId);
+    await this.disablePublicHandleUseCase.execute(actorId);
   }
 
   @Post('requests')
@@ -377,7 +385,7 @@ export class FriendsController {
     );
 
     if (hasQrSessionToken) {
-      const recipientId = await this.manageQrSession.resolveRecipientId(
+      const recipientId = await this.resolveQrSessionRecipient.execute(
         input.qrSessionToken!,
       );
       const result = await this.sendRequest.execute({ actorId, recipientId });

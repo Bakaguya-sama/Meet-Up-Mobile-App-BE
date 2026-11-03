@@ -1,8 +1,6 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddPublicHandleToUserAccounts1792130000000
-  implements MigrationInterface
-{
+export class AddPublicHandleToUserAccounts1792130000000 implements MigrationInterface {
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE user_accounts

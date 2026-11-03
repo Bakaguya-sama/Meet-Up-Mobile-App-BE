@@ -32,6 +32,7 @@ export class ResolvePublicQrProfileQuery {
       displayName: profile.displayName,
       avatarUrl: profile.avatarUrl,
       friendship: relationship[0]?.status ?? null,
+      // The public handle is the navigation-safe selector; internal IDs stay private.
     };
   }
 }

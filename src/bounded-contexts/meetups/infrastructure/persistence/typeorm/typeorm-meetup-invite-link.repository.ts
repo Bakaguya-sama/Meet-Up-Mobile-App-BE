@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager, In } from 'typeorm';
-import { Meetup } from '../../../domain/aggregates/meetup.aggregate';
 import { MeetupInviteLinkError } from '../../../domain/errors/meetup-invite-link.error';
 import type { MeetupInviteLinkStorePort } from '../../../application/ports/persistence/meetup-invite-link-store.port';
 import { TypeOrmTransactionalOutbox } from '../../../../../infrastructure/outbox/persistence/typeorm-outbox.port';
@@ -20,13 +19,21 @@ export class TypeOrmMeetupInviteLinkRepository implements MeetupInviteLinkStoreP
     return this.dataSource.transaction(async (manager) => {
       const meetup = await this.lockMeetup(manager, input.meetupId);
       const domain = await this.toDomain(manager, meetup);
-      domain.assertCanCreateInviteLink(input.actorId, input.expiresAt, input.now);
+      domain.assertCanCreateInviteLink(
+        input.actorId,
+        input.expiresAt,
+        input.now,
+      );
 
       if (input.revokePrevious) {
         await manager
           .createQueryBuilder()
           .update(MeetupInviteLinkEntity)
-          .set({ revokedAt: input.now, revokedById: input.actorId, updatedAt: input.now })
+          .set({
+            revokedAt: input.now,
+            revokedById: input.actorId,
+            updatedAt: input.now,
+          })
           .where('meetup_id = :meetupId', { meetupId: input.meetupId })
           .andWhere('revoked_at IS NULL')
           .andWhere('expires_at > :now', { now: input.now })
@@ -133,8 +140,14 @@ export class TypeOrmMeetupInviteLinkRepository implements MeetupInviteLinkStoreP
           (item) => item.userId === input.actorId,
         );
         if (!participantRow) throw inviteLinkNotFound();
-        await manager.upsert(ParticipantEntity, participantRow, ['meetupId', 'userId']);
-        await writeMeetupEvents(meetup, new TypeOrmTransactionalOutbox(manager));
+        await manager.upsert(ParticipantEntity, participantRow, [
+          'meetupId',
+          'userId',
+        ]);
+        await writeMeetupEvents(
+          meetup,
+          new TypeOrmTransactionalOutbox(manager),
+        );
         await new TypeOrmTransactionalOutbox(manager).add(
           {
             eventId: randomUUID(),

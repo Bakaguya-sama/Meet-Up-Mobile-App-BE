@@ -69,11 +69,12 @@ export type MeetupFinalizedV1 = EventMetadata<'MeetupFinalized.v1'> & {
   scheduledAt: string;
 };
 
-export type MeetupInviteLinkAcceptedV1 = EventMetadata<'MeetupInviteLinkAccepted.v1'> & {
-  meetupId: string;
-  participantId: string;
-  inviteLinkId: string;
-};
+export type MeetupInviteLinkAcceptedV1 =
+  EventMetadata<'MeetupInviteLinkAccepted.v1'> & {
+    meetupId: string;
+    participantId: string;
+    inviteLinkId: string;
+  };
 
 export type IntegrationEvent =
   | MeetupCreatedV1

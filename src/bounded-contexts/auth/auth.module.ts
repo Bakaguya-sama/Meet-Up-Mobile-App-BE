@@ -43,7 +43,9 @@ import { PrivacySelectedFriendPurge } from './application/public/privacy-selecte
 import { PrivacyPurgeAdapter } from './infrastructure/adapters/privacy-purge.adapter';
 import { ProfilePreferenceReader } from './application/public/profile-preference-reader';
 import { TypeOrmProfilePreferenceReader } from './infrastructure/adapters/profile-preference-reader.adapter';
-import { ManagePublicHandleUseCase } from './application/use-cases/manage-public-handle.use-case';
+import { GetPublicHandleUseCase } from './application/use-cases/get-public-handle.use-case';
+import { RotatePublicHandleUseCase } from './application/use-cases/rotate-public-handle.use-case';
+import { DisablePublicHandleUseCase } from './application/use-cases/disable-public-handle.use-case';
 
 @Module({
   imports: [
@@ -165,11 +167,15 @@ import { ManagePublicHandleUseCase } from './application/use-cases/manage-public
       useFactory: (uow: AuthUnitOfWork) => new UpdateProfileUseCase(uow),
       inject: [AUTH_UNIT_OF_WORK],
     },
-    {
-      provide: ManagePublicHandleUseCase,
-      useFactory: (uow: AuthUnitOfWork) => new ManagePublicHandleUseCase(uow),
+    ...[
+      GetPublicHandleUseCase,
+      RotatePublicHandleUseCase,
+      DisablePublicHandleUseCase,
+    ].map((useCase) => ({
+      provide: useCase,
+      useFactory: (uow: AuthUnitOfWork) => new useCase(uow),
       inject: [AUTH_UNIT_OF_WORK],
-    },
+    })),
     {
       provide: ProfilePreferenceReader,
       useClass: TypeOrmProfilePreferenceReader,
@@ -187,7 +193,9 @@ import { ManagePublicHandleUseCase } from './application/use-cases/manage-public
     AccessTokenGuard,
     RolesGuard,
     UpdateProfileUseCase,
-    ManagePublicHandleUseCase,
+    GetPublicHandleUseCase,
+    RotatePublicHandleUseCase,
+    DisablePublicHandleUseCase,
     SaveUserPreferenceUseCase,
     GetUserPreferenceUseCase,
     GetActivityTagsUseCase,

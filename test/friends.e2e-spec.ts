@@ -18,10 +18,14 @@ import { UnfriendUseCase } from '../src/bounded-contexts/friends/application/use
 import { SearchUsersQuery } from '../src/bounded-contexts/friends/application/queries/search-users.query';
 import { ListFriendshipsQuery } from '../src/bounded-contexts/friends/application/queries/list-friendships.query';
 import { ResolvePublicQrProfileQuery } from '../src/bounded-contexts/friends/application/queries/resolve-public-qr-profile.query';
-import { ManagePublicHandleUseCase } from '../src/bounded-contexts/auth/application/use-cases/manage-public-handle.use-case';
+import { GetPublicHandleUseCase } from '../src/bounded-contexts/auth/application/use-cases/get-public-handle.use-case';
+import { RotatePublicHandleUseCase } from '../src/bounded-contexts/auth/application/use-cases/rotate-public-handle.use-case';
+import { DisablePublicHandleUseCase } from '../src/bounded-contexts/auth/application/use-cases/disable-public-handle.use-case';
 import { FRIEND_USER_DIRECTORY } from '../src/bounded-contexts/friends/application/ports/user-directory.port';
 import { CreateFriendQrSessionUseCase } from '../src/bounded-contexts/friends/application/use-cases/create-friend-qr-session.use-case';
-import { ManageFriendQrSessionUseCase } from '../src/bounded-contexts/friends/application/use-cases/manage-friend-qr-session.use-case';
+import { PreviewFriendQrSessionUseCase } from '../src/bounded-contexts/friends/application/use-cases/preview-friend-qr-session.use-case';
+import { ResolveFriendQrSessionRecipientUseCase } from '../src/bounded-contexts/friends/application/use-cases/resolve-friend-qr-session-recipient.use-case';
+import { RevokeFriendQrSessionUseCase } from '../src/bounded-contexts/friends/application/use-cases/revoke-friend-qr-session.use-case';
 import { RedisRateLimiter } from '../src/infrastructure/redis/redis-rate-limiter.service';
 import type { FriendUserDirectoryPort } from '../src/bounded-contexts/friends/application/ports/user-directory.port';
 import { InMemoryFriendshipStore } from './support/in-memory-friendship-store';
@@ -93,7 +97,18 @@ describe('Friends HTTP contract', () => {
           provide: ListFriendshipsQuery,
           useValue: new ListFriendshipsQuery(store, users),
         },
-        { provide: ManagePublicHandleUseCase, useValue: publicHandle },
+        {
+          provide: GetPublicHandleUseCase,
+          useValue: { execute: publicHandle.current },
+        },
+        {
+          provide: RotatePublicHandleUseCase,
+          useValue: { execute: publicHandle.rotate },
+        },
+        {
+          provide: DisablePublicHandleUseCase,
+          useValue: { execute: publicHandle.disable },
+        },
         {
           provide: ResolvePublicQrProfileQuery,
           useValue: new ResolvePublicQrProfileQuery(store, users),
@@ -103,7 +118,18 @@ describe('Friends HTTP contract', () => {
           provide: CreateFriendQrSessionUseCase,
           useValue: { execute: jest.fn() },
         },
-        { provide: ManageFriendQrSessionUseCase, useValue: qrSessions },
+        {
+          provide: PreviewFriendQrSessionUseCase,
+          useValue: { execute: qrSessions.preview },
+        },
+        {
+          provide: ResolveFriendQrSessionRecipientUseCase,
+          useValue: { execute: qrSessions.resolveRecipientId },
+        },
+        {
+          provide: RevokeFriendQrSessionUseCase,
+          useValue: { execute: qrSessions.revoke },
+        },
         { provide: RedisRateLimiter, useValue: rateLimiter },
       ],
     })
