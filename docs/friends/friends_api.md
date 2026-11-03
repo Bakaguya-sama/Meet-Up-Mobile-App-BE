@@ -11,7 +11,14 @@ Base URL: `/api/v1/friends`. Tất cả endpoint yêu cầu `Authorization: Bear
 | GET | `/search` | `q` (tên/email), `offset`, `limit` | 200, trang người dùng và quan hệ hiện tại |
 | GET | `/` | `offset`, `limit` | 200, trang bạn bè `accepted` |
 | GET | `/requests` | `direction=received\|sent`, `offset`, `limit` | 200, trang lời mời `pending` |
-| POST | `/requests` | Chính xác một trong `{ "recipientId": "<uuid>" }`, `{ "recipientPublicHandle": "<opaque handle>" }`, `{ "qrSessionToken": "<opaque token>" }` | 201, friendship |
+| GET | `/qr-profiles/:publicHandle` | Stable handle | 200, hồ sơ tối thiểu và trạng thái friendship; không có account ID |
+| GET | `/public-handle` | Không cần body | 200, handle hiện tại hoặc `null` nếu chưa có/đã tắt |
+| POST | `/public-handle/rotate` | Không cần body | 200, public handle mới |
+| DELETE | `/public-handle` | Không cần body | 204, handle bị vô hiệu hóa |
+| POST | `/qr-sessions` | Không cần body | 201, `sessionId`, `qrUrl`, `expiresAt` |
+| GET | `/qr-sessions/:token` | Opaque token | 200, preview không có account ID |
+| DELETE | `/qr-sessions/:sessionId` | Session ID | 204, session bị thu hồi |
+| POST | `/requests` | Chính xác một trong `recipientId`, `recipientPublicHandle`, `qrSessionToken` | 201; selector QR chỉ trả `{ status, requestedAt }` |
 | POST | `/requests/:requestId/accept` | Không cần body | 200, friendship `accepted` |
 | POST | `/requests/:requestId/reject` | Không cần body | 200, friendship `rejected` |
 | DELETE | `/:friendshipId` | Không cần body | 204, friendship bị hủy |
@@ -20,7 +27,7 @@ Pagination: `offset=0`, `limit=20` mặc định; `offset` từ 0–100000, `lim
 
 Tìm kiếm không phân biệt hoa/thường, khớp một phần tên/email, trim khoảng trắng; `q` dài 1–255 ký tự sau trim. `%`, `_`, `\` là ký tự tìm kiếm bình thường. Loại chính actor, tài khoản bị khóa và đã xóa. Chỉ trả `id`, `displayName`, `avatarUrl` và `friendship` (`null` nếu chưa có quan hệ); không trả email hoặc thông tin xác thực.
 
-`POST /requests` yêu cầu đúng một selector recipient. `recipientId` chỉ dành cho search/direct flow hiện có. QR stable dùng `recipientPublicHandle`; QR temporary dùng `qrSessionToken`. Controller resolve handle/token qua public directory hoặc Redis, sau đó gọi cùng `CreateFriendRequestUseCase`; aggregate không có nhánh QR riêng. Body có 0 hoặc hơn 1 selector trả `400`. Raw QR token phải được redaction trước logging.
+`POST /requests` yêu cầu đúng một selector: `{ "recipientId": "<uuid>" }`, `{ "recipientPublicHandle": "<opaque handle>" }` hoặc `{ "qrSessionToken": "<opaque token>" }`. Hai selector QR resolve người nhận đang hoạt động rồi dùng lại friend-request use case hiện có. Nhánh QR chỉ trả `{ status, requestedAt }`, không có account ID. Selector rỗng, null hoặc có nhiều giá trị trả `400`; handle/session không hợp lệ, bị disable, hết hạn hoặc account không hoạt động trả lỗi người nhận không khả dụng.
 
 Friendship gồm `id`, `userAId`, `userBId`, `requestedById`, `status`, `requestedAt`, `respondedAt`, `updatedAt`. Timestamp trả ISO 8601. Danh sách quan hệ thêm `user` là hồ sơ của phía còn lại; `user=null` nếu tài khoản đó đã bị khóa/xóa sau khi tạo quan hệ. Quan hệ vẫn được giữ, không làm lệch pagination. Dùng `requestedById` để phân biệt lời mời đến/đi trong kết quả tìm kiếm.
 
@@ -72,21 +79,26 @@ QR không thay đổi friendship aggregate; cả hai nhánh cuối cùng vẫn g
 ### QR hồ sơ ổn định
 
 - Backend cấp một `publicHandle` entropy cao, unique và không chứa UUID nội bộ/email/số điện thoại. Handle được lưu nullable/unique tại `user_accounts.public_handle`; disable đặt handle ở trạng thái không resolve và rotate thay handle hiện hành, nên handle cũ không resolve. Audit dùng audit log hiện có, không tạo bảng profile/QR riêng.
+- Mobile có thể gọi `GET /public-handle` sau đăng nhập hoặc khi mở lại màn hình QR để lấy handle hiện tại. API chỉ đọc, không tự tạo hay rotate handle; trả `{ "publicHandle": null }` nếu tài khoản chưa có handle hoặc đã disable. Response dùng `Cache-Control: no-store`.
 - QR chỉ mã hóa HTTPS universal/app link chứa handle. Scan mở preview tối thiểu (`publicHandle`, `displayName`, `avatarUrl`, friendship status), sau đó người quét phải chủ động gọi `POST /requests` với `{ "recipientPublicHandle": "..." }`; preview không trả internal user ID và không auto-friend.
 
-Contract dự kiến:
+Contract stable handle:
 
 ```http
 GET  /api/v1/friends/qr-profiles/:publicHandle
+GET  /api/v1/friends/public-handle
 POST /api/v1/friends/public-handle/rotate
+DELETE /api/v1/friends/public-handle
 POST /api/v1/friends/requests
 ```
 
 ### QR tạm thời
 
-- Backend tạo opaque token và lưu mapping theo token HMAC/hash → owner/session/revoke state trong Redis TTL. QR mã hóa URL token; raw token không dùng làm Redis key/value và không có bảng QR session trong PostgreSQL.
-- Resolve yêu cầu JWT và chỉ trả preview tối thiểu. Token hết hạn/thu hồi không resolve; raw token không xuất hiện trong log/event.
+- Backend tạo opaque token và lưu mapping theo SHA-256 token hash → owner/session/revoke state trong Redis TTL. QR mã hóa URL token; raw token không dùng làm Redis key/value và không có bảng QR session trong PostgreSQL.
+- `POST /qr-sessions` trả `sessionId`, `qrUrl`, `expiresAt`; raw token chỉ có trong URL trả một lần. Redis dùng SHA-256 token làm key và lưu owner/session ID làm value với TTL cấu hình `FRIEND_QR_SESSION_TTL_SECONDS`.
+- `GET /qr-sessions/:token` yêu cầu JWT và chỉ trả `{ displayName, avatarUrl, friendship }`. Token hết hạn/thu hồi không resolve; raw token không xuất hiện trong log/event. Response có `Cache-Control: no-store`.
 - Sau resolve, mobile gọi cùng `POST /requests` với `{ "qrSessionToken": "..." }`. Controller resolve session rồi gọi use case friendship hiện có. Rate limit theo account/token/IP; scan chính mình hoặc quan hệ đã tồn tại trả lỗi hiện có.
+- `DELETE /qr-sessions/:sessionId` chỉ thu hồi session của account đang đăng nhập; sai owner hoặc session không tồn tại trả lỗi unavailable. Tạo, resolve, gửi request QR và revoke dùng `FRIEND_QR_RATE_LIMIT` theo scope phù hợp.
 
 ```http
 POST   /api/v1/friends/qr-sessions

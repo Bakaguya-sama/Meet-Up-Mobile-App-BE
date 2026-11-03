@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from './redis.constants';
 import { RedisService } from './redis.service';
+import { RedisRateLimiter } from './redis-rate-limiter.service';
 
 @Global()
 @Module({
@@ -23,7 +24,8 @@ import { RedisService } from './redis.service';
         }),
     },
     RedisService,
+    RedisRateLimiter,
   ],
-  exports: [RedisService, REDIS_CLIENT],
+  exports: [RedisService, RedisRateLimiter, REDIS_CLIENT],
 })
 export class RedisModule {}

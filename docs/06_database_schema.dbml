@@ -56,7 +56,7 @@
     password_hash varchar(255) // Null for an account that only uses Google OAuth.
     display_name varchar(100) [not null]
     avatar_url varchar(1000)
-    public_handle varchar(128) [unique, note: 'BE-34 planned public QR handle. Nullable: disabled/not provisioned. It is opaque and never an internal account ID.']
+    public_handle varchar(128) [unique, note: 'Nullable stable QR handle. It is opaque and never an internal account ID.']
     public_handle_disabled_at timestamptz [note: 'Non-null means handle must not resolve. Rotate replaces public_handle and clears this value.']
     is_locked boolean [not null, default: false]
     locked_reason varchar(500)
@@ -182,12 +182,12 @@
     }
   }
 
-  // BE-33 planned durable invite-link state. Raw token is never persisted.
+  // BE-33 durable invite-link state. Raw token is never persisted.
   Table meetup_invite_links {
     id uuid [pk]
     meetup_id uuid [not null]
     created_by_id uuid [not null]
-    token_hash char(64) [not null, unique, note: 'HMAC/SHA-256 lookup fingerprint, never raw token.']
+    token_hash char(64) [not null, unique, note: 'SHA-256 lookup fingerprint, never raw token.']
     expires_at timestamptz [not null]
     revoked_at timestamptz
     revoked_by_id uuid

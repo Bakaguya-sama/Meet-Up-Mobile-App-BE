@@ -10,4 +10,5 @@ export interface FriendUserDirectoryPort {
     limit: number;
   }): Promise<{ items: FriendUserDto[]; total: number }>;
   findActiveByIds(ids: string[]): Promise<FriendUserDto[]>;
+  findActiveByPublicHandle(publicHandle: string): Promise<FriendUserDto | null>;
 }

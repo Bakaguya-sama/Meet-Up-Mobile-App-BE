@@ -5,6 +5,8 @@ export class UserAccountTypeOrmMapper {
   static toDomain(row: UserAccountEntity): UserAccount {
     return new UserAccount({
       id: row.id,
+      publicHandle: row.publicHandle,
+      publicHandleDisabledAt: row.publicHandleDisabledAt,
       email: row.email,
       passwordHash: row.passwordHash,
       displayName: row.displayName,

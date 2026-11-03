@@ -17,6 +17,12 @@ import { RespondFriendRequestUseCase } from '../src/bounded-contexts/friends/app
 import { UnfriendUseCase } from '../src/bounded-contexts/friends/application/use-cases/unfriend.use-case';
 import { SearchUsersQuery } from '../src/bounded-contexts/friends/application/queries/search-users.query';
 import { ListFriendshipsQuery } from '../src/bounded-contexts/friends/application/queries/list-friendships.query';
+import { ResolvePublicQrProfileQuery } from '../src/bounded-contexts/friends/application/queries/resolve-public-qr-profile.query';
+import { ManagePublicHandleUseCase } from '../src/bounded-contexts/auth/application/use-cases/manage-public-handle.use-case';
+import { FRIEND_USER_DIRECTORY } from '../src/bounded-contexts/friends/application/ports/user-directory.port';
+import { CreateFriendQrSessionUseCase } from '../src/bounded-contexts/friends/application/use-cases/create-friend-qr-session.use-case';
+import { ManageFriendQrSessionUseCase } from '../src/bounded-contexts/friends/application/use-cases/manage-friend-qr-session.use-case';
+import { RedisRateLimiter } from '../src/infrastructure/redis/redis-rate-limiter.service';
 import type { FriendUserDirectoryPort } from '../src/bounded-contexts/friends/application/ports/user-directory.port';
 import { InMemoryFriendshipStore } from './support/in-memory-friendship-store';
 
@@ -39,7 +45,21 @@ describe('Friends HTTP contract', () => {
       findActiveByIds: jest.fn((ids: string[]) =>
         Promise.resolve(profiles.filter((user) => ids.includes(user.id))),
       ),
+      findActiveByPublicHandle: jest.fn().mockResolvedValue(profiles[1]),
       search: jest.fn().mockResolvedValue({ items: [profiles[1]], total: 1 }),
+    };
+    const publicHandle = {
+      current: jest.fn().mockResolvedValue({ publicHandle: 'a'.repeat(43) }),
+      rotate: jest.fn().mockResolvedValue({ publicHandle: 'b'.repeat(43) }),
+      disable: jest.fn().mockResolvedValue(undefined),
+    };
+    const qrSessions = {
+      preview: jest.fn(),
+      revoke: jest.fn(),
+      resolveRecipientId: jest.fn().mockResolvedValue(bob),
+    };
+    const rateLimiter = {
+      assertAllowed: jest.fn().mockResolvedValue(undefined),
     };
     const fixture = await Test.createTestingModule({
       controllers: [FriendsController],
@@ -48,6 +68,7 @@ describe('Friends HTTP contract', () => {
           provide: ConfigService,
           useValue: new ConfigService({
             app: { apiPrefix: 'api/v1', swaggerEnabled: false },
+            friendQr: { rateLimit: 10 },
           }),
         },
         {
@@ -72,6 +93,18 @@ describe('Friends HTTP contract', () => {
           provide: ListFriendshipsQuery,
           useValue: new ListFriendshipsQuery(store, users),
         },
+        { provide: ManagePublicHandleUseCase, useValue: publicHandle },
+        {
+          provide: ResolvePublicQrProfileQuery,
+          useValue: new ResolvePublicQrProfileQuery(store, users),
+        },
+        { provide: FRIEND_USER_DIRECTORY, useValue: users },
+        {
+          provide: CreateFriendQrSessionUseCase,
+          useValue: { execute: jest.fn() },
+        },
+        { provide: ManageFriendQrSessionUseCase, useValue: qrSessions },
+        { provide: RedisRateLimiter, useValue: rateLimiter },
       ],
     })
       .overrideGuard(AccessTokenGuard)
@@ -152,6 +185,25 @@ describe('Friends HTTP contract', () => {
       .post('/api/v1/friends/requests/invalid/accept')
       .set(auth(bob))
       .expect(400);
+  });
+
+  it('returns the current public handle for the signed-in account', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/friends/public-handle')
+      .set(auth(alice))
+      .expect(200, { publicHandle: 'a'.repeat(43) });
+  });
+
+  it('resolves a temporary QR then uses the existing friend-request flow', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/friends/requests')
+      .set(auth(alice))
+      .send({ qrSessionToken: 't'.repeat(43) })
+      .expect(201);
+
+    expect(response.body).toMatchObject({ status: 'pending' });
+    expect(response.body).toHaveProperty('requestedAt');
+    expect(response.body).not.toHaveProperty('userAId');
   });
 
   it('returns search results with defaults and relationship state', async () => {

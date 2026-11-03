@@ -154,6 +154,8 @@ FRIEND_QR_RATE_LIMIT=
 REDIS_URL=rediss://default:password@managed-redis-host:port
 ```
 
+Hai rate limit là số request tối đa cho mỗi identity trong cửa sổ cố định 60 giây. API kết hợp account/IP/token phù hợp; Redis chỉ lưu SHA-256 của identity. Rate limit và QR-session TTL do deployment cung cấp, không có default cho staging/production.
+
 Không dùng một connection duy nhất cho mọi trách nhiệm:
 
 - command connection cho latest location, presence và TTL;

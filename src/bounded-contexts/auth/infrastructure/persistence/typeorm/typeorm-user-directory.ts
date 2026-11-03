@@ -47,6 +47,14 @@ export class TypeOrmUserDirectory extends UserDirectory {
       .getMany();
     return rows.map(toProfile);
   }
+
+  async findActiveByPublicHandle(publicHandle: string) {
+    const row = await this.activeQuery()
+      .andWhere('account.publicHandle = :publicHandle', { publicHandle })
+      .andWhere('account.publicHandleDisabledAt IS NULL')
+      .getOne();
+    return row ? toProfile(row) : null;
+  }
 }
 
 function toProfile(row: UserAccountEntity) {

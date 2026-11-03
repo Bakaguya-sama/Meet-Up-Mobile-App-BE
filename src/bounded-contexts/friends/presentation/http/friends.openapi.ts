@@ -1,5 +1,8 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiQuery } from '@nestjs/swagger';
+import type { ApiResponseSchemaHost } from '@nestjs/swagger';
+
+type SchemaObject = ApiResponseSchemaHost['schema'];
 
 const uuid = { type: 'string' as const, format: 'uuid' };
 const timestamp = { type: 'string' as const, format: 'date-time' };
@@ -79,10 +82,77 @@ export const friendshipPageSchema = {
     },
   },
 };
-export const sendFriendRequestSchema = {
+export const publicQrProfileSchema = {
   type: 'object' as const,
-  required: ['recipientId'],
-  properties: { recipientId: uuid },
+  required: ['publicHandle', 'displayName', 'avatarUrl', 'friendship'],
+  properties: {
+    publicHandle: { type: 'string' as const, minLength: 43, maxLength: 43 },
+    displayName: { type: 'string' as const },
+    avatarUrl: { type: 'string' as const, nullable: true },
+    friendship: {
+      type: 'string' as const,
+      enum: ['pending', 'accepted', 'rejected', 'blocked'],
+      nullable: true,
+    },
+  },
+};
+export const sendFriendRequestSchema: SchemaObject = {
+  type: 'object',
+  oneOf: [
+    {
+      type: 'object',
+      required: ['recipientId'],
+      properties: { recipientId: uuid },
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      required: ['recipientPublicHandle'],
+      properties: {
+        recipientPublicHandle: {
+          type: 'string',
+          minLength: 43,
+          maxLength: 43,
+          pattern: '^[A-Za-z0-9_-]{43}$',
+        },
+      },
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      required: ['qrSessionToken'],
+      properties: {
+        qrSessionToken: {
+          type: 'string',
+          minLength: 43,
+          maxLength: 43,
+          pattern: '^[A-Za-z0-9_-]{43}$',
+        },
+      },
+      additionalProperties: false,
+    },
+  ],
+};
+export const qrFriendRequestCreatedSchema = {
+  type: 'object' as const,
+  required: ['status', 'requestedAt'],
+  properties: {
+    status: { type: 'string' as const, enum: ['pending'] },
+    requestedAt: timestamp,
+  },
+};
+export const temporaryQrProfileSchema = {
+  type: 'object' as const,
+  required: ['displayName', 'avatarUrl', 'friendship'],
+  properties: {
+    displayName: { type: 'string' as const },
+    avatarUrl: { type: 'string' as const, nullable: true },
+    friendship: {
+      type: 'string' as const,
+      enum: ['pending', 'accepted', 'rejected', 'blocked'],
+      nullable: true,
+    },
+  },
 };
 
 export function ApiFriendPage() {

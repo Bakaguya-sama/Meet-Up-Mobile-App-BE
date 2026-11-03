@@ -9,6 +9,7 @@ export const INTEGRATION_EVENT_NAMES = [
   'RecommendationReady.v1',
   'VoteUpdated.v1',
   'MeetupFinalized.v1',
+  'MeetupInviteLinkAccepted.v1',
 ] as const;
 
 export type IntegrationEventName = (typeof INTEGRATION_EVENT_NAMES)[number];
@@ -68,6 +69,12 @@ export type MeetupFinalizedV1 = EventMetadata<'MeetupFinalized.v1'> & {
   scheduledAt: string;
 };
 
+export type MeetupInviteLinkAcceptedV1 = EventMetadata<'MeetupInviteLinkAccepted.v1'> & {
+  meetupId: string;
+  participantId: string;
+  inviteLinkId: string;
+};
+
 export type IntegrationEvent =
   | MeetupCreatedV1
   | MeetupLifecycleV1
@@ -76,7 +83,8 @@ export type IntegrationEvent =
   | LocationUpdatedV1
   | RecommendationReadyV1
   | VoteUpdatedV1
-  | MeetupFinalizedV1;
+  | MeetupFinalizedV1
+  | MeetupInviteLinkAcceptedV1;
 
 export const EVENT_ERROR_CODES = {
   UNAUTHORIZED: 'UNAUTHORIZED',
@@ -152,6 +160,8 @@ export function isIntegrationEvent(value: unknown): value is IntegrationEvent {
       );
     case 'MeetupFinalized.v1':
       return hasStrings(value, 'meetupId', 'placeId', 'scheduledAt');
+    case 'MeetupInviteLinkAccepted.v1':
+      return hasStrings(value, 'meetupId', 'participantId', 'inviteLinkId');
   }
 
   return false;

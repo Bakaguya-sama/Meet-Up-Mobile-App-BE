@@ -4,8 +4,13 @@ import type { AccountState } from '../../../../domain/aggregates/user-account.ag
 @Entity('user_accounts')
 @Check('chk_user_accounts_normalized_email', 'email = lower(trim(email))')
 @Index('uq_user_accounts_email', ['email'], { unique: true })
+@Index('uq_user_accounts_public_handle', ['publicHandle'], { unique: true })
 export class UserAccountEntity implements AccountState {
   @PrimaryColumn('uuid') id: string;
+  @Column('varchar', { name: 'public_handle', length: 128, nullable: true })
+  publicHandle: string | null;
+  @Column('timestamptz', { name: 'public_handle_disabled_at', nullable: true })
+  publicHandleDisabledAt: Date | null;
   @Column('varchar', { length: 255 }) email: string;
   @Column('varchar', { name: 'password_hash', length: 255, nullable: true })
   passwordHash: string | null;

@@ -38,6 +38,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
         MEETUP_NOT_FOUND: HttpStatus.NOT_FOUND,
         MEETUP_FORBIDDEN: HttpStatus.FORBIDDEN,
         MEETUP_INVITEE_UNAVAILABLE: HttpStatus.BAD_REQUEST,
+        MEETUP_INVITE_LINK_NOT_FOUND: HttpStatus.NOT_FOUND,
+        MEETUP_INVITE_LINK_FORBIDDEN: HttpStatus.FORBIDDEN,
+        MEETUP_INVITE_LINK_INVALID_EXPIRY: HttpStatus.BAD_REQUEST,
+        MEETUP_INVITE_RATE_LIMITED: HttpStatus.TOO_MANY_REQUESTS,
+        FRIEND_QR_NOT_FOUND: HttpStatus.NOT_FOUND,
+        FRIEND_QR_RATE_LIMITED: HttpStatus.TOO_MANY_REQUESTS,
         MEETUP_INSUFFICIENT_PARTICIPANTS: HttpStatus.BAD_REQUEST,
         RECOMMENDATION_INSUFFICIENT_LOCATIONS: HttpStatus.BAD_REQUEST,
         PLACE_SEARCH_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
@@ -63,7 +69,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         statusCode: status,
         code: exception.code,
         message: exception.message,
-        path: request.url,
+        path: redactTokenPath(request.url),
       });
       return;
     }
@@ -74,14 +80,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     this.logger.error(
-      `Unhandled error for ${request.method} ${request.url}`,
+      `Unhandled error for ${request.method} ${redactTokenPath(request.url)}`,
       exception instanceof Error ? exception.stack : undefined,
     );
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       code: 'INTERNAL_SERVER_ERROR',
       message: 'An unexpected error occurred',
-      path: request.url,
+      path: redactTokenPath(request.url),
     });
   }
+}
+
+function redactTokenPath(path: string): string {
+  return path
+    .replace(/(\/meetup-invites\/)[^/?]+/gi, '$1:redacted')
+    .replace(/(\/friends\/qr-sessions\/)[^/?]+/gi, '$1:redacted');
 }

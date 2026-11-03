@@ -16,7 +16,8 @@ export class UpdateProfileUseCase {
 
   async execute(input: UpdateProfileInput): Promise<UserProfileDto> {
     return this.uow.run(async (store) => {
-      const account = await store.accounts.findAccountById(input.userId);
+      // Serialize aggregate saves with handle rotate/disable and login updates.
+      const account = await store.accounts.lockAccount(input.userId);
       if (!account) {
         throw new AuthError('ACCOUNT_NOT_FOUND', 'User account not found');
       }

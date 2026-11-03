@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { FriendsModule } from '../friends/friends.module';
@@ -25,14 +26,27 @@ import { CancelMeetupUseCase } from './application/use-cases/cancel-meetup.use-c
 import { FinishMeetupUseCase } from './application/use-cases/finish-meetup.use-case';
 import { SetMeetupMemberPreferenceUseCase } from './application/use-cases/set-meetup-member-preference.use-case';
 import { GetMeetupMemberPreferenceUseCase } from './application/use-cases/get-meetup-member-preference.use-case';
+import { MEETUP_INVITE_LINK_STORE } from './application/ports/persistence/meetup-invite-link-store.port';
+import type { MeetupInviteLinkStorePort } from './application/ports/persistence/meetup-invite-link-store.port';
+import { AcceptMeetupInviteLinkUseCase } from './application/use-cases/accept-meetup-invite-link.use-case';
+import { CreateMeetupInviteLinkUseCase } from './application/use-cases/create-meetup-invite-link.use-case';
+import { PreviewMeetupInviteLinkUseCase } from './application/use-cases/preview-meetup-invite-link.use-case';
+import { RevokeMeetupInviteLinkUseCase } from './application/use-cases/revoke-meetup-invite-link.use-case';
 import { InviteeEligibilityAdapter } from './infrastructure/adapters/invitee-eligibility.adapter';
 import { ProfilePreferenceFallbackAdapter } from './infrastructure/adapters/profile-preference-fallback.adapter';
 import { TypeOrmMeetupPreferenceReader } from './infrastructure/adapters/meetup-preference-reader.adapter';
 import { MeetupEntity } from './infrastructure/persistence/typeorm/entities/meetup.typeorm-entity';
 import { ParticipantEntity } from './infrastructure/persistence/typeorm/entities/participant.typeorm-entity';
 import { ParticipantPreferenceEntity } from './infrastructure/persistence/typeorm/entities/participant-preference.typeorm-entity';
+import { MeetupInviteLinkEntity } from './infrastructure/persistence/typeorm/entities/meetup-invite-link.typeorm-entity';
 import { TypeOrmMeetupRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-repository';
+import { TypeOrmMeetupInviteLinkRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-invite-link.repository';
 import { MeetupsController } from './presentation/http/meetups.controller';
+import {
+  MeetupInviteLinkAcceptController,
+  MeetupInviteLinkPreviewController,
+  MeetupInviteLinksController,
+} from './presentation/http/meetup-invite-links.controller';
 
 @Module({
   imports: [
@@ -42,11 +56,21 @@ import { MeetupsController } from './presentation/http/meetups.controller';
       MeetupEntity,
       ParticipantEntity,
       ParticipantPreferenceEntity,
+      MeetupInviteLinkEntity,
     ]),
   ],
-  controllers: [MeetupsController],
+  controllers: [
+    MeetupsController,
+    MeetupInviteLinksController,
+    MeetupInviteLinkPreviewController,
+    MeetupInviteLinkAcceptController,
+  ],
   providers: [
     { provide: MEETUP_STORE, useClass: TypeOrmMeetupRepository },
+    {
+      provide: MEETUP_INVITE_LINK_STORE,
+      useClass: TypeOrmMeetupInviteLinkRepository,
+    },
     { provide: INVITEE_ELIGIBILITY, useClass: InviteeEligibilityAdapter },
     {
       provide: PROFILE_PREFERENCE_FALLBACK,
@@ -56,6 +80,24 @@ import { MeetupsController } from './presentation/http/meetups.controller';
       provide: MeetupPreferenceReader,
       useClass: TypeOrmMeetupPreferenceReader,
     },
+    {
+      provide: CreateMeetupInviteLinkUseCase,
+      useFactory: (store: MeetupInviteLinkStorePort, config: ConfigService) =>
+        new CreateMeetupInviteLinkUseCase(
+          store,
+          config.getOrThrow<string>('app.publicAppBaseUrl'),
+        ),
+      inject: [MEETUP_INVITE_LINK_STORE, ConfigService],
+    },
+    ...[
+      AcceptMeetupInviteLinkUseCase,
+      PreviewMeetupInviteLinkUseCase,
+      RevokeMeetupInviteLinkUseCase,
+    ].map((useCase) => ({
+      provide: useCase,
+      useFactory: (store: MeetupInviteLinkStorePort) => new useCase(store),
+      inject: [MEETUP_INVITE_LINK_STORE],
+    })),
     ...[CreateMeetupUseCase, InviteParticipantsUseCase].map((useCase) => ({
       provide: useCase,
       useFactory: (
