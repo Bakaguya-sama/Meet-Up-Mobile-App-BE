@@ -214,11 +214,7 @@ export class Meetup {
     }
   }
 
-  assertCanCreateInviteLink(
-    actorId: string,
-    expiresAt: Date,
-    now: Date,
-  ): void {
+  assertCanCreateInviteLink(actorId: string, expiresAt: Date, now: Date): void {
     this.assertOrganizer(actorId);
     this.assertEditable();
     this.assertInvitationOpen(now);

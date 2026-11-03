@@ -6,22 +6,22 @@ Triển khai UC-02, PB-03/PB-04 trong bounded context `friends`. Domain và appl
 
 Base URL: `/api/v1/friends`. Tất cả endpoint yêu cầu `Authorization: Bearer <accessToken>`. Guard hiện tại kiểm tra JWT, session và trạng thái tài khoản. Swagger tại `/docs`, nhóm **Friends**.
 
-| Method | Path | Input | Thành công |
-|---|---|---|---|
-| GET | `/search` | `q` (tên/email), `offset`, `limit` | 200, trang người dùng và quan hệ hiện tại |
-| GET | `/` | `offset`, `limit` | 200, trang bạn bè `accepted` |
-| GET | `/requests` | `direction=received\|sent`, `offset`, `limit` | 200, trang lời mời `pending` |
-| GET | `/qr-profiles/:publicHandle` | Stable handle | 200, hồ sơ tối thiểu và trạng thái friendship; không có account ID |
-| GET | `/public-handle` | Không cần body | 200, handle hiện tại hoặc `null` nếu chưa có/đã tắt |
-| POST | `/public-handle/rotate` | Không cần body | 200, public handle mới |
-| DELETE | `/public-handle` | Không cần body | 204, handle bị vô hiệu hóa |
-| POST | `/qr-sessions` | Không cần body | 201, `sessionId`, `qrUrl`, `expiresAt` |
-| GET | `/qr-sessions/:token` | Opaque token | 200, preview không có account ID |
-| DELETE | `/qr-sessions/:sessionId` | Session ID | 204, session bị thu hồi |
-| POST | `/requests` | Chính xác một trong `recipientId`, `recipientPublicHandle`, `qrSessionToken` | 201; selector QR chỉ trả `{ status, requestedAt }` |
-| POST | `/requests/:requestId/accept` | Không cần body | 200, friendship `accepted` |
-| POST | `/requests/:requestId/reject` | Không cần body | 200, friendship `rejected` |
-| DELETE | `/:friendshipId` | Không cần body | 204, friendship bị hủy |
+| Method | Path                          | Input                                                                        | Thành công                                                         |
+| ------ | ----------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| GET    | `/search`                     | `q` (tên/email), `offset`, `limit`                                           | 200, trang người dùng và quan hệ hiện tại                          |
+| GET    | `/`                           | `offset`, `limit`                                                            | 200, trang bạn bè `accepted`                                       |
+| GET    | `/requests`                   | `direction=received\|sent`, `offset`, `limit`                                | 200, trang lời mời `pending`                                       |
+| GET    | `/qr-profiles/:publicHandle`  | Stable handle                                                                | 200, hồ sơ tối thiểu và trạng thái friendship; không có account ID |
+| GET    | `/public-handle`              | Không cần body                                                               | 200, handle hiện tại hoặc `null` nếu chưa có/đã tắt                |
+| POST   | `/public-handle/rotate`       | Không cần body                                                               | 200, public handle mới                                             |
+| DELETE | `/public-handle`              | Không cần body                                                               | 204, handle bị vô hiệu hóa                                         |
+| POST   | `/qr-sessions`                | Không cần body                                                               | 201, `sessionId`, `qrUrl`, `expiresAt`                             |
+| GET    | `/qr-sessions/:token`         | Opaque token                                                                 | 200, preview không có account ID                                   |
+| DELETE | `/qr-sessions/:sessionId`     | Session ID                                                                   | 204, session bị thu hồi                                            |
+| POST   | `/requests`                   | Chính xác một trong `recipientId`, `recipientPublicHandle`, `qrSessionToken` | 201; selector QR chỉ trả `{ status, requestedAt }`                 |
+| POST   | `/requests/:requestId/accept` | Không cần body                                                               | 200, friendship `accepted`                                         |
+| POST   | `/requests/:requestId/reject` | Không cần body                                                               | 200, friendship `rejected`                                         |
+| DELETE | `/:friendshipId`              | Không cần body                                                               | 204, friendship bị hủy                                             |
 
 Pagination: `offset=0`, `limit=20` mặc định; `offset` từ 0–100000, `limit` từ 1–50, chỉ nhận số nguyên. `direction` mặc định `received`. Kết quả trang có `{ items, total, offset, limit }`.
 
@@ -39,17 +39,17 @@ Friendship gồm `id`, `userAId`, `userBId`, `requestedById`, `status`, `request
 - BE-03 giữ lời mời `rejected` ở trạng thái đóng; gửi lại cùng cặp trả 409. Cả hai phía có thể hủy friendship đã `accepted`; thao tác chuyển quan hệ sang `rejected` và loại hai phía khỏi selected audience của nhau. Mở lại, hủy lời mời và API chặn/mở chặn chưa thuộc task này. `blocked` được giữ trong enum theo schema và không được phản hồi.
 - Không tạo lời mời đến tài khoản thiếu, bị khóa hoặc đã xóa. Trạng thái tài khoản được kiểm tra qua Auth trước khi ghi.
 
-| HTTP | Code | Ý nghĩa |
-|---|---|---|
-| 400 | `SELF_FRIENDSHIP` | Tự kết bạn |
-| 400 | Lỗi validation | UUID/query/body không hợp lệ; trường thừa bị từ chối |
-| 401 | Lỗi xác thực hiện tại | Thiếu/sai/hết hạn token hoặc session không còn hiệu lực |
-| 403 | `ACCOUNT_LOCKED` | Actor bị khóa |
-| 403 | `FRIENDSHIP_RESPONSE_FORBIDDEN` | Người gửi tự phản hồi |
-| 404 | `FRIEND_USER_NOT_FOUND` | Không tìm thấy tài khoản hoạt động |
-| 404 | `FRIENDSHIP_NOT_FOUND` | Lời mời không tồn tại hoặc actor không thuộc cặp |
-| 409 | `FRIENDSHIP_ALREADY_EXISTS` | Cặp đã có lời mời/quan hệ |
-| 409 | `FRIENDSHIP_NOT_PENDING` | Lời mời đã được phản hồi |
+| HTTP | Code                            | Ý nghĩa                                                 |
+| ---- | ------------------------------- | ------------------------------------------------------- |
+| 400  | `SELF_FRIENDSHIP`               | Tự kết bạn                                              |
+| 400  | Lỗi validation                  | UUID/query/body không hợp lệ; trường thừa bị từ chối    |
+| 401  | Lỗi xác thực hiện tại           | Thiếu/sai/hết hạn token hoặc session không còn hiệu lực |
+| 403  | `ACCOUNT_LOCKED`                | Actor bị khóa                                           |
+| 403  | `FRIENDSHIP_RESPONSE_FORBIDDEN` | Người gửi tự phản hồi                                   |
+| 404  | `FRIEND_USER_NOT_FOUND`         | Không tìm thấy tài khoản hoạt động                      |
+| 404  | `FRIENDSHIP_NOT_FOUND`          | Lời mời không tồn tại hoặc actor không thuộc cặp        |
+| 409  | `FRIENDSHIP_ALREADY_EXISTS`     | Cặp đã có lời mời/quan hệ                               |
+| 409  | `FRIENDSHIP_NOT_PENDING`        | Lời mời đã được phản hồi                                |
 
 ## Database và concurrency
 
@@ -70,11 +70,13 @@ npx eslint "{src,test}/**/*.ts"
 
 Unit test kiểm tra invariant và use case/query. HTTP contract test chạy controller, validation, filter và use case thật với persistence/identity giả; không thay thế test JWT hay test database.
 
-Các test hiện tại không xác minh constraint hoặc concurrency trên PostgreSQL thật.
+BE-34 có integration/E2E riêng chạy trên PostgreSQL và Redis thật tại `test/invite-links-friend-qr.integration-spec.ts` và `test/invite-links-friend-qr.e2e-spec.ts`. Test kiểm tra migration cycle, stable-handle rotate/disable, Redis TTL/revoke/hash-only, selector privacy, duplicate/self và rate limit.
 
 ## Extension đã chốt — QR kết bạn hybrid
 
 QR không thay đổi friendship aggregate; cả hai nhánh cuối cùng vẫn gọi cùng service tạo friend request và giữ nguyên lỗi self/duplicate/pending/accepted/blocked.
+
+Application layer tách theo một hành vi trên một use case: `GetPublicHandleUseCase`, `RotatePublicHandleUseCase`, `DisablePublicHandleUseCase`, `PreviewFriendQrSessionUseCase`, `ResolveFriendQrSessionRecipientUseCase` và `RevokeFriendQrSessionUseCase`. Controller chỉ điều phối route; resolve token/handle và luật nghiệp vụ nằm trong application/domain/adapters tương ứng.
 
 ### QR hồ sơ ổn định
 

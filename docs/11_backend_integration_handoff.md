@@ -6,37 +6,37 @@ Tài liệu này là điểm đồng bộ kỹ thuật cho hai developer backend
 
 ## 1. Phân ranh giới hiện tại
 
-| Khu vực | Chủ sở hữu | Thành phần chính | Quy tắc tích hợp |
-|---|---|---|---|
-| Auth, profile, privacy | Backend 1 | `auth` | Export public application service/port; không để context khác đọc TypeORM repository Auth. |
-| Friends | Backend 1 | `friends` | Cung cấp friendship đã accepted qua public port. |
-| Meetup, membership, vote | Backend 1 | `meetups` khi được tạo | Cung cấp membership accepted, meetup active và event versioned. |
-| Latest location, Socket, presence | Backend 2 | `locations`, `realtime`, Redis | Dùng contract Meetup; không tự suy luận membership từ mobile. |
-| Device token, FCM, outbox delivery | Backend 2 | `notifications`, `outbox` | Cung cấp hàm gửi chung; nghiệp vụ Meetup/Vote quyết định khi nào ghi outbox push. |
-| Recommendation, Google Maps, AI, nearby | Backend 2 | các context tương lai | Chỉ lấy Meetup/Preference/Location qua public port hoặc event. |
+| Khu vực                                 | Chủ sở hữu | Thành phần chính               | Quy tắc tích hợp                                                                           |
+| --------------------------------------- | ---------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| Auth, profile, privacy                  | Backend 1  | `auth`                         | Export public application service/port; không để context khác đọc TypeORM repository Auth. |
+| Friends                                 | Backend 1  | `friends`                      | Cung cấp friendship đã accepted qua public port.                                           |
+| Meetup, membership, vote                | Backend 1  | `meetups` khi được tạo         | Cung cấp membership accepted, meetup active và event versioned.                            |
+| Latest location, Socket, presence       | Backend 2  | `locations`, `realtime`, Redis | Dùng contract Meetup; không tự suy luận membership từ mobile.                              |
+| Device token, FCM, outbox delivery      | Backend 2  | `notifications`, `outbox`      | Cung cấp hàm gửi chung; nghiệp vụ Meetup/Vote quyết định khi nào ghi outbox push.          |
+| Recommendation, Google Maps, AI, nearby | Backend 2  | các context tương lai          | Chỉ lấy Meetup/Preference/Location qua public port hoặc event.                             |
 
 ## 2. Thành phần đang có và owner
 
-| Thành phần | File/đường dẫn | Owner | Consumer dự kiến |
-|---|---|---|---|
-| Access-token validation | `shared-kernel/application/access-token-validator.port.ts` | Backend 1 | Socket gateway, protected API |
-| Location privacy reader | `auth/application/public/location-privacy-reader.ts` | Backend 1 | Backend 2 location access service |
-| Friendship reader | `friends/application/public/*` | Backend 1 | Backend 2 location/nearby |
-| Location store | `locations/application/ports/location.port.ts` | Backend 2 | Recommendation, nearby qua public port tương lai |
-| Socket rooms | `shared-kernel/application/realtime-publisher.port.ts` | Backend 2 | Meetup/Vote events |
-| Presence | `shared-kernel/application/presence.port.ts` | Backend 2 | Các feature cần online/offline aggregate |
-| Push notification | `notifications/application/ports/push-notification.port.ts` | Backend 2 | Outbox dispatcher |
-| Device-token store | `notifications/application/ports/device-token-store.port.ts` | Backend 2 | Chỉ notification infrastructure |
-| Transactional outbox | `shared-kernel/application/outbox.port.ts` | Backend 2 foundation | Bounded context ghi event trong transaction của chính nó |
+| Thành phần              | File/đường dẫn                                               | Owner                | Consumer dự kiến                                         |
+| ----------------------- | ------------------------------------------------------------ | -------------------- | -------------------------------------------------------- |
+| Access-token validation | `shared-kernel/application/access-token-validator.port.ts`   | Backend 1            | Socket gateway, protected API                            |
+| Location privacy reader | `auth/application/public/location-privacy-reader.ts`         | Backend 1            | Backend 2 location access service                        |
+| Friendship reader       | `friends/application/public/*`                               | Backend 1            | Backend 2 location/nearby                                |
+| Location store          | `locations/application/ports/location.port.ts`               | Backend 2            | Recommendation, nearby qua public port tương lai         |
+| Socket rooms            | `shared-kernel/application/realtime-publisher.port.ts`       | Backend 2            | Meetup/Vote events                                       |
+| Presence                | `shared-kernel/application/presence.port.ts`                 | Backend 2            | Các feature cần online/offline aggregate                 |
+| Push notification       | `notifications/application/ports/push-notification.port.ts`  | Backend 2            | Outbox dispatcher                                        |
+| Device-token store      | `notifications/application/ports/device-token-store.port.ts` | Backend 2            | Chỉ notification infrastructure                          |
+| Transactional outbox    | `shared-kernel/application/outbox.port.ts`                   | Backend 2 foundation | Bounded context ghi event trong transaction của chính nó |
 
 ## 3. Database ownership
 
-| Bảng | Owner | Ghi chú |
-|---|---|---|
-| `user_accounts`, `user_sessions`, privacy/profile | Backend 1 | Backend 2 không query trực tiếp. |
-| `friendships` | Backend 1 | Chỉ dùng dữ liệu friendship qua port public. |
-| `device_tokens` | Backend 2 | Chỉ lưu AES-256-GCM ciphertext và HMAC fingerprint; không lưu plaintext FCM token. |
-| `outbox_events` | Foundation / Backend 2 vận hành worker | Bất kỳ context nào cũng có thể ghi row bằng `OutboxPort` trong transaction của mình; không tự gọi worker. |
+| Bảng                                              | Owner                                  | Ghi chú                                                                                                   |
+| ------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `user_accounts`, `user_sessions`, privacy/profile | Backend 1                              | Backend 2 không query trực tiếp.                                                                          |
+| `friendships`                                     | Backend 1                              | Chỉ dùng dữ liệu friendship qua port public.                                                              |
+| `device_tokens`                                   | Backend 2                              | Chỉ lưu AES-256-GCM ciphertext và HMAC fingerprint; không lưu plaintext FCM token.                        |
+| `outbox_events`                                   | Foundation / Backend 2 vận hành worker | Bất kỳ context nào cũng có thể ghi row bằng `OutboxPort` trong transaction của mình; không tự gọi worker. |
 
 Migration là append-only. Người tạo migration cần:
 
@@ -63,13 +63,13 @@ Ba hàm đều phải chỉ trả `true` khi participant được accepted và m
 
 Event phải có `eventId`, `eventName` versioned và `occurredAt`. Không đưa token, GPS chính xác, refresh token hoặc dữ liệu nhạy cảm vào payload.
 
-| Event | Producer | Consumer | Payload tối thiểu |
-|---|---|---|---|
-| `MeetupMemberChanged.v1` | Backend 1 / BE-08 | Backend 2 Socket/location | `eventId`, `meetupId`, `userId`, `membershipStatus`, `occurredAt` |
-| `PreferenceUpdated.v1` | Backend 1 / BE-09 | Backend 2 recommendation | `eventId`, `meetupId`, `participantId`, `occurredAt` |
+| Event                    | Producer          | Consumer                           | Payload tối thiểu                                                                                                         |
+| ------------------------ | ----------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `MeetupMemberChanged.v1` | Backend 1 / BE-08 | Backend 2 Socket/location          | `eventId`, `meetupId`, `userId`, `membershipStatus`, `occurredAt`                                                         |
+| `PreferenceUpdated.v1`   | Backend 1 / BE-09 | Backend 2 recommendation           | `eventId`, `meetupId`, `participantId`, `occurredAt`                                                                      |
 | `RecommendationReady.v1` | Backend 2 / BE-23 | Mobile/Socket, Backend 1 vote flow | `eventId`, `meetupId`, `runId`, ordered top-K `placeIds`, route execution `strategy` (`exact` or `batched`), `occurredAt` |
-| `VoteUpdated.v1` | Backend 1 / BE-10 | Backend 2 Socket | `eventId`, `meetupId`, `placeId`, `voteCount`, `occurredAt` |
-| `MeetupFinalized.v1` | Backend 1 / BE-10 | Backend 2 Socket + FCM | `eventId`, `meetupId`, `placeId`, `scheduledAt`, `occurredAt` |
+| `VoteUpdated.v1`         | Backend 1 / BE-10 | Backend 2 Socket                   | `eventId`, `meetupId`, `placeId`, `voteCount`, `occurredAt`                                                               |
+| `MeetupFinalized.v1`     | Backend 1 / BE-10 | Backend 2 Socket + FCM             | `eventId`, `meetupId`, `placeId`, `scheduledAt`, `occurredAt`                                                             |
 
 Backend 1 ghi event vào `outbox_events` bằng `OutboxPort` trong cùng transaction persist Meetup/Vote. Worker chỉ dispatch sau commit; consumer phải xử lý idempotent theo `eventId`.
 
@@ -108,14 +108,14 @@ Không gửi title/body/token/GPS qua integration event; title/body hiện đư�
 
 ## 7. Nhật ký phối hợp
 
-| Ngày | Người cập nhật | Thay đổi / contract | Consumer cần kiểm tra | Trạng thái |
-|---|---|---|---|---|
-| 2026-10-14 | Backend 2 | BE-05/BE-06 location Socket, Redis presence và room contract | Backend 1 cần nối Meetup membership port | Chờ BE-08 |
-| 2026-10-14 | Backend 2 | BE-07 `device_tokens`, FCM adapter, push outbox delivery | Backend 1 dùng `MeetupFinalized.v1` khi BE-10 hoàn thành | Sẵn sàng |
-| 2026-10-15 | Backend 1 | BE-03 hoàn thành vòng đời Meetup và thành viên, kết nối MeetupLocationAdapter, phát realtime & push outbox events | Backend 2 có thể join/read location theo active meetup | Sẵn sàng |
+| Ngày       | Người cập nhật        | Thay đổi / contract                                                                                                                                                                                                                                          | Consumer cần kiểm tra                                                                                                                                                    | Trạng thái                                          |
+| ---------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| 2026-10-14 | Backend 2             | BE-05/BE-06 location Socket, Redis presence và room contract                                                                                                                                                                                                 | Backend 1 cần nối Meetup membership port                                                                                                                                 | Chờ BE-08                                           |
+| 2026-10-14 | Backend 2             | BE-07 `device_tokens`, FCM adapter, push outbox delivery                                                                                                                                                                                                     | Backend 1 dùng `MeetupFinalized.v1` khi BE-10 hoàn thành                                                                                                                 | Sẵn sàng                                            |
+| 2026-10-15 | Backend 1             | BE-03 hoàn thành vòng đời Meetup và thành viên, kết nối MeetupLocationAdapter, phát realtime & push outbox events                                                                                                                                            | Backend 2 có thể join/read location theo active meetup                                                                                                                   | Sẵn sàng                                            |
 | 2026-10-19 | Backend 1 / Backend 2 | BR-07/21: sau hạn mời khóa sửa thông tin và quản lý thành viên của organizer; thành viên vẫn rời/sửa preference trước khi chốt. Preference meetup thay toàn bộ profile, chỉ tag đã chọn được tính; danh sách rỗng trở về profile. Mời lại giữ preference cũ. | Backend 2 recommendation phải dùng `MeetupPreferenceReader`, không tự bổ sung tag thiếu từ profile hoặc gán `normal`; mobile phân biệt profile gợi ý và tag đã xác nhận. | Cần kiểm tra tích hợp khi triển khai recommendation |
-| 2026-10-26 | Backend 2 | BE-13: candidate search dùng `MeetupCandidateSearchPort` và `MeetupLocationPort`, Google Places API (New), chưa có ETA/ranking/recommendationMode. | Backend 1 giữ public reader của Meetup; mobile gọi endpoint candidate và không gửi tọa độ tâm tìm kiếm. | Sẵn sàng, cần cấu hình Google Places |
-| 2026-11-02 | Backend 2 | BE-23: recommendation-run POST/GET trả persisted top-K có per-member ETA/explanation; full rank nằm trong DB và phát `RecommendationReady.v1` qua outbox. | Mobile dùng `results`, không dùng candidate-only order; consumer realtime dedup theo `eventId`; vote giữ `runId` cho bước tích hợp sau. | Sẵn sàng |
+| 2026-10-26 | Backend 2             | BE-13: candidate search dùng `MeetupCandidateSearchPort` và `MeetupLocationPort`, Google Places API (New), chưa có ETA/ranking/recommendationMode.                                                                                                           | Backend 1 giữ public reader của Meetup; mobile gọi endpoint candidate và không gửi tọa độ tâm tìm kiếm.                                                                  | Sẵn sàng, cần cấu hình Google Places                |
+| 2026-11-02 | Backend 2             | BE-23: recommendation-run POST/GET trả persisted top-K có per-member ETA/explanation; full rank nằm trong DB và phát `RecommendationReady.v1` qua outbox.                                                                                                    | Mobile dùng `results`, không dùng candidate-only order; consumer realtime dedup theo `eventId`; vote giữ `runId` cho bước tích hợp sau.                                  | Sẵn sàng                                            |
 
 ## 8. BE-13 — Lấy địa điểm ứng viên
 
@@ -168,13 +168,13 @@ Response thành công:
 
 ### Lỗi chính
 
-| Code | HTTP | Khi nào |
-|---|---:|---|
-| `MEETUP_NOT_FOUND` | 404 | Meetup không tồn tại |
-| `MEETUP_FORBIDDEN` | 403 | Caller không phải organizer |
-| `MEETUP_INSUFFICIENT_PARTICIPANTS` | 400 | Có dưới hai participant accepted |
-| `RECOMMENDATION_INSUFFICIENT_LOCATIONS` | 400 | Có dưới hai location hợp lệ/được phép |
-| `PLACE_SEARCH_UNAVAILABLE` | 503 | Chưa cấu hình key, Google lỗi hoặc timeout |
+| Code                                    | HTTP | Khi nào                                    |
+| --------------------------------------- | ---: | ------------------------------------------ |
+| `MEETUP_NOT_FOUND`                      |  404 | Meetup không tồn tại                       |
+| `MEETUP_FORBIDDEN`                      |  403 | Caller không phải organizer                |
+| `MEETUP_INSUFFICIENT_PARTICIPANTS`      |  400 | Có dưới hai participant accepted           |
+| `RECOMMENDATION_INSUFFICIENT_LOCATIONS` |  400 | Có dưới hai location hợp lệ/được phép      |
+| `PLACE_SEARCH_UNAVAILABLE`              |  503 | Chưa cấu hình key, Google lỗi hoặc timeout |
 
 ### Kiểm thử
 
@@ -249,3 +249,5 @@ DELETE /api/v1/friends/qr-sessions/:sessionId
 ```
 
 Redis dùng key dẫn xuất từ token hash/HMAC, không dùng raw token làm key hoặc value. Key giữ owner, session ID, expiry và revoke state với TTL; không cần bảng QR riêng. Resolve chỉ trả `{ displayName, avatarUrl, friendship }` và không trả internal ID. Sau preview, mobile gọi `POST /api/v1/friends/requests` với `{ qrSessionToken: token }`; controller resolve token rồi gọi cùng friend-request service. Self/duplicate/pending/accepted/blocked/rate-limit dùng đúng rule BE-03. Token, email, số điện thoại, tọa độ và access token không được ghi log hoặc nhúng trong QR.
+
+Backend implementation dùng use case đơn nhiệm cho từng thao tác public handle và QR session. Resolve/preview không gửi friend request; chỉ `POST /friends/requests` mới gọi `SendFriendRequestUseCase`. BE-33/BE-34 được kiểm chứng bằng PostgreSQL/Redis integration và HTTP E2E trong hai file `test/invite-links-friend-qr.*-spec.ts`.

@@ -64,7 +64,9 @@ const inviteLinkPreviewSchema = {
 @ApiTags('Meetup invite links')
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
-@ApiForbiddenResponse({ description: 'Only the meetup organizer may manage links' })
+@ApiForbiddenResponse({
+  description: 'Only the meetup organizer may manage links',
+})
 @ApiNotFoundResponse({ description: 'Meetup or invite link is unavailable' })
 @UseGuards(AccessTokenGuard, RolesGuard)
 @Roles('user')
@@ -93,16 +95,25 @@ export class MeetupInviteLinksController {
     },
   })
   @ApiCreatedResponse({ schema: inviteLinkSchema })
-  @ApiBadRequestResponse({ description: 'Expiry is invalid or past invitation deadline' })
+  @ApiBadRequestResponse({
+    description: 'Expiry is invalid or past invitation deadline',
+  })
   @ApiConflictResponse({ description: 'Meetup no longer accepts participants' })
-  @ApiTooManyRequestsResponse({ description: 'Invite link rate limit exceeded' })
+  @ApiTooManyRequestsResponse({
+    description: 'Invite link rate limit exceeded',
+  })
   async create(
     @CurrentUser('id') actorId: string,
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
     @Body() input: CreateMeetupInviteLinkRequest,
     @Req() request: Request,
   ) {
-    await assertInviteRateLimit(this.rateLimiter, this.config, request, actorId);
+    await assertInviteRateLimit(
+      this.rateLimiter,
+      this.config,
+      request,
+      actorId,
+    );
     return this.createLink.execute({ meetupId, actorId, ...input });
   }
 
@@ -111,14 +122,21 @@ export class MeetupInviteLinksController {
   @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: 'Revoke a meetup invite link' })
   @ApiNoContentResponse({ description: 'Invite link revoked' })
-  @ApiTooManyRequestsResponse({ description: 'Invite link rate limit exceeded' })
+  @ApiTooManyRequestsResponse({
+    description: 'Invite link rate limit exceeded',
+  })
   async revoke(
     @CurrentUser('id') actorId: string,
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
     @Param('linkId', new ParseUUIDPipe()) linkId: string,
     @Req() request: Request,
   ) {
-    await assertInviteRateLimit(this.rateLimiter, this.config, request, actorId);
+    await assertInviteRateLimit(
+      this.rateLimiter,
+      this.config,
+      request,
+      actorId,
+    );
     return this.revokeLink.execute({ meetupId, linkId, actorId });
   }
 }
@@ -134,10 +152,14 @@ export class MeetupInviteLinkPreviewController {
 
   @Get('preview')
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: 'Preview a meetup invite without participant or location data' })
+  @ApiOperation({
+    summary: 'Preview a meetup invite without participant or location data',
+  })
   @ApiOkResponse({ schema: inviteLinkPreviewSchema })
   @ApiNotFoundResponse({ description: 'Invite link is unavailable' })
-  @ApiTooManyRequestsResponse({ description: 'Invite link rate limit exceeded' })
+  @ApiTooManyRequestsResponse({
+    description: 'Invite link rate limit exceeded',
+  })
   async preview(@Param('token') token: string, @Req() request: Request) {
     await assertInviteRateLimit(
       this.rateLimiter,
@@ -179,7 +201,9 @@ export class MeetupInviteLinkAcceptController {
     },
   })
   @ApiNotFoundResponse({ description: 'Invite link is unavailable' })
-  @ApiTooManyRequestsResponse({ description: 'Invite link rate limit exceeded' })
+  @ApiTooManyRequestsResponse({
+    description: 'Invite link rate limit exceeded',
+  })
   async accept(
     @CurrentUser('id') actorId: string,
     @Param('token') token: string,
