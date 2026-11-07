@@ -9,6 +9,7 @@ import { TypeOrmUserAccountRepository } from './typeorm-user-account-repository'
 import { TypeOrmUserPreferenceRepository } from './typeorm-user-preference-repository';
 import { TypeOrmUserSessionRepository } from './typeorm-user-session-repository';
 import { TypeOrmOAuthIdentityRepository } from './typeorm-oauth-identity-repository';
+import { TypeOrmAuditLogStore } from './typeorm-audit-log-store';
 
 @Injectable()
 export class TypeOrmAuthUnitOfWork implements AuthUnitOfWork {
@@ -22,6 +23,7 @@ export class TypeOrmAuthUnitOfWork implements AuthUnitOfWork {
           sessions: new TypeOrmUserSessionRepository(manager),
           preferences: new TypeOrmUserPreferenceRepository(manager),
           oauthIdentities: new TypeOrmOAuthIdentityRepository(manager),
+          auditLogs: new TypeOrmAuditLogStore(manager),
         }),
       );
     } catch (error) {
