@@ -22,9 +22,7 @@ export class AuthenticateAccessUseCase {
       return {
         ...account.publicProfile(),
         sessionId: claims.sid,
-        // Roles are transport authorization metadata. Account roles are not
-        // modelled yet, so every authenticated account has the base role.
-        roles: ['user'],
+        roles: account.getRole() === 'admin' ? ['user', 'admin'] : ['user'],
       };
     });
   }
