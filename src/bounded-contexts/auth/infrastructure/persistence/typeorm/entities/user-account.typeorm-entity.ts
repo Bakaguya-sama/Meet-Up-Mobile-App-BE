@@ -12,6 +12,7 @@ export class UserAccountEntity implements AccountState {
   @Column('timestamptz', { name: 'public_handle_disabled_at', nullable: true })
   publicHandleDisabledAt: Date | null;
   @Column('varchar', { length: 255 }) email: string;
+  @Column('varchar', { length: 20, default: 'user' }) role: 'user' | 'admin';
   @Column('varchar', { name: 'password_hash', length: 255, nullable: true })
   passwordHash: string | null;
   @Column('varchar', { name: 'display_name', length: 100 }) displayName: string;

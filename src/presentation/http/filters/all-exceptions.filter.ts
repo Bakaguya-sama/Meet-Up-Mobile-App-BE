@@ -24,6 +24,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         INVALID_TOKEN: HttpStatus.UNAUTHORIZED,
         ACCOUNT_LOCKED: HttpStatus.FORBIDDEN,
         ACCOUNT_NOT_FOUND: HttpStatus.NOT_FOUND,
+        ADMIN_SELF_LOCK: HttpStatus.CONFLICT,
         ACTIVITY_TAG_NOT_FOUND: HttpStatus.NOT_FOUND,
         INVALID_INPUT: HttpStatus.BAD_REQUEST,
         INVALID_PREFERENCE_LEVEL: HttpStatus.BAD_REQUEST,
@@ -61,6 +62,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         RECOMMENDATION_RUN_IN_PROGRESS: HttpStatus.CONFLICT,
         RECOMMENDATION_RUN_NOT_RUNNING: HttpStatus.CONFLICT,
         RECOMMENDATION_RUN_NOT_FOUND: HttpStatus.NOT_FOUND,
+        RECOMMENDATION_CANDIDATE_NOT_FOUND: HttpStatus.NOT_FOUND,
         RECOMMENDATION_RUN_FORBIDDEN: HttpStatus.FORBIDDEN,
         RECOMMENDATION_STALE_CONTEXT: HttpStatus.CONFLICT,
       };

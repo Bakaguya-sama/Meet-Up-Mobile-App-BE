@@ -46,6 +46,8 @@ import { TypeOrmProfilePreferenceReader } from './infrastructure/adapters/profil
 import { GetPublicHandleUseCase } from './application/use-cases/get-public-handle.use-case';
 import { RotatePublicHandleUseCase } from './application/use-cases/rotate-public-handle.use-case';
 import { DisablePublicHandleUseCase } from './application/use-cases/disable-public-handle.use-case';
+import { ManageAccountLockUseCase } from './application/use-cases/manage-account-lock.use-case';
+import { AdminAccountsController } from './presentation/http/admin-accounts.controller';
 
 @Module({
   imports: [
@@ -53,7 +55,7 @@ import { DisablePublicHandleUseCase } from './application/use-cases/disable-publ
     JwtInfrastructureModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
   ],
-  controllers: [AuthController, PrivacyController],
+  controllers: [AuthController, PrivacyController, AdminAccountsController],
   providers: [
     {
       provide: PRIVACY_SETTINGS_STORE,
@@ -91,6 +93,11 @@ import { DisablePublicHandleUseCase } from './application/use-cases/disable-publ
     },
     { provide: UserDirectory, useClass: TypeOrmUserDirectory },
     { provide: AUTH_UNIT_OF_WORK, useClass: TypeOrmAuthUnitOfWork },
+    {
+      provide: ManageAccountLockUseCase,
+      useFactory: (uow: AuthUnitOfWork) => new ManageAccountLockUseCase(uow),
+      inject: [AUTH_UNIT_OF_WORK],
+    },
     { provide: PASSWORD_HASHER, useClass: Argon2PasswordHasher },
     { provide: AUTH_TOKENS, useClass: JwtTokens },
     {

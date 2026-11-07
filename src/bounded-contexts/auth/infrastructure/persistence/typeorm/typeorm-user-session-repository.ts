@@ -26,4 +26,12 @@ export class TypeOrmUserSessionRepository implements UserSessionStorePort {
       { revokedAt: now },
     );
   }
+
+  async revokeAllForAccount(userAccountId: string, now: Date) {
+    await this.manager.update(
+      UserSessionEntity,
+      { userAccountId, revokedAt: IsNull() },
+      { revokedAt: now },
+    );
+  }
 }
