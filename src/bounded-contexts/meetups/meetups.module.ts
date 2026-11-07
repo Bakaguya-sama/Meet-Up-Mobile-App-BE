@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { AuthModule } from '../auth/auth.module';
 import { FriendsModule } from '../friends/friends.module';
 import { MEETUP_STORE } from './application/ports/persistence/meetup-store.port';
@@ -40,16 +39,6 @@ import { MeetupEntity } from './infrastructure/persistence/typeorm/entities/meet
 import { ParticipantEntity } from './infrastructure/persistence/typeorm/entities/participant.typeorm-entity';
 import { ParticipantPreferenceEntity } from './infrastructure/persistence/typeorm/entities/participant-preference.typeorm-entity';
 import { MeetupInviteLinkEntity } from './infrastructure/persistence/typeorm/entities/meetup-invite-link.typeorm-entity';
-import { MeetupChatMessageEntity } from './infrastructure/persistence/typeorm/entities/meetup-chat-message.typeorm-entity';
-import { TypeOrmMeetupChatStore } from './infrastructure/persistence/typeorm/typeorm-meetup-chat-store';
-import { MEETUP_CHAT_STORE } from './application/ports/meetup-chat-store.port';
-import type { MeetupChatStore } from './application/ports/meetup-chat-store.port';
-import { SendMeetupChatMessageUseCase } from './application/use-cases/send-meetup-chat-message.use-case';
-import { CHAT_MESSAGE_PUBLISHER } from './application/ports/chat-message-publisher.port';
-import type { ChatMessagePublisherPort } from './application/ports/chat-message-publisher.port';
-import { RealtimeChatMessagePublisherAdapter } from './infrastructure/adapters/realtime-chat-message-publisher.adapter';
-import { ListMeetupChatMessagesQuery } from './application/queries/list-meetup-chat-messages.query';
-import { MeetupChatController } from './presentation/http/meetup-chat.controller';
 import { TypeOrmMeetupRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-repository';
 import { TypeOrmMeetupInviteLinkRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-invite-link.repository';
 import { MeetupsController } from './presentation/http/meetups.controller';
@@ -63,13 +52,11 @@ import {
   imports: [
     AuthModule,
     FriendsModule,
-    RealtimeModule,
     TypeOrmModule.forFeature([
       MeetupEntity,
       ParticipantEntity,
       ParticipantPreferenceEntity,
       MeetupInviteLinkEntity,
-      MeetupChatMessageEntity,
     ]),
   ],
   controllers: [
@@ -77,37 +64,9 @@ import {
     MeetupInviteLinksController,
     MeetupInviteLinkPreviewController,
     MeetupInviteLinkAcceptController,
-    MeetupChatController,
   ],
   providers: [
     { provide: MEETUP_STORE, useClass: TypeOrmMeetupRepository },
-    { provide: MEETUP_CHAT_STORE, useClass: TypeOrmMeetupChatStore },
-    {
-      provide: CHAT_MESSAGE_PUBLISHER,
-      useClass: RealtimeChatMessagePublisherAdapter,
-    },
-    {
-      provide: SendMeetupChatMessageUseCase,
-      useFactory: (
-        store: MeetupChatStore,
-        membership: MeetupMembershipReader,
-        publisher: ChatMessagePublisherPort,
-      ) =>
-        new SendMeetupChatMessageUseCase(store, membership, publisher),
-      inject: [
-        MEETUP_CHAT_STORE,
-        MeetupMembershipReader,
-        CHAT_MESSAGE_PUBLISHER,
-      ],
-    },
-    {
-      provide: ListMeetupChatMessagesQuery,
-      useFactory: (
-        store: MeetupChatStore,
-        membership: MeetupMembershipReader,
-      ) => new ListMeetupChatMessagesQuery(store, membership),
-      inject: [MEETUP_CHAT_STORE, MeetupMembershipReader],
-    },
     {
       provide: MEETUP_INVITE_LINK_STORE,
       useClass: TypeOrmMeetupInviteLinkRepository,

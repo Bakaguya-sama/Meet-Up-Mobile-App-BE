@@ -1,5 +1,8 @@
 import { EntityManager } from 'typeorm';
-import type { AuditLogInput, AuditLogStorePort } from '../../../application/ports/persistence/audit-log-store.port';
+import type {
+  AuditLogInput,
+  AuditLogStorePort,
+} from '../../../application/ports/persistence/audit-log-store.port';
 import { AuditLogEntity } from './entities/audit-log.typeorm-entity';
 
 export class TypeOrmAuditLogStore implements AuditLogStorePort {

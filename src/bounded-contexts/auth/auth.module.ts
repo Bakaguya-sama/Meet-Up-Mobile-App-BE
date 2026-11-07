@@ -47,7 +47,7 @@ import { GetPublicHandleUseCase } from './application/use-cases/get-public-handl
 import { RotatePublicHandleUseCase } from './application/use-cases/rotate-public-handle.use-case';
 import { DisablePublicHandleUseCase } from './application/use-cases/disable-public-handle.use-case';
 import { ManageAccountLockUseCase } from './application/use-cases/manage-account-lock.use-case';
-import { AdminAccountsController } from './presentation/http/admin-accounts.controller';
+import { ACCOUNT_LOCK_ADMINISTRATION } from './application/public/account-lock-administration';
 
 @Module({
   imports: [
@@ -55,7 +55,7 @@ import { AdminAccountsController } from './presentation/http/admin-accounts.cont
     JwtInfrastructureModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
   ],
-  controllers: [AuthController, PrivacyController, AdminAccountsController],
+  controllers: [AuthController, PrivacyController],
   providers: [
     {
       provide: PRIVACY_SETTINGS_STORE,
@@ -97,6 +97,10 @@ import { AdminAccountsController } from './presentation/http/admin-accounts.cont
       provide: ManageAccountLockUseCase,
       useFactory: (uow: AuthUnitOfWork) => new ManageAccountLockUseCase(uow),
       inject: [AUTH_UNIT_OF_WORK],
+    },
+    {
+      provide: ACCOUNT_LOCK_ADMINISTRATION,
+      useExisting: ManageAccountLockUseCase,
     },
     { provide: PASSWORD_HASHER, useClass: Argon2PasswordHasher },
     { provide: AUTH_TOKENS, useClass: JwtTokens },
@@ -207,6 +211,7 @@ import { AdminAccountsController } from './presentation/http/admin-accounts.cont
     GetUserPreferenceUseCase,
     GetActivityTagsUseCase,
     PrivacySelectedFriendPurge,
+    ACCOUNT_LOCK_ADMINISTRATION,
   ],
 })
 export class AuthModule {}

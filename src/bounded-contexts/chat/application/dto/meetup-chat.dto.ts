@@ -4,6 +4,7 @@ import {
   IsISO8601,
   IsOptional,
   IsString,
+  IsUUID,
   Length,
   Max,
   Min,
@@ -22,6 +23,10 @@ export class ListMeetupChatMessagesRequest {
   @IsOptional()
   @IsISO8601({ strict: true })
   before?: string;
+
+  @IsOptional()
+  @IsUUID()
+  beforeId?: string;
 
   @Transform(({ value }: { value: unknown }) =>
     value === undefined ? 50 : Number(value),

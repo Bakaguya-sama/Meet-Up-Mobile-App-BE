@@ -24,6 +24,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `11_backend_integration_handoff.md` | Handoff giữa hai developer backend: owner, contract, outbox, migration và nhật ký phối hợp. |
 | `12_meetup_group_recommendation_engine.md` | Thiết kế kỹ thuật recommendation pipeline, fairness ranking, feedback logging và lộ trình offline learning/LTR. |
 | `13_implementation_plan.md` | Thứ tự triển khai, dependency, exit gate và quyết định đã khóa cho toàn bộ function backend. |
+| `18_be11_be19_be20_delivery.md` | API, ranh giới context và lưu ý triển khai cho BE-11, BE-19, BE-20. |
 
 ## Cách dùng nhanh
 

@@ -38,6 +38,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         INVALID_LOCATION_SAMPLE: HttpStatus.BAD_REQUEST,
         MEETUP_NOT_FOUND: HttpStatus.NOT_FOUND,
         MEETUP_FORBIDDEN: HttpStatus.FORBIDDEN,
+        CHAT_FORBIDDEN: HttpStatus.FORBIDDEN,
         MEETUP_INVITEE_UNAVAILABLE: HttpStatus.BAD_REQUEST,
         MEETUP_INVITE_LINK_NOT_FOUND: HttpStatus.NOT_FOUND,
         MEETUP_INVITE_LINK_FORBIDDEN: HttpStatus.FORBIDDEN,

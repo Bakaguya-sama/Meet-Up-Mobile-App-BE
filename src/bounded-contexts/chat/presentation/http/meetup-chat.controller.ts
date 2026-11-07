@@ -46,6 +46,7 @@ export class MeetupChatController {
       actorId,
       meetupId,
       before: query.before ? new Date(query.before) : undefined,
+      beforeId: query.beforeId,
       limit: query.limit,
     });
   }

@@ -12,6 +12,7 @@ export interface MeetupChatStore {
   list(input: {
     meetupId: string;
     before?: Date;
+    beforeId?: string;
     limit: number;
   }): Promise<MeetupChatMessage[]>;
 }

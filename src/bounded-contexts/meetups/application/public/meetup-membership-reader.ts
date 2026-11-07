@@ -1,6 +1,6 @@
 import type { MeetupStorePort } from '../ports/persistence/meetup-store.port';
 
-/** Public membership contract for Locations; no participant or persistence objects escape. */
+/** Public membership contract for other contexts; no persistence objects escape. */
 export class MeetupMembershipReader {
   constructor(private readonly store: MeetupStorePort) {}
   areAcceptedInActiveMeetup(

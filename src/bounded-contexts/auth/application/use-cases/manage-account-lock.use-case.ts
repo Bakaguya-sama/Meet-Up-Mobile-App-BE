@@ -11,15 +11,6 @@ export class ManageAccountLockUseCase {
     locked: boolean;
     reason?: string;
   }) {
-    if (
-      input.actorId.toLowerCase() === input.accountId.toLowerCase() &&
-      input.locked
-    ) {
-      throw new AuthError(
-        'ADMIN_SELF_LOCK',
-        'Administrators cannot lock their own account',
-      );
-    }
     return this.uow.run(async (transaction) => {
       const account = await transaction.accounts.lockAccount(input.accountId);
       if (!account) {

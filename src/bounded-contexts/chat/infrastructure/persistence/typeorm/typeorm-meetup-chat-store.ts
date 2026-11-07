@@ -16,13 +16,21 @@ export class TypeOrmMeetupChatStore implements MeetupChatStore {
       .insert(message);
   }
 
-  async list(input: { meetupId: string; before?: Date; limit: number }) {
+  async list(input: {
+    meetupId: string;
+    before?: Date;
+    beforeId?: string;
+    limit: number;
+  }) {
     const query = this.dataSource
       .getRepository(MeetupChatMessageEntity)
       .createQueryBuilder('message')
       .where('message.meetupId = :meetupId', { meetupId: input.meetupId });
-    if (input.before) {
-      query.andWhere('message.sentAt < :before', { before: input.before });
+    if (input.before && input.beforeId) {
+      query.andWhere(
+        '(message.sentAt < :before OR (message.sentAt = :before AND message.id < :beforeId))',
+        { before: input.before, beforeId: input.beforeId },
+      );
     }
     const rows = await query
       .orderBy('message.sentAt', 'DESC')

@@ -4,11 +4,12 @@ Branch `hao/feat`, based on the latest `main` at implementation start.
 
 ## BE-11 Meetup chat
 
-- `GET /meetups/{meetupId}/chat/messages?limit=50&before={ISO8601}` reads messages in chronological order. `limit` is clamped to 1–100.
+- `GET /meetups/{meetupId}/chat/messages?limit=50&before={ISO8601}&beforeId={messageUuid}` reads messages in chronological order. `limit` is clamped to 1–100. `before` and `beforeId` must be supplied together; use the oldest returned message as the next cursor. The compound cursor preserves messages with equal timestamps.
 - `POST /meetups/{meetupId}/chat/messages` accepts `{ "text": "..." }`, with 1–2,000 trimmed characters.
 - Both operations require an authenticated, accepted participant and an active meetup (`inviting`, `choosing`, or `selected`).
 - Sent messages are persisted before `meetup:chat-message` is published to the meetup Socket.IO room. If realtime delivery fails, the stored message remains readable over HTTP and a warning is logged.
 - Chat is text-only; editing, deletion, attachments, and retention are outside the currently specified behavior.
+- Chat lives in the `chat` bounded context. It checks access through Meetups' public membership API and does not depend on Meetups persistence.
 
 ## BE-20 Favorite places
 
@@ -23,6 +24,7 @@ Branch `hao/feat`, based on the latest `main` at implementation start.
 - `POST /admin/accounts/{accountId}/lock` accepts an optional `{ "reason": "..." }`.
 - `DELETE /admin/accounts/{accountId}/lock` unlocks the account.
 - Both require an authenticated `admin`. Locking revokes active refresh sessions in the same transaction as the account update and audit record. Access-token authentication also checks the locked account state.
+- The admin-facing workflow lives in the `admin` bounded context. It calls Auth's public account-lock contract; Auth owns the account, session, and audit transaction.
 - Audit metadata records only the boolean lock state; free-form reason, coordinates, tokens, and other sensitive values are excluded.
 - Existing accounts and new signups default to role `user`. There is intentionally no API to grant roles. An operator with controlled database access may provision the first admin after verifying the account:
 
