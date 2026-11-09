@@ -46,6 +46,8 @@ import { TypeOrmProfilePreferenceReader } from './infrastructure/adapters/profil
 import { GetPublicHandleUseCase } from './application/use-cases/get-public-handle.use-case';
 import { RotatePublicHandleUseCase } from './application/use-cases/rotate-public-handle.use-case';
 import { DisablePublicHandleUseCase } from './application/use-cases/disable-public-handle.use-case';
+import { ManageAccountLockUseCase } from './application/use-cases/manage-account-lock.use-case';
+import { ACCOUNT_LOCK_ADMINISTRATION } from './application/public/account-lock-administration';
 
 @Module({
   imports: [
@@ -91,6 +93,15 @@ import { DisablePublicHandleUseCase } from './application/use-cases/disable-publ
     },
     { provide: UserDirectory, useClass: TypeOrmUserDirectory },
     { provide: AUTH_UNIT_OF_WORK, useClass: TypeOrmAuthUnitOfWork },
+    {
+      provide: ManageAccountLockUseCase,
+      useFactory: (uow: AuthUnitOfWork) => new ManageAccountLockUseCase(uow),
+      inject: [AUTH_UNIT_OF_WORK],
+    },
+    {
+      provide: ACCOUNT_LOCK_ADMINISTRATION,
+      useExisting: ManageAccountLockUseCase,
+    },
     { provide: PASSWORD_HASHER, useClass: Argon2PasswordHasher },
     { provide: AUTH_TOKENS, useClass: JwtTokens },
     {
@@ -200,6 +211,7 @@ import { DisablePublicHandleUseCase } from './application/use-cases/disable-publ
     GetUserPreferenceUseCase,
     GetActivityTagsUseCase,
     PrivacySelectedFriendPurge,
+    ACCOUNT_LOCK_ADMINISTRATION,
   ],
 })
 export class AuthModule {}

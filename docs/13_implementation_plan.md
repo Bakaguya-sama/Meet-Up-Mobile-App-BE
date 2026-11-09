@@ -63,7 +63,7 @@ Tab `Chức năng BE` có 10 cột:
 | `Sprint`                 | Thứ tự mục tiêu S1 đến S7+. Không phải cam kết ngày.          |
 | `Phụ thuộc`              | Cạnh trong đồ thị phụ thuộc.                                  |
 | `Tiêu chí hoàn thành`    | Nguồn chính để viết exit gate.                                |
-| `Trạng thái`             | `Đã thực hiện` hoặc `Chưa thực hiện`.                         |
+| `Trạng thái`             | `Đã thực hiện`, `Đang triển khai` hoặc `Chưa thực hiện`.      |
 
 [Nguồn: workbook — sheet `Chức năng BE`, hàng tiêu đề và BE-01 đến BE-34]
 
@@ -74,7 +74,8 @@ Tab `Chức năng BE` có 10 cột:
 | Core           |          19 |     173 | BE-01–BE-10, BE-13–BE-17, BE-22–BE-23, BE-28, BE-32             |
 | Planned        |          15 |     120 | BE-11–BE-12, BE-18–BE-21, BE-24–BE-27, BE-29–BE-31, BE-33–BE-34 |
 | Đã thực hiện   |          17 |     157 | BE-01–BE-09, BE-13–BE-17, BE-22–BE-23, BE-28                    |
-| Chưa thực hiện |          17 |     136 | BE-10–BE-12, BE-18–BE-21, BE-24–BE-27, BE-29–BE-34              |
+| Đang triển khai |           3 |      14 | BE-11, BE-19, BE-20                                               |
+| Chưa thực hiện |          14 |     122 | BE-10, BE-12, BE-18, BE-21, BE-24–BE-27, BE-29–BE-34            |
 | Dev Backend 1  |          13 |      88 | BE-01–BE-04, BE-08–BE-12, BE-19–BE-20, BE-33–BE-34              |
 | Dev Backend 2  |          21 |     205 | BE-05–BE-07, BE-13–BE-18, BE-21–BE-32                           |
 | **Tổng**       |      **34** | **293** | BE-01–BE-34                                                     |
@@ -1148,7 +1149,7 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-08 | Vòng đời Meetup và thành viên                    | Đã thực hiện           | Dev Backend 1 | Bước 0  | Baseline verified; không gồm recommendationMode                |
 | BE-09 | Sở thích tạm thời meetup                         | Đã thực hiện           | Dev Backend 1 | Bước 0  | Baseline verified                                              |
 | BE-10 | Vote và chốt địa điểm sau recommendation         | Chưa thực hiện         | Dev Backend 1 | Bước 4  | Vote/finalize linked run                                       |
-| BE-11 | Chat trong meetup                                | Chưa thực hiện         | Dev Backend 1 | Bước 4  | Chat persistence + realtime                                    |
+| BE-11 | Chat trong meetup                                | Đang triển khai        | Dev Backend 1 | Bước 4  | Chat persistence + realtime; tests pending                    |
 | BE-12 | Lịch sử meetup                                   | Chưa thực hiện         | Dev Backend 1 | Bước 4  | Privacy-safe history                                           |
 | BE-13 | Lấy địa điểm ứng viên (candidate-only)           | Đã thực hiện           | Dev Backend 2 | Bước 0  | Baseline verified; internal input for engine                   |
 | BE-14 | Khởi tạo recommendation run và context           | Đã thực hiện           | Dev Backend 2 | Bước 1  | Validated/idempotent run context                               |
@@ -1156,8 +1157,8 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-16 | Route Matrix và route validation                 | Đã thực hiện           | Dev Backend 2 | Bước 2  | Route-complete candidates                                      |
 | BE-17 | Feature và member utility                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Versioned T/P/Q/U                                              |
 | BE-18 | Phát hiện bạn ở gần                              | Chưa thực hiện         | Dev Backend 2 | Bước 6  | Privacy-safe nearby notification                               |
-| BE-19 | Quản trị tài khoản                               | Chưa thực hiện         | Dev Backend 1 | Bước 6  | Lock/unlock + audit                                            |
-| BE-20 | Địa điểm yêu thích                               | Chưa thực hiện         | Dev Backend 1 | Bước 4  | Canonical add/remove favorite                                  |
+| BE-19 | Quản trị tài khoản                               | Đang triển khai        | Dev Backend 1 | Bước 6  | Lock/unlock + audit; tests pending                             |
+| BE-20 | Địa điểm yêu thích                               | Đang triển khai        | Dev Backend 1 | Bước 4  | Canonical add/remove favorite; tests pending                   |
 | BE-21 | Observability và replay recommendation           | Chưa thực hiện         | Dev Backend 2 | Bước 5  | Metrics/log/replay                                             |
 | BE-22 | Group ranking và fairness                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Three deterministic strategies                                 |
 | BE-23 | Explanation, persistence và API kết quả          | Đã thực hiện           | Dev Backend 2 | Bước 3  | Atomic full run + top-K API                                    |

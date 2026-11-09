@@ -62,6 +62,12 @@ import { RecommendationRunFreshnessGuard } from './application/public/recommenda
 import { RecommendationPlaceEntity } from './infrastructure/persistence/typeorm/entities/recommendation-place.typeorm-entity';
 import { ExplanationBuilder } from './application/services/explanation-builder';
 import { OutboxEventTypeOrmEntity } from '../../infrastructure/outbox/persistence/outbox-event.typeorm-entity';
+import { FavoritePlaceEntity } from './infrastructure/persistence/typeorm/entities/favorite-place.typeorm-entity';
+import { TypeOrmFavoritePlaceStore } from './infrastructure/persistence/typeorm/typeorm-favorite-place-store';
+import { FAVORITE_PLACE_STORE } from './application/ports/favorite-place-store.port';
+import type { FavoritePlaceStore } from './application/ports/favorite-place-store.port';
+import { ManageFavoritePlaceUseCase } from './application/use-cases/manage-favorite-place.use-case';
+import { FavoritePlacesController } from './presentation/http/favorite-places.controller';
 
 @Module({
   imports: [
@@ -73,10 +79,18 @@ import { OutboxEventTypeOrmEntity } from '../../infrastructure/outbox/persistenc
       RecommendationMemberFeatureEntity,
       RecommendationPlaceEntity,
       OutboxEventTypeOrmEntity,
+      FavoritePlaceEntity,
     ]),
   ],
-  controllers: [RecommendationsController],
+  controllers: [RecommendationsController, FavoritePlacesController],
   providers: [
+    { provide: FAVORITE_PLACE_STORE, useClass: TypeOrmFavoritePlaceStore },
+    {
+      provide: ManageFavoritePlaceUseCase,
+      useFactory: (store: FavoritePlaceStore) =>
+        new ManageFavoritePlaceUseCase(store),
+      inject: [FAVORITE_PLACE_STORE],
+    },
     {
       provide: MEETUP_CANDIDATE_SEARCH,
       useFactory: (meetups: MeetupCandidateSearchReader) =>

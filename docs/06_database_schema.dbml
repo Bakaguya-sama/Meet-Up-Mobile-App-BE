@@ -53,6 +53,7 @@
   Table user_accounts {
     id uuid [pk]
     email varchar(255) [not null, unique]
+    role varchar(20) [not null, default: 'user', note: 'Only user/admin. Provision admin through controlled database operations; never from public signup.']
     password_hash varchar(255) // Null for an account that only uses Google OAuth.
     display_name varchar(100) [not null]
     avatar_url varchar(1000)
@@ -405,12 +406,16 @@
   Table favorite_places {
     id uuid [pk]
     user_id uuid [not null]
-    place_snapshot_id uuid [not null]
+    provider varchar(50) [not null]
+    provider_place_id varchar(255) [not null]
+    canonical_candidate_key varchar(300) [not null]
+    place_name varchar(255) [not null]
     created_at timestamptz [not null]
 
     Indexes {
-      (user_id, place_snapshot_id) [unique]
+      (user_id, canonical_candidate_key) [unique]
     }
+    Note: 'Contains only a small candidate snapshot. Never stores route history or exact user coordinates.'
   }
 
   Enum chat_message_kind {
@@ -430,15 +435,12 @@
   Table meetup_chat_messages {
     id uuid [pk]
     meetup_id uuid [not null]
-    sender_participant_id uuid [not null]
-    message_kind chat_message_kind [not null, default: 'text']
-    text_content varchar(2000)
+    sender_user_id uuid [not null]
+    text_content varchar(2000) [not null]
     sent_at timestamptz [not null]
-    edited_at timestamptz
-    deleted_at timestamptz
 
     Indexes {
-      (meetup_id, sent_at)
+      (meetup_id, sent_at, id)
     }
   }
 
@@ -575,11 +577,11 @@
 
   Table audit_logs {
     id uuid [pk]
-    actor_id uuid
+    actor_id uuid [not null]
     action varchar(100) [not null]
-    subject_type varchar(50) [not null]
-    subject_id uuid
-    metadata_json jsonb
+    subject_type varchar(100) [not null]
+    subject_id uuid [not null]
+    metadata_json jsonb [not null, default: '{}']
     created_at timestamptz [not null]
 
     Note: 'Security and admin audit only. Do not store exact location, refresh token or sensitive AI payload.'
@@ -587,6 +589,10 @@
 
   Ref: user_accounts.id < oauth_identities.user_account_id
   Ref: user_accounts.id < user_sessions.user_account_id
+  Ref: user_accounts.id < favorite_places.user_id
+  Ref: user_accounts.id < meetup_chat_messages.sender_user_id
+  Ref: user_accounts.id < audit_logs.actor_id
+  Ref: meetups.id < meetup_chat_messages.meetup_id
   Ref: user_sessions.id < user_sessions.parent_session_id
   Ref: user_sessions.id < user_sessions.replaced_by_session_id
   Ref: user_accounts.id < friendships.user_a_id

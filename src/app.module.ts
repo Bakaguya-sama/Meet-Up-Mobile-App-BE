@@ -12,6 +12,8 @@ import { MeetupsModule } from './bounded-contexts/meetups/meetups.module';
 import { LocationsModule } from './bounded-contexts/locations/locations.module';
 import { NotificationsModule } from './bounded-contexts/notifications/notifications.module';
 import { RecommendationsModule } from './bounded-contexts/recommendations/recommendations.module';
+import { ChatModule } from './bounded-contexts/chat/chat.module';
+import { AdminModule } from './bounded-contexts/admin/admin.module';
 
 const runtimeModules =
   process.env.NODE_ENV === 'test'
@@ -26,6 +28,8 @@ const runtimeModules =
         LocationsModule,
         NotificationsModule,
         RecommendationsModule,
+        ChatModule,
+        AdminModule,
       ];
 
 @Module({

@@ -3,6 +3,7 @@ import { PublicHandle } from '../values/public-handle';
 
 export interface AccountState {
   id: string;
+  role?: 'user' | 'admin';
   publicHandle?: string | null;
   publicHandleDisabledAt?: Date | null;
   email: string;
@@ -83,5 +84,21 @@ export class UserAccount {
   publicProfile() {
     const { id, email, displayName, avatarUrl } = this.state;
     return { id, email, displayName, avatarUrl };
+  }
+
+  getRole(): 'user' | 'admin' {
+    return this.state.role ?? 'user';
+  }
+
+  lock(reason: string | null, now: Date): void {
+    this.state.isLocked = true;
+    this.state.lockedReason = reason?.trim().slice(0, 500) || null;
+    this.state.updatedAt = now;
+  }
+
+  unlock(now: Date): void {
+    this.state.isLocked = false;
+    this.state.lockedReason = null;
+    this.state.updatedAt = now;
   }
 }
