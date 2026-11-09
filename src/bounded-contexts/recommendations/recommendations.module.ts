@@ -66,7 +66,9 @@ import { FavoritePlaceEntity } from './infrastructure/persistence/typeorm/entiti
 import { TypeOrmFavoritePlaceStore } from './infrastructure/persistence/typeorm/typeorm-favorite-place-store';
 import { FAVORITE_PLACE_STORE } from './application/ports/favorite-place-store.port';
 import type { FavoritePlaceStore } from './application/ports/favorite-place-store.port';
-import { ManageFavoritePlaceUseCase } from './application/use-cases/manage-favorite-place.use-case';
+import { AddFavoritePlaceUseCase } from './application/use-cases/add-favorite-place.use-case';
+import { ListFavoritePlacesUseCase } from './application/use-cases/list-favorite-places.use-case';
+import { RemoveFavoritePlaceUseCase } from './application/use-cases/remove-favorite-place.use-case';
 import { FavoritePlacesController } from './presentation/http/favorite-places.controller';
 
 @Module({
@@ -86,11 +88,18 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
   providers: [
     { provide: FAVORITE_PLACE_STORE, useClass: TypeOrmFavoritePlaceStore },
     {
-      provide: ManageFavoritePlaceUseCase,
+      provide: AddFavoritePlaceUseCase,
       useFactory: (store: FavoritePlaceStore) =>
-        new ManageFavoritePlaceUseCase(store),
+        new AddFavoritePlaceUseCase(store),
       inject: [FAVORITE_PLACE_STORE],
     },
+    ...[ListFavoritePlacesUseCase, RemoveFavoritePlaceUseCase].map(
+      (useCase) => ({
+        provide: useCase,
+        useFactory: (store: FavoritePlaceStore) => new useCase(store),
+        inject: [FAVORITE_PLACE_STORE],
+      }),
+    ),
     {
       provide: MEETUP_CANDIDATE_SEARCH,
       useFactory: (meetups: MeetupCandidateSearchReader) =>

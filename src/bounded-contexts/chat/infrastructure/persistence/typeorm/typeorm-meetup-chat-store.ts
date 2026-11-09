@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryFailedError } from 'typeorm';
+import { ChatError } from '../../../domain/errors/chat.error';
 import type {
   MeetupChatMessage,
   MeetupChatStore,
@@ -11,21 +12,43 @@ export class TypeOrmMeetupChatStore implements MeetupChatStore {
   constructor(private readonly dataSource: DataSource) {}
 
   async append(message: MeetupChatMessage): Promise<void> {
-    await this.dataSource
-      .getRepository(MeetupChatMessageEntity)
-      .insert(message);
+    try {
+      await this.dataSource
+        .getRepository(MeetupChatMessageEntity)
+        .insert(message);
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        (error.driverError as { code?: string; message?: string }).code ===
+          'P0001' &&
+        (error.driverError as { code?: string; message?: string }).message ===
+          'CHAT_SENDER_NOT_ACTIVE'
+      ) {
+        throw new ChatError(
+          'CHAT_FORBIDDEN',
+          'Only accepted members of an active meetup can use chat',
+        );
+      }
+      throw error;
+    }
   }
 
   async list(input: {
     meetupId: string;
     before?: Date;
     beforeId?: string;
+    historyVisibleUntil?: Date;
     limit: number;
   }) {
     const query = this.dataSource
       .getRepository(MeetupChatMessageEntity)
       .createQueryBuilder('message')
       .where('message.meetupId = :meetupId', { meetupId: input.meetupId });
+    if (input.historyVisibleUntil) {
+      query.andWhere('message.sentAt <= :historyVisibleUntil', {
+        historyVisibleUntil: input.historyVisibleUntil,
+      });
+    }
     if (input.before && input.beforeId) {
       query.andWhere(
         '(message.sentAt < :before OR (message.sentAt = :before AND message.id < :beforeId))',

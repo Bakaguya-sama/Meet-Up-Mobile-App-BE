@@ -12,7 +12,7 @@ export class SendMeetupChatMessageUseCase {
   ) {}
 
   async execute(input: { actorId: string; meetupId: string; text: string }) {
-    if (!(await this.membership.canUseChat(input.meetupId, input.actorId))) {
+    if (!(await this.membership.canSendChat(input.meetupId, input.actorId))) {
       throw new ChatError(
         'CHAT_FORBIDDEN',
         'Only accepted members of an active meetup can use chat',

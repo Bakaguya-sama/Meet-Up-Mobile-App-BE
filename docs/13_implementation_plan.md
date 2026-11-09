@@ -809,9 +809,9 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review membership/finalize; P
 - [ ] Vote payload có `runId`; không rerank cùng run; ghi `VoteUpdated.v1`/`MeetupFinalized.v1` qua outbox sau commit. [Nguồn: workbook — BE-10; handoff — Mục 4; Doc 12 — Mục 11.2]
 - [ ] Finalize response/event giữ `runId` và selected candidate key; client xem lại feature qua viewer-aware GET run, không có route feature riêng và không copy utility sang vote/history. [Nguồn: Doc 02 — BR-24; handoff — Mục 9]
 - [ ] Từ chối vote/chốt khi run có `contextStatus=STALE_CONTEXT`; client phải tạo run mới sau khi `scheduledAt` đổi. [Nguồn: Doc 12 — Mục 5.2 Bước 2, 11.4]
-- [ ] BE-11 kiểm tra accepted membership và meetup state trước join/send; persist message và phát qua shared Socket publisher. [Nguồn: workbook — BE-11; `03_usecase_users.puml`; DBML — `meetup_chat_messages`]
+- [x] BE-11 kiểm tra accepted membership và meetup state trước join/send; PostgreSQL trigger cưỡng chế quyền insert, former member chỉ đọc đến `leftAt`, và event fan-out vào user room active. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts` (03/11/2026). [Nguồn: workbook — BE-11; `03_usecase_users.puml`; DBML — `meetup_chat_messages`]
 - [ ] BE-12 chỉ trả meetup đã hoàn tất/đủ quyền cùng selected place snapshot; không lưu hoặc trả GPS/route history. [Nguồn: workbook — BE-12; `02_nghiep_vu_va_dac_ta.md` — UC-12]
-- [ ] BE-20 add/remove favorite theo canonical Place ID/snapshot, unique theo user/place; invalid Place ID được xử lý theo contract. Không lưu route history. [Nguồn: workbook — BE-20; DBML — `favorite_places`, `place_snapshots`]
+- [x] BE-20 add/remove favorite theo canonical Place ID/snapshot, unique theo user/place; DTO/use case/URL/entity cùng giới hạn 300, duplicate idempotent và không lưu route history. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts` (03/11/2026). [Nguồn: workbook — BE-20; DBML — `favorite_places`, `place_snapshots`]
 
 **Đầu vào cần có**
 
@@ -1149,7 +1149,7 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-08 | Vòng đời Meetup và thành viên                    | Đã thực hiện           | Dev Backend 1 | Bước 0  | Baseline verified; không gồm recommendationMode                |
 | BE-09 | Sở thích tạm thời meetup                         | Đã thực hiện           | Dev Backend 1 | Bước 0  | Baseline verified                                              |
 | BE-10 | Vote và chốt địa điểm sau recommendation         | Chưa thực hiện         | Dev Backend 1 | Bước 4  | Vote/finalize linked run                                       |
-| BE-11 | Chat trong meetup                                | Đang triển khai        | Dev Backend 1 | Bước 4  | Chat persistence + realtime; tests pending                    |
+| BE-11 | Chat trong meetup                                | Đã thực hiện           | Dev Backend 1 | Bước 4  | PostgreSQL-enforced send, bounded former history, HTTP/realtime tests |
 | BE-12 | Lịch sử meetup                                   | Chưa thực hiện         | Dev Backend 1 | Bước 4  | Privacy-safe history                                           |
 | BE-13 | Lấy địa điểm ứng viên (candidate-only)           | Đã thực hiện           | Dev Backend 2 | Bước 0  | Baseline verified; internal input for engine                   |
 | BE-14 | Khởi tạo recommendation run và context           | Đã thực hiện           | Dev Backend 2 | Bước 1  | Validated/idempotent run context                               |
@@ -1157,8 +1157,8 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-16 | Route Matrix và route validation                 | Đã thực hiện           | Dev Backend 2 | Bước 2  | Route-complete candidates                                      |
 | BE-17 | Feature và member utility                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Versioned T/P/Q/U                                              |
 | BE-18 | Phát hiện bạn ở gần                              | Chưa thực hiện         | Dev Backend 2 | Bước 6  | Privacy-safe nearby notification                               |
-| BE-19 | Quản trị tài khoản                               | Đang triển khai        | Dev Backend 1 | Bước 6  | Lock/unlock + audit; tests pending                             |
-| BE-20 | Địa điểm yêu thích                               | Đang triển khai        | Dev Backend 1 | Bước 4  | Canonical add/remove favorite; tests pending                   |
+| BE-19 | Quản trị tài khoản                               | Đã thực hiện           | Dev Backend 1 | Bước 6  | Lock/unlock, session revoke, redacted audit; HTTP/DB tests    |
+| BE-20 | Địa điểm yêu thích                               | Đã thực hiện           | Dev Backend 1 | Bước 4  | Canonical 300-char add/remove; duplicate DB idempotency tests |
 | BE-21 | Observability và replay recommendation           | Chưa thực hiện         | Dev Backend 2 | Bước 5  | Metrics/log/replay                                             |
 | BE-22 | Group ranking và fairness                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Three deterministic strategies                                 |
 | BE-23 | Explanation, persistence và API kết quả          | Đã thực hiện           | Dev Backend 2 | Bước 3  | Atomic full run + top-K API                                    |

@@ -21,16 +21,21 @@ export class ListMeetupChatMessagesQuery {
         'before and beforeId must be provided together',
       );
     }
-    if (!(await this.membership.canUseChat(input.meetupId, input.actorId))) {
+    const access = await this.membership.getHistoryAccess(
+      input.meetupId,
+      input.actorId,
+    );
+    if (!access) {
       throw new ChatError(
         'CHAT_FORBIDDEN',
-        'Only accepted members of an active meetup can use chat',
+        'Only members and former members with retained history can read chat',
       );
     }
     return this.store.list({
       meetupId: input.meetupId.toLowerCase(),
       before: input.before,
       beforeId: input.beforeId,
+      historyVisibleUntil: access.historyVisibleUntil,
       limit: Math.min(Math.max(input.limit, 1), 100),
     });
   }

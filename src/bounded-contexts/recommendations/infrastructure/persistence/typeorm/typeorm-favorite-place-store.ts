@@ -26,8 +26,10 @@ export class TypeOrmFavoritePlaceStore implements FavoritePlaceStore {
       if (!candidate) return null;
 
       await manager
-        .getRepository(FavoritePlaceEntity)
-        .insert({
+        .createQueryBuilder()
+        .insert()
+        .into(FavoritePlaceEntity)
+        .values({
           id: randomUUID(),
           userId,
           provider: candidate.provider,
@@ -39,23 +41,19 @@ export class TypeOrmFavoritePlaceStore implements FavoritePlaceStore {
         .onConflict('(user_id, canonical_candidate_key) DO NOTHING')
         .execute();
 
-      const saved = await manager
-        .getRepository(FavoritePlaceEntity)
-        .findOneBy({
-          userId,
-          canonicalCandidateKey: candidate.canonicalCandidateKey,
-        });
+      const saved = await manager.getRepository(FavoritePlaceEntity).findOneBy({
+        userId,
+        canonicalCandidateKey: candidate.canonicalCandidateKey,
+      });
       return saved ? this.toFavorite(saved) : null;
     });
   }
 
   async list(userId: string): Promise<FavoritePlace[]> {
-    const rows = await this.dataSource
-      .getRepository(FavoritePlaceEntity)
-      .find({
-        where: { userId },
-        order: { createdAt: 'DESC', id: 'DESC' },
-      });
+    const rows = await this.dataSource.getRepository(FavoritePlaceEntity).find({
+      where: { userId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
     return rows.map((row) => this.toFavorite(row));
   }
 

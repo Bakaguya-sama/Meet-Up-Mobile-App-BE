@@ -1,8 +1,6 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddChatFavoritesAndAdminAudit1792140000000
-  implements MigrationInterface
-{
+export class AddChatFavoritesAndAdminAudit1792140000000 implements MigrationInterface {
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE user_accounts ADD COLUMN role varchar(20) NOT NULL DEFAULT 'user';
@@ -10,7 +8,7 @@ export class AddChatFavoritesAndAdminAudit1792140000000
 
       CREATE TABLE meetup_chat_messages (
         id uuid PRIMARY KEY,
-        meetup_id uuid NOT NULL REFERENCES meetups(id) ON DELETE CASCADE,
+        meetup_id uuid NOT NULL REFERENCES meetup_sessions(id) ON DELETE CASCADE,
         sender_user_id uuid NOT NULL REFERENCES user_accounts(id) ON DELETE RESTRICT,
         text_content varchar(2000) NOT NULL,
         sent_at timestamptz NOT NULL,

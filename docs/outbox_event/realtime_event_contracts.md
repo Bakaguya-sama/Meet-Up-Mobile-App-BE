@@ -17,6 +17,12 @@
 | Lỗi xác thực         | `UNAUTHORIZED`                                      |
 | Lỗi quyền            | `FORBIDDEN`                                         |
 | Meetup               | `MEETUP_NOT_FOUND`, `MEETUP_INACTIVE`               |
+
+### BE-11 chat delivery
+
+- `meetup:chat-message` là realtime notification của một message đã được persist; payload gồm `id`, `meetupId`, `senderUserId`, `textContent`, `sentAt` (ISO-8601). `eventId = message.id`; mobile phải de-duplicate theo `id` và dùng HTTP history làm nguồn phục hồi khi socket mất.
+- Server **không** phát chat vào `meetup:{meetupId}`. Sau khi insert thành công, publisher đọc lại accepted members của meetup còn active và fan-out cùng payload vào từng `user:{userId}`. Vì vậy socket từng join meetup room trước đó không làm former member nhận tin mới.
+- PostgreSQL trigger từ chối insert khi sender không còn `accepted` hoặc meetup không active. Member `left`/`removed` được HTTP history giới hạn `sentAt <= leftAt`, không được gửi hoặc nhận event mới. Failure của fan-out chỉ log warning; message đã persist vẫn đọc được qua HTTP.
 | Payload              | `INVALID_EVENT_PAYLOAD`, `EVENT_SCHEMA_INVALID`     |
 | Idempotency/delivery | `EVENT_ALREADY_PROCESSED`, `OUTBOX_DELIVERY_FAILED` |
 

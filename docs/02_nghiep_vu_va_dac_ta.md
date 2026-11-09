@@ -83,7 +83,7 @@ Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ET
 | BR-12 | Thông báo chỉ gửi cho sự kiện liên quan: lời mời, địa điểm được chốt, nhắc giờ bắt đầu và thay đổi/hủy meetup. |
 | BR-13 | Lọc đang mở cửa chỉ áp dụng khi Google Places trả dữ liệu giờ mở. Nếu thiếu dữ liệu, UI phải ghi rõ thay vì tự kết luận. |
 | BR-14 | Địa điểm yêu thích và lịch sử meetup chỉ lưu thông tin meetup/nơi đã chọn. Chúng không lưu lịch sử tuyến đường hoặc GPS. |
-| BR-15 | Chat chỉ dành cho thành viên của meetup. Khi thành viên rời meetup, họ không gửi tin mới nhưng vẫn xem được lịch sử theo chính sách của meetup. |
+| BR-15 | Chat chỉ dành cho thành viên của meetup. Khi thành viên rời hoặc bị remove, họ không gửi hoặc nhận tin mới; họ chỉ xem lịch sử có `sentAt <= leftAt`. Người chưa từng là member, declined hoặc meetup đã inactive không đọc/gửi chat. PostgreSQL cưỡng chế quyền gửi ngay khi insert để không có race giữa kiểm tra quyền và rời meetup. |
 | BR-16 | Lời giải thích AI là thông tin tham khảo, không thay đổi thứ tự xếp hạng. Nó chỉ dùng dữ liệu tổng hợp đã lọc bỏ tọa độ và dữ liệu nhận diện không cần thiết. |
 | BR-17 | Phát hiện bạn ở gần yêu cầu cả hai người cùng bật tính năng, là bạn bè và có vị trí còn hiệu lực. Hệ thống không tự bật chia sẻ vị trí vì tính năng này. |
 | BR-18 | Gợi ý bạn ở gần được giới hạn tối đa một lần cho cùng một cặp trong 2 giờ để tránh làm phiền. |
@@ -211,9 +211,9 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 ### UC-12 Chat nhóm trong meetup
 
 **Tác nhân:** Thành viên meetup.  
-**Điều kiện trước:** Là thành viên meetup có quyền xem chat.  
-**Luồng chính:** Mở phòng chat, gửi tin nhắn văn bản, nhận tin mới gần thời gian thực.  
-**Ngoại lệ:** Không phải thành viên, meetup không tồn tại hoặc mạng mất thì không gửi được; UI báo trạng thái gửi.  
+**Điều kiện trước:** Là accepted member của meetup còn active để gửi/nhận tin; former member `left`/`removed` chỉ có quyền đọc đến `leftAt`.  
+**Luồng chính:** Mở phòng chat, gửi tin nhắn văn bản, nhận tin mới gần thời gian thực. Server lưu message trước, sau đó lấy lại danh sách accepted member active và fan-out event vào `user:{userId}`; không broadcast tin chat qua meetup room có thể còn socket cũ.  
+**Ngoại lệ:** Không phải member, declined, meetup inactive hoặc former member gửi tin thì bị từ chối; former member không thấy message sau `leftAt`; mạng mất thì HTTP vẫn đọc lại message đã lưu và UI báo trạng thái gửi.  
 **Kết quả:** Các thành viên trao đổi được về kế hoạch trong đúng meetup.
 
 ### UC-13 AI giải thích đề xuất

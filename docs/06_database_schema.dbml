@@ -414,6 +414,7 @@
 
     Indexes {
       (user_id, canonical_candidate_key) [unique]
+      (user_id, created_at)
     }
     Note: 'Contains only a small candidate snapshot. Never stores route history or exact user coordinates.'
   }
@@ -442,6 +443,8 @@
     Indexes {
       (meetup_id, sent_at, id)
     }
+
+    Note: 'BE-11: PostgreSQL trigger only allows insert when sender is an accepted member and meetup is active. A former left/removed member may read only messages sent at or before left_at; no new message/event is delivered to them.'
   }
 
   Table device_tokens {
@@ -584,6 +587,10 @@
     metadata_json jsonb [not null, default: '{}']
     created_at timestamptz [not null]
 
+    Indexes {
+      (subject_type, subject_id, created_at)
+    }
+
     Note: 'Security and admin audit only. Do not store exact location, refresh token or sensitive AI payload.'
   }
 
@@ -592,7 +599,7 @@
   Ref: user_accounts.id < favorite_places.user_id
   Ref: user_accounts.id < meetup_chat_messages.sender_user_id
   Ref: user_accounts.id < audit_logs.actor_id
-  Ref: meetups.id < meetup_chat_messages.meetup_id
+  Ref: meetup_sessions.id < meetup_chat_messages.meetup_id
   Ref: user_sessions.id < user_sessions.parent_session_id
   Ref: user_sessions.id < user_sessions.replaced_by_session_id
   Ref: user_accounts.id < friendships.user_a_id

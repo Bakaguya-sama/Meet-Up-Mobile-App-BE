@@ -1,4 +1,7 @@
-import type { MeetupStorePort } from '../ports/persistence/meetup-store.port';
+import type {
+  MeetupChatAccessState,
+  MeetupStorePort,
+} from '../ports/persistence/meetup-store.port';
 
 /** Public membership contract for other contexts; no persistence objects escape. */
 export class MeetupMembershipReader {
@@ -11,5 +14,19 @@ export class MeetupMembershipReader {
     return this.store.areAcceptedInActiveMeetup(meetupId.toLowerCase(), [
       ...new Set(userIds.map((id) => id.toLowerCase())),
     ]);
+  }
+
+  getChatAccess(
+    meetupId: string,
+    userId: string,
+  ): Promise<MeetupChatAccessState | null> {
+    return this.store.getChatAccess(
+      meetupId.toLowerCase(),
+      userId.toLowerCase(),
+    );
+  }
+
+  listActiveChatRecipientIds(meetupId: string): Promise<string[]> {
+    return this.store.listActiveChatRecipientIds(meetupId.toLowerCase());
   }
 }

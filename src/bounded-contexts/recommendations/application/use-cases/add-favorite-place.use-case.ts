@@ -1,12 +1,12 @@
 import { RecommendationError } from '../../domain/recommendation.error';
 import type { FavoritePlaceStore } from '../ports/favorite-place-store.port';
 
-export class ManageFavoritePlaceUseCase {
+export class AddFavoritePlaceUseCase {
   constructor(private readonly store: FavoritePlaceStore) {}
 
-  async add(userId: string, placeId: string) {
+  async execute(userId: string, placeId: string) {
     const id = placeId.trim();
-    if (!id || id.length > 255) {
+    if (!id || id.length > 300) {
       throw new RecommendationError(
         'INVALID_RECOMMENDATION_REQUEST',
         'Invalid Place ID',
@@ -20,20 +20,5 @@ export class ManageFavoritePlaceUseCase {
       );
     }
     return favorite;
-  }
-
-  list(userId: string) {
-    return this.store.list(userId);
-  }
-
-  async remove(userId: string, placeId: string) {
-    const id = placeId.trim();
-    if (!id || id.length > 255) {
-      throw new RecommendationError(
-        'INVALID_RECOMMENDATION_REQUEST',
-        'Invalid Place ID',
-      );
-    }
-    await this.store.remove(userId, id);
   }
 }
