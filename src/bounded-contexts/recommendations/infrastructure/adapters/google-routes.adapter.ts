@@ -15,6 +15,7 @@ const FIELD_MASK = [
   'condition',
   'distanceMeters',
   'duration',
+  'staticDuration',
   'fallbackInfo',
 ].join(',');
 
@@ -30,6 +31,7 @@ interface GoogleRouteElement {
   condition?: unknown;
   distanceMeters?: unknown;
   duration?: unknown;
+  staticDuration?: unknown;
 }
 
 @Injectable()
@@ -62,6 +64,7 @@ export class GoogleRoutesAdapter implements RouteMatrixPort {
             origins: input.origins.map(toWaypoint),
             destinations: input.destinations.map(toWaypoint),
             travelMode: input.travelMode,
+            routingPreference: input.routingPreference,
           }),
           signal: AbortSignal.timeout(this.timeoutMs),
         });
@@ -118,6 +121,7 @@ function normalize(
     const canonicalCandidateKey =
       input.destinations[destinationIndex].canonicalCandidateKey;
     const etaSeconds = parseDuration(element.duration);
+    const staticDurationSeconds = parseDuration(element.staticDuration);
     const distanceMeters =
       typeof element.distanceMeters === 'number'
         ? element.distanceMeters
@@ -138,6 +142,9 @@ function normalize(
         etaSeconds,
         distanceMeters,
         status: 'OK',
+        ...(Number.isFinite(staticDurationSeconds) && staticDurationSeconds >= 0
+          ? { staticDurationSeconds }
+          : {}),
       });
     } else {
       failures.push({

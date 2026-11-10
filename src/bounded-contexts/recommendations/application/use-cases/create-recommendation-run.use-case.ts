@@ -10,10 +10,7 @@ import {
   RECOMMENDATION_CONFIG_DEV_V1,
   type RecommendationConfig,
 } from '../recommendation-config';
-import {
-  filterCandidatesWithAudit,
-  type EligibleCandidate,
-} from '../services/candidate-filter';
+import { filterCandidatesWithAudit } from '../services/candidate-filter';
 import { CandidateGenerator } from '../services/candidate-generator';
 import { RecommendationContextBuilder } from '../services/recommendation-context.builder';
 import { validateRecommendationRequest } from '../services/recommendation-request-validator';
@@ -30,7 +27,17 @@ import { RecommendationRunFreshnessGuard } from '../public/recommendation-run-fr
 import type { RecommendationRunResult } from '../../domain/recommendation-run';
 import { applyScheduledOpeningPolicy } from '../services/scheduled-opening-policy';
 import { ExplanationBuilder } from '../services/explanation-builder';
-import { presentRecommendationResult } from '../services/recommendation-result.presenter';
+import { presentForViewer } from '../services/recommendation-result.presenter';
+import { ClosingSoonEvaluator } from '../services/closing-soon.evaluator';
+import { applyClosingPenalty } from '../services/closing-soon-adjuster';
+import {
+  applyWeatherPolicy,
+  WEATHER_POLICY_VERSION,
+  type WeatherEligibleCandidate,
+  type WeatherPolicy,
+} from '../services/weather-policy';
+import type { WeatherContextPort } from '../ports/weather-context.port';
+import { MeetupMembershipReader } from '../../../meetups/application/public/meetup-membership-reader';
 
 export class CreateRecommendationRunUseCase {
   constructor(
@@ -46,6 +53,11 @@ export class CreateRecommendationRunUseCase {
     private readonly openingEvaluator: ScheduledOpeningEvaluator = new ScheduledOpeningEvaluator(),
     private readonly freshness?: RecommendationRunFreshnessGuard,
     private readonly explanations: ExplanationBuilder = new ExplanationBuilder(),
+    private readonly routingPreference:
+      'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE' = 'TRAFFIC_UNAWARE',
+    private readonly weatherPolicy: WeatherPolicy = 'OFF',
+    private readonly weather?: WeatherContextPort,
+    private readonly memberships?: MeetupMembershipReader,
   ) {}
 
   async execute(
@@ -60,7 +72,7 @@ export class CreateRecommendationRunUseCase {
     );
     if (existing) {
       this.assertIdempotent(existing, actorId, request.payloadHash);
-      return this.present(existing);
+      return this.present(existing, actorId, request.meetupId);
     }
     const context = await this.contexts.build(actorId, request.meetupId);
     const createdAt = this.now();
@@ -85,13 +97,19 @@ export class CreateRecommendationRunUseCase {
       status: 'RUNNING',
       failureCode: null,
       rankingStrategy: 'fair-pareto-v1',
-      algorithmVersion: 'recommendation-engine-v1',
+      algorithmVersion: 'recommendation-engine-v2',
       configVersion: this.config.version,
       featureSchemaVersion: 'recommendation-features-v1',
       providerMappingVersion: this.config.providerMappingVersion,
       providerRequestOptionsVersion: PLACE_SEARCH_REQUEST_OPTIONS_VERSION,
       openingFilter: request.openingFilter,
       openingEvaluatorVersion: SCHEDULED_OPENING_EVALUATOR_VERSION,
+      routingPreferenceRequested: this.routingPreference,
+      routingPreferenceEffective: this.routingPreference,
+      weatherPolicyRequested: this.weatherPolicy,
+      weatherPolicyEffective: this.weatherPolicy,
+      weatherPolicyVersion: WEATHER_POLICY_VERSION,
+      closingPolicyVersion: this.config.closingPolicy.version,
       requestedAt,
       scheduledAtSnapshot: scheduledAt,
       createdAt,
@@ -105,7 +123,7 @@ export class CreateRecommendationRunUseCase {
     const persisted = await this.store.create(run);
     if (persisted.id !== run.id) {
       this.assertIdempotent(persisted, actorId, request.payloadHash);
-      return this.present(persisted);
+      return this.present(persisted, actorId, request.meetupId);
     }
     try {
       const raw = await this.candidates.generate({
@@ -132,7 +150,20 @@ export class CreateRecommendationRunUseCase {
               filtered: [],
               warnings: [],
             };
-      const eligible = openingPolicy.candidates;
+      const closingEvaluator = new ClosingSoonEvaluator(
+        this.config.closingPolicy,
+      );
+      const closingCandidates = openingPolicy.candidates.map((candidate) => ({
+        ...candidate,
+        closingEvidence: closingEvaluator.evaluate(candidate, scheduledAt),
+      }));
+      const weatherPolicy = await applyWeatherPolicy(
+        closingCandidates,
+        scheduledAt,
+        this.weatherPolicy,
+        this.weather,
+      );
+      const eligible = weatherPolicy.candidates;
       if (!eligible.length) {
         throw new RecommendationError(
           'NO_ELIGIBLE_CANDIDATES',
@@ -150,6 +181,7 @@ export class CreateRecommendationRunUseCase {
           participantId: member.participantId,
           latitude: member.latitude,
           longitude: member.longitude,
+          travelMode: member.travelMode,
         })),
         eligible.map((candidate) => ({
           canonicalCandidateKey: candidate.canonicalCandidateKey,
@@ -164,7 +196,7 @@ export class CreateRecommendationRunUseCase {
           candidate,
         ]),
       );
-      const features = this.featureBuilder
+      const baseFeatures = this.featureBuilder
         .build(
           context.members.map((member) => ({
             participantId: member.participantId,
@@ -177,6 +209,16 @@ export class CreateRecommendationRunUseCase {
           routeOutcome.candidates,
         )
         .map((feature) => this.utilities!.score(feature));
+      const features = applyClosingPenalty(
+        baseFeatures,
+        new Map(
+          eligible.flatMap((candidate) =>
+            candidate.closingEvidence
+              ? [[candidate.canonicalCandidateKey, candidate.closingEvidence] as const]
+              : [],
+          ),
+        ),
+      );
       const seed = request.payloadHash.slice(0, 16);
       const ranking = this.ranker.rank(
         features,
@@ -189,7 +231,17 @@ export class CreateRecommendationRunUseCase {
       );
       const completedAt = this.now();
       const completionWarnings = [
-        ...new Set([...routeOutcome.warnings, ...openingPolicy.warnings]),
+        ...new Set([
+          ...routeOutcome.warnings,
+          ...openingPolicy.warnings,
+          ...weatherPolicy.warnings,
+          ...eligible
+            .filter(
+              (candidate) =>
+                candidate.closingEvidence?.status === 'CLOSING_SOON',
+            )
+            .map(() => 'CLOSING_SOON'),
+        ]),
       ];
       const candidatesByKey = new Map<string, string>();
       const candidateSnapshots: RecommendationCandidateSnapshot[] =
@@ -228,6 +280,12 @@ export class CreateRecommendationRunUseCase {
             openingEvidence: candidate.openingEvidence
               ? structuredClone(candidate.openingEvidence)
               : null,
+            weatherEvidence: candidate.weatherEvidence
+              ? structuredClone(candidate.weatherEvidence)
+              : null,
+            closingEvidence: candidate.closingEvidence
+              ? structuredClone(candidate.closingEvidence)
+              : null,
           };
         });
       const routableKeys = new Set(
@@ -238,6 +296,7 @@ export class CreateRecommendationRunUseCase {
       const filteredCandidates = [
         ...residualOutcome.filtered,
         ...openingPolicy.filtered,
+        ...weatherPolicy.filtered,
         ...eligible
           .filter(
             (candidate) => !routableKeys.has(candidate.canonicalCandidateKey),
@@ -277,6 +336,12 @@ export class CreateRecommendationRunUseCase {
           openingEvidence: candidate.openingEvidence
             ? structuredClone(candidate.openingEvidence)
             : null,
+          weatherEvidence: candidate.weatherEvidence
+            ? structuredClone(candidate.weatherEvidence)
+            : null,
+          closingEvidence: candidate.closingEvidence
+            ? structuredClone(candidate.closingEvidence)
+            : null,
           explanation: this.explanations.build(
             run.rankingStrategy,
             {
@@ -288,6 +353,9 @@ export class CreateRecommendationRunUseCase {
               avgEtaSeconds: ranked.avgEtaSeconds,
               maxEtaSeconds: ranked.maxEtaSeconds,
               scheduledOpeningStatus: candidate.scheduledOpeningStatus ?? null,
+              closingEvidence: candidate.closingEvidence
+                ? structuredClone(candidate.closingEvidence)
+                : null,
             },
             routeOutcome.effectiveK,
             completionWarnings,
@@ -307,12 +375,14 @@ export class CreateRecommendationRunUseCase {
             canonicalCandidateKey: feature.canonicalCandidateKey,
             etaSeconds: feature.etaSeconds,
             distanceMeters: feature.distanceMeters,
+            staticDurationSeconds: feature.staticDurationSeconds ?? null,
             matchedTags: feature.matchedTags,
             missingFlags: feature.missingFlags,
             travelUtility: feature.travelUtility,
             preferenceUtility: feature.preferenceUtility,
             placeQualityUtility: feature.placeQualityUtility,
             memberUtility: feature.memberUtility,
+            rankingUtility: feature.rankingUtility,
             routeStatus: 'OK' as const,
             createdAt: completedAt,
           })),
@@ -322,11 +392,13 @@ export class CreateRecommendationRunUseCase {
           randomSeed: seed,
           routeBatchCount: routeOutcome.batchCount,
           routeElementCount: routeOutcome.elementCount,
+          routingPreferenceEffective: routeOutcome.effectiveRoutingPreference,
+          weatherPolicyEffective: weatherPolicy.effectivePolicy,
           readyEventId: randomUUID(),
         },
         completedAt,
       );
-      return this.present(completed);
+      return this.present(completed, actorId, request.meetupId);
     } catch (error) {
       const code =
         error instanceof RecommendationError
@@ -341,12 +413,24 @@ export class CreateRecommendationRunUseCase {
     }
   }
 
-  private present(run: RecommendationRunResult) {
-    return this.freshness
-      ? this.freshness
-          .status(run)
-          .then((status) => presentRecommendationResult(run, status))
-      : Promise.resolve(presentRecommendationResult(run, 'CURRENT_CONTEXT'));
+  private async present(
+    run: RecommendationRunResult,
+    actorId: string,
+    meetupId: string,
+  ) {
+    const participantId = this.memberships
+      ? await this.memberships.findAcceptedParticipantId(meetupId, actorId)
+      : run.requestedById;
+    if (!participantId) {
+      throw new RecommendationError(
+        'RECOMMENDATION_RUN_FORBIDDEN',
+        'Recommendation run is unavailable to this actor',
+      );
+    }
+    const status = this.freshness
+      ? await this.freshness.status(run)
+      : 'CURRENT_CONTEXT';
+    return presentForViewer(participantId, run, status);
   }
 
   private assertIdempotent(
@@ -384,7 +468,7 @@ export class CreateRecommendationRunUseCase {
 function filteredSnapshot(
   runId: string,
   id: string,
-  candidate: EligibleCandidate,
+  candidate: WeatherEligibleCandidate,
   reason: string,
   createdAt: Date,
 ) {
@@ -417,6 +501,12 @@ function filteredSnapshot(
     scheduledOpeningStatus: candidate.scheduledOpeningStatus ?? null,
     openingEvidence: candidate.openingEvidence
       ? structuredClone(candidate.openingEvidence)
+      : null,
+    weatherEvidence: candidate.weatherEvidence
+      ? structuredClone(candidate.weatherEvidence)
+      : null,
+    closingEvidence: candidate.closingEvidence
+      ? structuredClone(candidate.closingEvidence)
       : null,
   };
 }

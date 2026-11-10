@@ -39,4 +39,28 @@ describe('RouteBatchPlanner', () => {
         .sort(),
     );
   });
+
+  it('groups members by travel mode and preserves canonical pairs', () => {
+    const batches = new RouteBatchPlanner(10).plan(
+      [
+        { participantId: 'scooter', latitude: 10, longitude: 106 },
+        {
+          participantId: 'driver',
+          latitude: 11,
+          longitude: 106,
+          travelMode: 'DRIVE' as const,
+        },
+      ],
+      [{ canonicalCandidateKey: 'c1', latitude: 10, longitude: 106 }],
+    );
+    expect(batches.map((batch) => batch.travelMode)).toEqual([
+      'DRIVE',
+      'TWO_WHEELER',
+    ]);
+    expect(
+      batches.flatMap((batch) =>
+        batch.origins.map((origin) => origin.participantId),
+      ),
+    ).toEqual(['driver', 'scooter']);
+  });
 });

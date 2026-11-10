@@ -65,6 +65,18 @@ export class RecommendationRunEntity {
   openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
   @Column('varchar', { name: 'opening_evaluator_version', length: 100 })
   openingEvaluatorVersion: string;
+  @Column('varchar', { name: 'routing_preference_requested', length: 30 })
+  routingPreferenceRequested: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
+  @Column('varchar', { name: 'routing_preference_effective', length: 30 })
+  routingPreferenceEffective: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
+  @Column('varchar', { name: 'weather_policy_requested', length: 30 })
+  weatherPolicyRequested: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
+  @Column('varchar', { name: 'weather_policy_effective', length: 30 })
+  weatherPolicyEffective: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
+  @Column('varchar', { name: 'weather_policy_version', length: 100 })
+  weatherPolicyVersion: string;
+  @Column('varchar', { name: 'closing_policy_version', length: 100 })
+  closingPolicyVersion: string;
   @Column('timestamptz', { name: 'requested_at' }) requestedAt: Date;
   @Column('timestamptz', { name: 'scheduled_at_snapshot' })
   scheduledAtSnapshot: Date;

@@ -36,6 +36,7 @@ export class FeatureBuilder {
           canonicalCandidateKey: route.canonicalCandidateKey,
           etaSeconds: route.etaSeconds,
           distanceMeters: route.distanceMeters,
+          staticDurationSeconds: route.staticDurationSeconds,
           placeTags: [...candidate.normalizedTags],
           preferences: member.preferences.map((value) => ({ ...value })),
           rating0To5: candidate.rating0To5 ?? null,

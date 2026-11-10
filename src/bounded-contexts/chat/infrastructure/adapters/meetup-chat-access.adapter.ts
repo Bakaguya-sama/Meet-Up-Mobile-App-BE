@@ -6,7 +6,15 @@ import type { MeetupChatAccessPort } from '../../application/ports/meetup-chat-a
 export class MeetupChatAccessAdapter implements MeetupChatAccessPort {
   constructor(private readonly membership: MeetupMembershipReader) {}
 
-  canUseChat(meetupId: string, userId: string): Promise<boolean> {
+  canSendChat(meetupId: string, userId: string): Promise<boolean> {
     return this.membership.areAcceptedInActiveMeetup(meetupId, [userId]);
+  }
+
+  getHistoryAccess(meetupId: string, userId: string) {
+    return this.membership.getChatAccess(meetupId, userId);
+  }
+
+  listActiveRecipientIds(meetupId: string): Promise<string[]> {
+    return this.membership.listActiveChatRecipientIds(meetupId);
   }
 }

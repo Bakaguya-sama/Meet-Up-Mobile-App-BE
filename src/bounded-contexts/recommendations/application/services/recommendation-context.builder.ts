@@ -7,6 +7,7 @@ export interface RecommendationMemberContext {
   participantId: string;
   latitude: number;
   longitude: number;
+  travelMode: 'TWO_WHEELER';
   preferences: Array<{
     tagCode: string;
     level: 'high' | 'normal' | 'avoid';
@@ -74,6 +75,8 @@ export class RecommendationContextBuilder {
                 participantId: member.participantId,
                 latitude: location.latitude,
                 longitude: location.longitude,
+                // Q20 has no persisted/member API source yet; do not infer it.
+                travelMode: 'TWO_WHEELER' as const,
                 preferences:
                   preferencesByParticipant.get(member.participantId) ?? [],
               },

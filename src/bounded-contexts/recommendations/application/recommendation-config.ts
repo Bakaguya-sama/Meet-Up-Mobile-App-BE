@@ -27,10 +27,16 @@ export interface RecommendationConfig {
   monteCarloSamples: number;
   utilityTieEpsilon: number;
   randomAlgorithm: 'mulberry32-v1';
+  closingPolicy: {
+    version: string;
+    enabled: boolean;
+    closingSoonWindowSeconds: number;
+    closingPenaltyWeight: number;
+  };
 }
 
 export const RECOMMENDATION_CONFIG_DEV_V1: RecommendationConfig = {
-  version: 'recommendation-config-dev-v1',
+  version: 'recommendation-config-dev-v2',
   providerMappingVersion: 'google-place-category-map-v1',
   maxTopK: 5,
   maxSearchRadiusMeters: 10_000,
@@ -49,6 +55,12 @@ export const RECOMMENDATION_CONFIG_DEV_V1: RecommendationConfig = {
   monteCarloSamples: 1000,
   utilityTieEpsilon: 0.000001,
   randomAlgorithm: 'mulberry32-v1',
+  closingPolicy: {
+    version: 'closing-policy-dev-v1',
+    enabled: true,
+    closingSoonWindowSeconds: 5_400,
+    closingPenaltyWeight: 0.15,
+  },
   categoryMappings: [
     ['bar', 'bar', 'bar'],
     ['cafe', 'cafe', 'cafe'],
@@ -63,3 +75,25 @@ export const RECOMMENDATION_CONFIG_DEV_V1: RecommendationConfig = {
     supportsOpenAtRequestTime: true,
   })),
 };
+
+/**
+ * The closing baseline is deliberately limited to non-production environments.
+ * Product has not approved a production window/weight yet, so a production run
+ * must record an explicitly disabled policy rather than silently using dev values.
+ */
+export function recommendationConfigForEnvironment(
+  nodeEnv: string | undefined,
+): RecommendationConfig {
+  if (nodeEnv !== 'production') return RECOMMENDATION_CONFIG_DEV_V1;
+
+  return {
+    ...RECOMMENDATION_CONFIG_DEV_V1,
+    version: 'recommendation-config-production-v2',
+    closingPolicy: {
+      version: 'closing-policy-off-v1',
+      enabled: false,
+      closingSoonWindowSeconds: 0,
+      closingPenaltyWeight: 0,
+    },
+  };
+}

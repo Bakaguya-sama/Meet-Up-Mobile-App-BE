@@ -26,6 +26,10 @@ export const configuration = () => ({
   googleMaps: {
     apiKey: process.env.GOOGLE_MAPS_API_KEY ?? '',
   },
+  routes: {
+    routingPreference:
+      process.env.ROUTES_ROUTING_PREFERENCE ?? 'TRAFFIC_UNAWARE',
+  },
   firebase: {
     enabled: process.env.FIREBASE_ENABLED === 'true',
     projectId: process.env.FIREBASE_PROJECT_ID,

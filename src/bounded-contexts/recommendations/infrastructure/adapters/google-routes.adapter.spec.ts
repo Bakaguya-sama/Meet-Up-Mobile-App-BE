@@ -14,6 +14,7 @@ describe('GoogleRoutesAdapter', () => {
       },
     ],
     travelMode: 'TWO_WHEELER' as const,
+    routingPreference: 'TRAFFIC_UNAWARE' as const,
   };
 
   it('joins out-of-order local indices and maps element failures to NO_ROUTE', async () => {
@@ -62,7 +63,9 @@ describe('GoogleRoutesAdapter', () => {
     const requestBody = firstCall[1].body as string;
     expect(JSON.parse(requestBody)).toMatchObject({
       travelMode: 'TWO_WHEELER',
+      routingPreference: 'TRAFFIC_UNAWARE',
     });
+    expect(JSON.parse(requestBody)).not.toHaveProperty('departureTime');
   });
 
   it('retries a whole-batch transient failure and returns the contract error', async () => {

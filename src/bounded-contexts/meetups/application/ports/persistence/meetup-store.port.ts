@@ -4,6 +4,18 @@ import type {
 } from '../../../domain/aggregates/meetup.aggregate';
 
 export const MEETUP_STORE = Symbol('MEETUP_STORE');
+
+/**
+ * Chat access is deliberately a small cross-context projection.  It keeps
+ * chat from depending on meetup persistence entities while making the
+ * former-member history rule explicit.
+ */
+export interface MeetupChatAccessState {
+  canSend: boolean;
+  /** Undefined for active members; the inclusive upper bound for former members. */
+  historyVisibleUntil?: Date;
+}
+
 export interface MeetupStorePort {
   /** Persist aggregate and pending integration deliveries atomically. */
   insert(meetup: Meetup): Promise<void>;
@@ -23,4 +35,14 @@ export interface MeetupStorePort {
     meetupId: string,
     userIds: string[],
   ): Promise<boolean>;
+  /** The participant id is the stable foreign key used by recommendation features. */
+  findAcceptedParticipantId(
+    meetupId: string,
+    userId: string,
+  ): Promise<string | null>;
+  getChatAccess(
+    meetupId: string,
+    userId: string,
+  ): Promise<MeetupChatAccessState | null>;
+  listActiveChatRecipientIds(meetupId: string): Promise<string[]>;
 }

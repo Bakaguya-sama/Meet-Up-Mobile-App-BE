@@ -72,4 +72,16 @@ describe('GroupRankerService', () => {
         .map((x) => x.canonicalCandidateKey),
     ).toEqual(['a', 'z']);
   });
+
+  it('lowers a closing-soon candidate in every utility-based ranking strategy', () => {
+    const closingSoon = feature('closing-soon', 'm1', 300, 0.8);
+    const openLonger = feature('open-longer', 'm1', 300, 0.8);
+    closingSoon.rankingUtility = 0.65;
+    openLonger.rankingUtility = 0.8;
+
+    for (const strategy of ['min-sum', 'min-max', 'fair-pareto-v1'] as const) {
+      expect(ranker.rank([closingSoon, openLonger], strategy, 1, 'seed')[0])
+        .toMatchObject({ canonicalCandidateKey: 'open-longer' });
+    }
+  });
 });

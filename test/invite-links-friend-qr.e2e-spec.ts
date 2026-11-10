@@ -13,7 +13,6 @@ import { DataSource } from 'typeorm';
 import { GetPublicHandleUseCase } from '../src/bounded-contexts/auth/application/use-cases/get-public-handle.use-case';
 import { RotatePublicHandleUseCase } from '../src/bounded-contexts/auth/application/use-cases/rotate-public-handle.use-case';
 import { DisablePublicHandleUseCase } from '../src/bounded-contexts/auth/application/use-cases/disable-public-handle.use-case';
-import { PrivacySelectedFriendPurge } from '../src/bounded-contexts/auth/application/public/privacy-selected-friend-purge';
 import { UserAccountEntity } from '../src/bounded-contexts/auth/infrastructure/persistence/typeorm/entities/user-account.typeorm-entity';
 import { TypeOrmAuthUnitOfWork } from '../src/bounded-contexts/auth/infrastructure/persistence/typeorm/typeorm-auth-unit-of-work';
 import { TypeOrmUserDirectory } from '../src/bounded-contexts/auth/infrastructure/persistence/typeorm/typeorm-user-directory';
@@ -56,6 +55,7 @@ import { CreateMeetupsTables1792070000000 } from '../src/infrastructure/database
 import { CreateMeetupParticipantPreferencesTable1792070001000 } from '../src/infrastructure/database/migrations/1792070001000-create-meetup-participant-preferences-table';
 import { CreateMeetupInviteLinks1792120000000 } from '../src/infrastructure/database/migrations/1792120000000-create-meetup-invite-links';
 import { AddPublicHandleToUserAccounts1792130000000 } from '../src/infrastructure/database/migrations/1792130000000-add-public-handle-to-user-accounts';
+import { AddChatFavoritesAndAdminAudit1792140000000 } from '../src/infrastructure/database/migrations/1792140000000-add-chat-favorites-admin-audit';
 import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persistence/outbox-event.typeorm-entity';
 import { RedisRateLimiter } from '../src/infrastructure/redis/redis-rate-limiter.service';
 import { RedisService } from '../src/infrastructure/redis/redis.service';
@@ -112,6 +112,7 @@ describe('BE-33/BE-34 HTTP with PostgreSQL and Redis', () => {
         CreateMeetupParticipantPreferencesTable1792070001000,
         CreateMeetupInviteLinks1792120000000,
         AddPublicHandleToUserAccounts1792130000000,
+        AddChatFavoritesAndAdminAudit1792140000000,
       ],
     }).initialize();
     await db.runMigrations();
@@ -140,7 +141,7 @@ describe('BE-33/BE-34 HTTP with PostgreSQL and Redis', () => {
       [randomUUID(), meetupId, organizerId],
     );
 
-    redisClient = new Redis(redisUrl!, { lazyConnect: false });
+    redisClient = new Redis(redisUrl, { lazyConnect: false });
     await redisClient.flushdb();
     const redisService = new RedisService(redisClient);
     const qrStore = new RedisFriendQrSessionStore(redisService);
@@ -240,8 +241,8 @@ describe('BE-33/BE-34 HTTP with PostgreSQL and Redis', () => {
         {
           provide: UnfriendUseCase,
           useValue: new UnfriendUseCase(friendshipStore, {
-            removeFromOwnerSelection: async () => undefined,
-          } as PrivacySelectedFriendPurge),
+            removeFromOwnerSelection: () => Promise.resolve(),
+          }),
         },
         {
           provide: CreateMeetupInviteLinkUseCase,
@@ -300,13 +301,24 @@ describe('BE-33/BE-34 HTTP with PostgreSQL and Redis', () => {
 
   const auth = (id: string) => ({ Authorization: `Bearer ${id}` });
 
+  function responseString(response: { body: unknown }, field: string): string {
+    const body = response.body as Record<string, unknown>;
+    const value = body[field];
+    if (typeof value !== 'string') {
+      throw new Error(`Expected response field ${field} to be a string`);
+    }
+    return value;
+  }
+
   it('creates, previews, accepts idempotently and revokes an invite link over HTTP', async () => {
     const created = await request(app.getHttpServer())
       .post(`/api/v1/meetups/${meetupId}/invite-links`)
       .set(auth(organizerId))
       .send({ expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() })
       .expect(201);
-    const token = String(created.body.inviteUrl).split('/').at(-1)!;
+    const inviteUrl = responseString(created, 'inviteUrl');
+    const inviteId = responseString(created, 'id');
+    const token = inviteUrl.split('/').at(-1)!;
     await request(app.getHttpServer())
       .get(`/api/v1/meetup-invites/${token}/preview`)
       .expect(200)
@@ -325,7 +337,7 @@ describe('BE-33/BE-34 HTTP with PostgreSQL and Redis', () => {
       .set(auth(bobId))
       .expect(200, { meetupId, status: 'accepted', alreadyMember: true });
     await request(app.getHttpServer())
-      .delete(`/api/v1/meetups/${meetupId}/invite-links/${created.body.id}`)
+      .delete(`/api/v1/meetups/${meetupId}/invite-links/${inviteId}`)
       .set(auth(organizerId))
       .expect(204);
     await request(app.getHttpServer())
@@ -351,8 +363,9 @@ describe('BE-33/BE-34 HTTP with PostgreSQL and Redis', () => {
       .post('/api/v1/friends/public-handle/rotate')
       .set(auth(carolId))
       .expect(200);
+    const publicHandle = responseString(stable, 'publicHandle');
     await request(app.getHttpServer())
-      .get(`/api/v1/friends/qr-profiles/${stable.body.publicHandle}`)
+      .get(`/api/v1/friends/qr-profiles/${publicHandle}`)
       .set(auth(organizerId))
       .expect(200)
       .expect(({ body }) => {
@@ -363,7 +376,7 @@ describe('BE-33/BE-34 HTTP with PostgreSQL and Redis', () => {
     await request(app.getHttpServer())
       .post('/api/v1/friends/requests')
       .set(auth(organizerId))
-      .send({ recipientPublicHandle: stable.body.publicHandle })
+      .send({ recipientPublicHandle: publicHandle })
       .expect(201)
       .expect(({ body }) => {
         expect(body).toMatchObject({ status: 'pending' });
@@ -375,7 +388,9 @@ describe('BE-33/BE-34 HTTP with PostgreSQL and Redis', () => {
       .post('/api/v1/friends/qr-sessions')
       .set(auth(bobId))
       .expect(201);
-    const token = String(temporary.body.qrUrl).split('/').at(-1)!;
+    const qrUrl = responseString(temporary, 'qrUrl');
+    const sessionId = responseString(temporary, 'sessionId');
+    const token = qrUrl.split('/').at(-1)!;
     await request(app.getHttpServer())
       .get(`/api/v1/friends/qr-sessions/${token}`)
       .set(auth(organizerId))
@@ -386,7 +401,7 @@ describe('BE-33/BE-34 HTTP with PostgreSQL and Redis', () => {
       .send({ qrSessionToken: token })
       .expect(201);
     await request(app.getHttpServer())
-      .delete(`/api/v1/friends/qr-sessions/${temporary.body.sessionId}`)
+      .delete(`/api/v1/friends/qr-sessions/${sessionId}`)
       .set(auth(bobId))
       .expect(204);
     await request(app.getHttpServer())

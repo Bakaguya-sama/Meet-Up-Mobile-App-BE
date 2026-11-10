@@ -13,4 +13,13 @@ describe('validateEnvironment', () => {
       'DATABASE_URL',
     );
   });
+
+  it('rejects an unsupported routing preference at boot', () => {
+    expect(() =>
+      validateEnvironment({
+        NODE_ENV: 'test',
+        ROUTES_ROUTING_PREFERENCE: 'FASTEST',
+      }),
+    ).toThrow('ROUTES_ROUTING_PREFERENCE');
+  });
 });

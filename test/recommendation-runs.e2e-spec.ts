@@ -54,16 +54,22 @@ interface RecommendationRunHttpBody {
   featureSchemaVersion: string;
   results: Array<{
     rank: number;
-    groupUtility: number;
-    candidateLeastMiseryUtility: number;
     avgEtaSeconds: number;
     maxEtaSeconds: number;
     scheduledOpeningStatus: 'OPEN' | 'UNKNOWN' | null;
     candidate: { providerPlaceId: string; canonicalCandidateKey: string };
-    memberResults: Array<{
+    memberEtas: Array<{
       participantId: string;
       etaSeconds: number;
     }>;
+    viewerFeature: {
+      participantId: string;
+      matchedTags: Array<{ tagCode: string }>;
+      travelUtility: number;
+      preferenceUtility: number;
+      placeQualityUtility: number;
+      memberUtility: number;
+    } | null;
     explanation: {
       summaryCode: string;
       facts: Array<{ key: string; value: string | number; source: string }>;
@@ -92,8 +98,13 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
   const placeFieldMasks: string[] = [];
   const actorId = randomUUID();
   const memberId = randomUUID();
+  const outsiderId = randomUUID();
   const meetupId = randomUUID();
   const actorSessionId = randomUUID();
+  const memberSessionId = randomUUID();
+  const outsiderSessionId = randomUUID();
+  const actorParticipantId = randomUUID();
+  const memberParticipantId = randomUUID();
   const accessSecret = process.env.JWT_ACCESS_SECRET!;
 
   beforeAll(async () => {
@@ -248,12 +259,13 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     ]);
     await db?.query('DELETE FROM meetup_sessions WHERE id = $1', [meetupId]);
     await db?.query(
-      'DELETE FROM user_sessions WHERE user_account_id IN ($1, $2)',
-      [actorId, memberId],
+      'DELETE FROM user_sessions WHERE user_account_id IN ($1, $2, $3)',
+      [actorId, memberId, outsiderId],
     );
-    await db?.query('DELETE FROM user_accounts WHERE id IN ($1, $2)', [
+    await db?.query('DELETE FROM user_accounts WHERE id IN ($1, $2, $3)', [
       actorId,
       memberId,
+      outsiderId,
     ]);
     await app?.close();
     if (google) {
@@ -265,17 +277,27 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
 
   async function seed() {
     await db.query(
-      `INSERT INTO user_accounts (id, email, display_name, created_at, updated_at) VALUES ($1, $2, 'Actor', NOW(), NOW()), ($3, $4, 'Member', NOW(), NOW())`,
+      `INSERT INTO user_accounts (id, email, display_name, created_at, updated_at) VALUES ($1, $2, 'Actor', NOW(), NOW()), ($3, $4, 'Member', NOW(), NOW()), ($5, $6, 'Outsider', NOW(), NOW())`,
       [
         actorId,
         `${actorId}@test.invalid`,
         memberId,
         `${memberId}@test.invalid`,
+        outsiderId,
+        `${outsiderId}@test.invalid`,
       ],
     );
     await db.query(
       `INSERT INTO user_sessions (id, user_account_id, refresh_token_hash, refresh_token_family_id, expires_at, created_at) VALUES ($1, $2, $3, $4, NOW() + interval '1 day', NOW())`,
       [actorSessionId, actorId, randomUUID(), randomUUID()],
+    );
+    await db.query(
+      `INSERT INTO user_sessions (id, user_account_id, refresh_token_hash, refresh_token_family_id, expires_at, created_at) VALUES ($1, $2, $3, $4, NOW() + interval '1 day', NOW())`,
+      [memberSessionId, memberId, randomUUID(), randomUUID()],
+    );
+    await db.query(
+      `INSERT INTO user_sessions (id, user_account_id, refresh_token_hash, refresh_token_family_id, expires_at, created_at) VALUES ($1, $2, $3, $4, NOW() + interval '1 day', NOW())`,
+      [outsiderSessionId, outsiderId, randomUUID(), randomUUID()],
     );
     await db.query(
       `INSERT INTO privacy_settings (id, user_id, sharing_mode, is_location_sharing_enabled, use_approximate_location, nearby_feature_enabled, selected_friend_ids, updated_at) VALUES ($1, $2, 'meetup_only', true, false, false, '{}', NOW() - interval '1 minute'), ($3, $4, 'meetup_only', true, true, false, '{}', NOW() - interval '1 minute')`,
@@ -292,7 +314,7 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     );
     await db.query(
       `INSERT INTO meetup_participants (id, meetup_id, user_id, status, invited_by_id, responded_at, joined_at) VALUES ($1, $2, $3, 'accepted', $3, NOW(), NOW()), ($4, $2, $5, 'accepted', $3, NOW(), NOW())`,
-      [randomUUID(), meetupId, actorId, randomUUID(), memberId],
+      [actorParticipantId, meetupId, actorId, memberParticipantId, memberId],
     );
     const recordedAt = new Date().toISOString();
     await redis.set(
@@ -317,9 +339,9 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     );
   }
 
-  async function token() {
+  async function token(userId = actorId, sessionId = actorSessionId) {
     return new JwtService().signAsync(
-      { sub: actorId, sid: actorSessionId, type: 'access' },
+      { sub: userId, sid: sessionId, type: 'access' },
       {
         secret: accessSecret,
         algorithm: 'HS256',
@@ -371,8 +393,11 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     });
     expect(createdBody.results).toHaveLength(1);
     expect(createdBody.results[0]).toMatchObject({ rank: 1 });
-    expect(Number.isFinite(createdBody.results[0].groupUtility)).toBe(true);
     expect(Number.isFinite(createdBody.results[0].avgEtaSeconds)).toBe(true);
+    expect(createdBody.results[0]).not.toHaveProperty('groupUtility');
+    expect(createdBody.results[0]).not.toHaveProperty(
+      'candidateLeastMiseryUtility',
+    );
     expect(
       await db.query(
         'SELECT count(*)::int AS count FROM recommendation_member_features WHERE run_id = $1',
@@ -428,6 +453,47 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       });
   });
 
+  it('returns shared ETAs but only the requesting accepted member feature', async () => {
+    googleMode = 'success';
+    const created = await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(body())
+      .expect(200);
+    const run = created.body as RecommendationRunHttpBody;
+
+    const organizer = await request(app.getHttpServer())
+      .get(`/api/v1/meetups/${meetupId}/recommendation-runs/${run.id}`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .expect(200);
+    const member = await request(app.getHttpServer())
+      .get(`/api/v1/meetups/${meetupId}/recommendation-runs/${run.id}`)
+      .set('Authorization', `Bearer ${await token(memberId, memberSessionId)}`)
+      .expect(200);
+
+    const organizerResult = organizer.body.results[0];
+    const memberResult = member.body.results[0];
+    expect(memberResult.memberEtas).toEqual(organizerResult.memberEtas);
+    expect(organizerResult.viewerFeature.participantId).toBe(actorParticipantId);
+    expect(memberResult.viewerFeature.participantId).toBe(memberParticipantId);
+    expect(organizerResult).not.toHaveProperty('groupUtility');
+    expect(memberResult).not.toHaveProperty('groupUtility');
+    expect(JSON.stringify(memberResult.viewerFeature)).not.toContain(
+      actorParticipantId,
+    );
+    await request(app.getHttpServer())
+      .get(`/api/v1/meetups/${meetupId}/recommendation-runs/${run.id}`)
+      .set(
+        'Authorization',
+        `Bearer ${await token(outsiderId, outsiderSessionId)}`,
+      )
+      .expect(403)
+      .expect(({ body: error }) =>
+        expect(error).toMatchObject({ code: 'RECOMMENDATION_RUN_FORBIDDEN' }),
+      );
+  });
+
   it('evaluates scheduled opening before Routes and persists temporal evidence', async () => {
     await db.query(
       'UPDATE meetup_sessions SET scheduled_at = $2 WHERE id = $1',
@@ -460,13 +526,13 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     expect(result.results[0]).toMatchObject({
       scheduledOpeningStatus: 'OPEN',
     });
-    expect(result.results[0].memberResults).toHaveLength(2);
+    expect(result.results[0].memberEtas).toHaveLength(2);
     expect(
-      result.results[0].memberResults.every(
+      result.results[0].memberEtas.every(
         (feature) => feature.etaSeconds === 1500,
       ),
     ).toBe(true);
-    expect(result.results[0].memberResults[0]).not.toHaveProperty(
+    expect(result.results[0].memberEtas[0]).not.toHaveProperty(
       'recommendedDepartureAt',
     );
     const rows = await db.query<
@@ -532,7 +598,7 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
 
     expect(result.scheduledAtSnapshot).toBe('2030-01-02T00:10:00.000Z');
     expect(
-      result.results[0].memberResults.map((item) => item.etaSeconds),
+      result.results[0].memberEtas.map((item) => item.etaSeconds),
     ).toEqual([1500, 1500]);
   });
 
@@ -666,7 +732,7 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     expect(result.results).toHaveLength(2);
     expect(result.results.map((item) => item.rank)).toEqual([1, 2]);
     expect(
-      result.results.every((item) => item.memberResults.length === 2),
+      result.results.every((item) => item.memberEtas.length === 2),
     ).toBe(true);
     for (const item of result.results) {
       expect(item.explanation.summaryCode).toBe('FAIR_PARETO_RANKED');

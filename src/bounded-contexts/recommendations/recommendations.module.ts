@@ -24,7 +24,9 @@ import { CreateRecommendationRunUseCase } from './application/use-cases/create-r
 import { GetRecommendationRunUseCase } from './application/use-cases/get-recommendation-run.use-case';
 import { RecommendationContextBuilder } from './application/services/recommendation-context.builder';
 import { CandidateGenerator } from './application/services/candidate-generator';
-import { RECOMMENDATION_CONFIG_DEV_V1 } from './application/recommendation-config';
+import {
+  recommendationConfigForEnvironment,
+} from './application/recommendation-config';
 import {
   RECOMMENDATION_RUN_STORE,
   type RecommendationRunStore,
@@ -66,8 +68,11 @@ import { FavoritePlaceEntity } from './infrastructure/persistence/typeorm/entiti
 import { TypeOrmFavoritePlaceStore } from './infrastructure/persistence/typeorm/typeorm-favorite-place-store';
 import { FAVORITE_PLACE_STORE } from './application/ports/favorite-place-store.port';
 import type { FavoritePlaceStore } from './application/ports/favorite-place-store.port';
-import { ManageFavoritePlaceUseCase } from './application/use-cases/manage-favorite-place.use-case';
+import { AddFavoritePlaceUseCase } from './application/use-cases/add-favorite-place.use-case';
+import { ListFavoritePlacesUseCase } from './application/use-cases/list-favorite-places.use-case';
+import { RemoveFavoritePlaceUseCase } from './application/use-cases/remove-favorite-place.use-case';
 import { FavoritePlacesController } from './presentation/http/favorite-places.controller';
+import { MeetupMembershipReader } from '../meetups/application/public/meetup-membership-reader';
 
 @Module({
   imports: [
@@ -86,11 +91,18 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
   providers: [
     { provide: FAVORITE_PLACE_STORE, useClass: TypeOrmFavoritePlaceStore },
     {
-      provide: ManageFavoritePlaceUseCase,
+      provide: AddFavoritePlaceUseCase,
       useFactory: (store: FavoritePlaceStore) =>
-        new ManageFavoritePlaceUseCase(store),
+        new AddFavoritePlaceUseCase(store),
       inject: [FAVORITE_PLACE_STORE],
     },
+    ...[ListFavoritePlacesUseCase, RemoveFavoritePlaceUseCase].map(
+      (useCase) => ({
+        provide: useCase,
+        useFactory: (store: FavoritePlaceStore) => new useCase(store),
+        inject: [FAVORITE_PLACE_STORE],
+      }),
+    ),
     {
       provide: MEETUP_CANDIDATE_SEARCH,
       useFactory: (meetups: MeetupCandidateSearchReader) =>
@@ -124,9 +136,12 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
     },
     {
       provide: CandidateGenerator,
-      useFactory: (places: PlaceSearchPort) =>
-        new CandidateGenerator(places, RECOMMENDATION_CONFIG_DEV_V1),
-      inject: [PLACE_SEARCH],
+      useFactory: (places: PlaceSearchPort, config: ConfigService) =>
+        new CandidateGenerator(
+          places,
+          recommendationConfigForEnvironment(config.get<string>('app.nodeEnv')),
+        ),
+      inject: [PLACE_SEARCH, ConfigService],
     },
     {
       provide: ROUTE_MATRIX,
@@ -136,22 +151,44 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
     },
     {
       provide: RouteBatchPlanner,
-      useFactory: () =>
-        new RouteBatchPlanner(RECOMMENDATION_CONFIG_DEV_V1.routeElementLimit),
+      useFactory: (config: ConfigService) =>
+        new RouteBatchPlanner(
+          recommendationConfigForEnvironment(config.get<string>('app.nodeEnv'))
+            .routeElementLimit,
+        ),
+      inject: [ConfigService],
     },
     {
       provide: RouteMatrixService,
-      useFactory: (routes: RouteMatrixPort, planner: RouteBatchPlanner) =>
-        new RouteMatrixService(routes, planner),
-      inject: [ROUTE_MATRIX, RouteBatchPlanner],
+      useFactory: (
+        routes: RouteMatrixPort,
+        planner: RouteBatchPlanner,
+        config: ConfigService,
+      ) =>
+        new RouteMatrixService(
+          routes,
+          planner,
+          config.get<'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE'>(
+            'routes.routingPreference',
+          ) ?? 'TRAFFIC_UNAWARE',
+        ),
+      inject: [ROUTE_MATRIX, RouteBatchPlanner, ConfigService],
     },
     {
       provide: MemberUtilityService,
-      useFactory: () => new MemberUtilityService(RECOMMENDATION_CONFIG_DEV_V1),
+      useFactory: (config: ConfigService) =>
+        new MemberUtilityService(
+          recommendationConfigForEnvironment(config.get<string>('app.nodeEnv')),
+        ),
+      inject: [ConfigService],
     },
     {
       provide: GroupRankerService,
-      useFactory: () => new GroupRankerService(RECOMMENDATION_CONFIG_DEV_V1),
+      useFactory: (config: ConfigService) =>
+        new GroupRankerService(
+          recommendationConfigForEnvironment(config.get<string>('app.nodeEnv')),
+        ),
+      inject: [ConfigService],
     },
     {
       provide: FeatureBuilder,
@@ -175,12 +212,14 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
         openingEvaluator: ScheduledOpeningEvaluator,
         freshness: RecommendationRunFreshnessGuard,
         explanations: ExplanationBuilder,
+        config: ConfigService,
+        memberships: MeetupMembershipReader,
       ) =>
         new CreateRecommendationRunUseCase(
           store,
           contexts,
           candidates,
-          RECOMMENDATION_CONFIG_DEV_V1,
+          recommendationConfigForEnvironment(config.get<string>('app.nodeEnv')),
           undefined,
           routes,
           utilities,
@@ -189,6 +228,12 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
           openingEvaluator,
           freshness,
           explanations,
+          config.get<'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE'>(
+            'routes.routingPreference',
+          ) ?? 'TRAFFIC_UNAWARE',
+          'OFF',
+          undefined,
+          memberships,
         ),
       inject: [
         RECOMMENDATION_RUN_STORE,
@@ -201,6 +246,8 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
         ScheduledOpeningEvaluator,
         RecommendationRunFreshnessGuard,
         ExplanationBuilder,
+        ConfigService,
+        MeetupMembershipReader,
       ],
     },
     {
@@ -216,8 +263,13 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
       useFactory: (
         store: RecommendationRunStore,
         freshness: RecommendationRunFreshnessGuard,
-      ) => new GetRecommendationRunUseCase(store, freshness),
-      inject: [RECOMMENDATION_RUN_STORE, RecommendationRunFreshnessGuard],
+        memberships: MeetupMembershipReader,
+      ) => new GetRecommendationRunUseCase(store, freshness, memberships),
+      inject: [
+        RECOMMENDATION_RUN_STORE,
+        RecommendationRunFreshnessGuard,
+        MeetupMembershipReader,
+      ],
     },
     {
       provide: MEETUP_LOCATION,
