@@ -252,6 +252,11 @@
     provider_request_options_version varchar(100) [not null]
     opening_filter varchar(40) [not null, note: 'ANY, OPEN_AT_REQUEST_TIME, OPEN_AT_SCHEDULED_TIME']
     opening_evaluator_version varchar(100) [not null]
+    routing_preference_requested varchar(30) [not null, note: 'TRAFFIC_UNAWARE or TRAFFIC_AWARE']
+    routing_preference_effective varchar(30) [not null, note: 'May fall back to TRAFFIC_UNAWARE for the whole matrix.']
+    weather_policy_requested varchar(30) [not null, note: 'OFF, WARN_ONLY, FILTER_OUTDOOR']
+    weather_policy_effective varchar(30) [not null]
+    weather_policy_version varchar(100) [not null]
     requested_at timestamptz [not null]
     scheduled_at_snapshot timestamptz [not null]
     effective_k smallint
@@ -297,6 +302,7 @@
     eta_range_seconds double
     scheduled_opening_status varchar(20) [note: 'OPEN, CLOSED, UNKNOWN; null when scheduled opening policy is not used.']
     opening_evidence jsonb
+    weather_evidence jsonb [note: 'Normalized forecast evidence; no member location.']
     created_at timestamptz [not null]
 
     Indexes {
@@ -314,6 +320,7 @@
     canonical_candidate_key varchar(300) [not null]
     eta_seconds double [not null]
     distance_meters double [not null]
+    static_duration_seconds double [note: 'Provider metric/explanation only; never used by utility.']
     matched_tags jsonb [not null]
     missing_flags jsonb [not null]
     travel_utility double [not null]
@@ -366,6 +373,7 @@
     eta_range_seconds double [not null]
     scheduled_opening_status varchar(20) [note: 'OPEN, CLOSED, UNKNOWN; null when scheduled opening policy is not used.']
     opening_evidence jsonb
+    weather_evidence jsonb [note: 'Normalized forecast evidence used before routing.']
     explanation jsonb [not null, note: 'Deterministic summaryCode, sourced/unit-tagged facts and warnings from the persisted snapshot.']
     created_at timestamptz [not null]
 

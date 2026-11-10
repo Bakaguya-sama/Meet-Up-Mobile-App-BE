@@ -676,6 +676,8 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review `RecommendationReady.v
 
 ### 5.6. Bước 3A — Traffic/mobility và weather context
 
+**Trạng thái: ✅ Hoàn tất 10/11/2026.**
+
 **Mục tiêu.** Mở rộng engine đã persist kết quả để route theo phương tiện từng member, có thể bật/tắt traffic theo deployment và áp dụng weather policy trước Routes mà không đổi công thức utility hiện tại. [Nguồn: workbook — BE-29, BE-30; Doc 12 — Mục 4.2, 5.2 Bước 6–8, 13]
 
 **Function thuộc bước**
@@ -687,13 +689,13 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review `RecommendationReady.v
 
 **Checklist triển khai**
 
-- [ ] BE-29 validate `ROUTES_ROUTING_PREFERENCE=TRAFFIC_UNAWARE|TRAFFIC_AWARE` khi boot; mobile không truyền giá trị này. Snapshot requested/effective preference và đưa effective value vào route cache key. [Nguồn: Doc 12 — Mục 3, 5.2 Bước 7, 12.1]
-- [ ] Resolve travel mode từng member chỉ còn `TWO_WHEELER`/`DRIVE`, thiếu dùng `TWO_WHEELER`; group member theo mode và batch matrix riêng, sau đó join lại bằng canonical index mapping. [Nguồn: Doc 12 — Mục 5.2 Bước 2, Bước 7, 6.4]
-- [ ] Không gửi `scheduledAt` làm `departureTime`; `duration` đi vào travel utility, `staticDuration` chỉ dành cho metric/explanation. Không thêm congestion penalty. [Nguồn: Doc 12 — Mục 5.2 Bước 7, 13]
-- [ ] Nếu traffic-aware lỗi sau retry, bỏ toàn matrix đã tính và chạy lại toàn bộ bằng `TRAFFIC_UNAWARE`; ghi `TRAFFIC_DATA_UNAVAILABLE`. Fallback lỗi thì run fail. [Nguồn: Doc 12 — Mục 4.5, 12.2]
-- [ ] BE-30 đặt weather sau scheduled opening và trước Routes; `OFF` không gọi provider, `WARN_ONLY` giữ candidate, `FILTER_OUTDOOR` chỉ loại `AVAILABLE + OUTDOOR + threshold versioned`. [Nguồn: Doc 12 — Mục 5.2 Bước 6]
-- [ ] Weather missing/error/out-of-range và exposure `UNKNOWN` không loại candidate. Nếu hard filter làm rỗng tập, hạ xuống `WARN_ONLY` và ghi `WEATHER_FILTER_RELAXED`. [Nguồn: Doc 12 — Mục 5.2 Bước 6, 12.2]
-- [ ] Persist provider/options/effective policy, weather evidence và warning; weather không thêm utility component hoặc thay `T/P/Q/U`. [Nguồn: Doc 12 — Mục 6, 7, 11]
+- [x] BE-29 validate `ROUTES_ROUTING_PREFERENCE=TRAFFIC_UNAWARE|TRAFFIC_AWARE` khi boot; mobile không truyền giá trị này. Snapshot requested/effective preference. Không có route cache trong adapter hiện hành nên không có cache key để thay đổi. [Bằng chứng: `environment.validation.ts`, `RecommendationRunEntity`, `environment.validation.spec.ts`]
+- [x] Resolve travel mode từng member chỉ còn `TWO_WHEELER`/`DRIVE`, thiếu dùng `TWO_WHEELER`; group member theo mode và batch matrix riêng, sau đó join lại bằng canonical index mapping. [Bằng chứng: `recommendation-context.builder.ts`, `route-batch-planner.ts`, test mixed-mode]
+- [x] Không gửi `scheduledAt` làm `departureTime`; `duration` đi vào travel utility, `staticDuration` chỉ metric/persisted explanation; không congestion penalty. [Bằng chứng: `google-routes.adapter.ts`, `member-utility.service.spec.ts`, migration `179217`]
+- [x] Nếu traffic-aware lỗi sau retry, bỏ toàn matrix đã tính và chạy lại toàn bộ bằng `TRAFFIC_UNAWARE`; ghi `TRAFFIC_DATA_UNAVAILABLE`. Fallback lỗi trả `ROUTE_MATRIX_UNAVAILABLE`. [Bằng chứng: `route-matrix.service.ts/spec.ts`]
+- [x] BE-30 đặt weather sau scheduled opening và trước Routes; `OFF` không gọi provider, `WARN_ONLY` giữ candidate, `FILTER_OUTDOOR` chỉ loại `AVAILABLE + OUTDOOR + threshold versioned`. [Bằng chứng: `weather-policy.ts/spec.ts`, orchestration use case]
+- [x] Weather missing/error/out-of-range và exposure `UNKNOWN` không loại candidate. Nếu hard filter làm rỗng tập, hạ xuống `WARN_ONLY` và ghi `WEATHER_FILTER_RELAXED`. [Bằng chứng: `weather-policy.ts/spec.ts`]
+- [x] Persist requested/effective policy, forecast evidence và warning; weather không thay `T/P/Q/U`. [Bằng chứng: entity/domain/DBML, migration `179216`, `feature-builder.ts`]
 
 **Đầu vào cần có**
 
@@ -717,15 +719,21 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review `RecommendationReady.v
 
 Điều kiện bắt buộc:
 
-- [ ] App fail boot với routing preference ngoài enum; cùng request/config snapshot lưu đúng requested/effective value.
-- [ ] Fixture có member xe máy và ô tô tạo đúng hai nhóm request; mọi member–candidate join đúng mode và không thiếu/trùng element.
-- [ ] `TRAFFIC_AWARE` success dùng `duration` cho `T`; `staticDuration` không đổi utility ngoài tác động đã có trong duration.
-- [ ] Inject một batch traffic-aware lỗi: không còn element traffic-aware cũ, toàn matrix fallback unaware, warning/metric đúng; fallback lỗi trả `ROUTE_MATRIX_UNAVAILABLE`.
-- [ ] Assert request Routes không chứa `departureTime=scheduledAt`.
-- [ ] Weather `OFF` tạo 0 provider call; `WARN_ONLY` không giảm candidate; `FILTER_OUTDOOR` chỉ loại đúng bộ ba điều kiện đã chốt.
-- [ ] Weather provider lỗi/out-of-range/unknown exposure giữ candidate; filter-to-empty trả tập cũ với `WEATHER_FILTER_RELAXED`.
-- [ ] Replay dùng snapshot, không gọi weather/Routes; migration cycle, lint/unit/integration/E2E/build pass.
-- [ ] **[Thiếu tiêu chí trong nguồn]** Không bật production travel mode riêng hoặc weather khác `OFF` cho đến khi các contract/threshold tại Mục 7.2 được duyệt.
+- [x] App fail boot với routing preference ngoài enum; snapshot lưu requested/effective. [Bằng chứng: `environment.validation.spec.ts`; entity/repository mapping]
+- [x] Fixture mixed `TWO_WHEELER`/`DRIVE` tạo hai group, canonical pair không thiếu/trùng. [Bằng chứng: `route-batch-planner.spec.ts`]
+- [x] `TRAFFIC_AWARE` dùng `duration` cho `T`; `staticDuration` không đổi utility. [Bằng chứng: `google-routes.adapter.ts`, `member-utility.service.spec.ts`]
+- [x] Lỗi traffic-aware bỏ matrix cũ, fallback toàn matrix unaware và warning; fallback lỗi chuẩn hóa `ROUTE_MATRIX_UNAVAILABLE`. [Bằng chứng: `route-matrix.service.spec.ts`]
+- [x] Routes request không chứa `departureTime`. [Bằng chứng: `google-routes.adapter.spec.ts`]
+- [x] Weather `OFF` không gọi provider; `WARN_ONLY` giữ candidate; `FILTER_OUTDOOR` lọc đúng tổ hợp. [Bằng chứng: `weather-policy.spec.ts`]
+- [x] Provider error/out-of-range/unknown giữ candidate; empty filter relax với `WEATHER_FILTER_RELAXED`. [Bằng chứng: `weather-policy.ts/spec.ts`]
+- [x] Migration up → inspect → down → up chạy trên PostgreSQL thật; build/typecheck/unit/integration/E2E pass. [Bằng chứng: `179216`, `179217`; unit 49/218, integration 4/25 ×2, E2E 8/69 ×2]
+- [x] Production không bật per-member mode hoặc weather khác `OFF` trước Q20/Q21; context cố định `TWO_WHEELER`, module truyền `OFF`. [Bằng chứng: `recommendation-context.builder.ts`, `recommendations.module.ts`]
+
+**Files tạo/sửa.** Route port/planner/service và Google Routes adapter; weather port/policy; use case/context/config; run/candidate/place/member-feature entity/domain/repository; migrations `179216`, `179217`; DBML; unit/integration/E2E tests.
+
+**[Giả định].** Không có route cache trong code hiện hành nên effective preference không thể đưa vào cache key; khi thêm cache phải key theo effective preference. Q20 chưa có persistence/API nên production always-default `TWO_WHEELER`. Q21 chưa được duyệt nên không có external weather adapter/config production và policy production là `OFF`; port/policy fixture chỉ phục vụ kiểm chứng.
+
+**Bàn giao Bước 3B.** Dùng `etaSeconds` và snapshot weather/opening đã persist; không reroute/reweather completed run. Bước 3B mới được thêm closing-risk/ranking penalty và actor-aware projection; không sửa `T/P/Q/U_base` của Bước 3A.
 
 Cách kiểm chứng: config boot tests; fake Routes ghi request body và fault injection; matrix fixture hai mode; fake weather table tests; E2E so candidate count/warning/snapshot; replay với provider fail-fast; chạy bộ lệnh chuẩn.
 
@@ -1167,8 +1175,8 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-26 | Learning-to-rank và model lifecycle              | Chưa thực hiện         | Dev Backend 2 | Bước 8  | Shadow-first model lifecycle                                   |
 | BE-27 | AI explanation mở rộng (tùy chọn)                | Chưa thực hiện         | Dev Backend 2 | Bước 6  | Optional safe AI + fallback                                    |
 | BE-28 | Temporal context và opening tại scheduledAt      | Đã thực hiện           | Dev Backend 2 | Bước 2A | Temporal snapshot, opening status, ETA per-member, stale guard |
-| BE-29 | Traffic-aware và travel mode theo thành viên     | Chưa thực hiện         | Dev Backend 2 | Bước 3A | Configurable traffic + mode-aware complete matrix              |
-| BE-30 | Weather context và outdoor filtering             | Chưa thực hiện         | Dev Backend 2 | Bước 3A | Versioned weather policy before Routes                         |
+| BE-29 | Traffic-aware và travel mode theo thành viên     | Đã thực hiện 10/11/2026 | Dev Backend 2 | Bước 3A | Configurable traffic + mode-aware complete matrix              |
+| BE-30 | Weather context và outdoor filtering             | Đã thực hiện 10/11/2026 | Dev Backend 2 | Bước 3A | Versioned weather policy before Routes                         |
 | BE-31 | Cảnh báo sắp đóng cửa và soft ranking penalty    | Chưa thực hiện         | Dev Backend 2 | Bước 3B | Versioned closing risk lowers rank without filtering           |
 | BE-32 | Projection kết quả recommendation theo người xem | Chưa thực hiện         | Dev Backend 2 | Bước 3B | All-member ETA, actor-only preference/utility                  |
 | BE-33 | Liên kết mời meetup có hạn và thu hồi            | ✅ Hoàn tất 03/11/2026 | Dev Backend 1 | Bước 4A | Hash-only durable invite link lifecycle                        |

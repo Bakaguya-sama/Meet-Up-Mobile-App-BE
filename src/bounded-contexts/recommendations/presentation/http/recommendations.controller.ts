@@ -153,6 +153,10 @@ function recommendationRunSchema(): Extract<
       'scheduledAtSnapshot',
       'openingFilter',
       'openingEvaluatorVersion',
+      'routingPreferenceRequested',
+      'routingPreferenceEffective',
+      'weatherPolicyRequested',
+      'weatherPolicyEffective',
       'contextStatus',
       'results',
     ],
@@ -168,6 +172,22 @@ function recommendationRunSchema(): Extract<
         enum: ['ANY', 'OPEN_AT_REQUEST_TIME', 'OPEN_AT_SCHEDULED_TIME'],
       },
       openingEvaluatorVersion: { type: 'string' },
+      routingPreferenceRequested: {
+        type: 'string',
+        enum: ['TRAFFIC_UNAWARE', 'TRAFFIC_AWARE'],
+      },
+      routingPreferenceEffective: {
+        type: 'string',
+        enum: ['TRAFFIC_UNAWARE', 'TRAFFIC_AWARE'],
+      },
+      weatherPolicyRequested: {
+        type: 'string',
+        enum: ['OFF', 'WARN_ONLY', 'FILTER_OUTDOOR'],
+      },
+      weatherPolicyEffective: {
+        type: 'string',
+        enum: ['OFF', 'WARN_ONLY', 'FILTER_OUTDOOR'],
+      },
       contextStatus: {
         type: 'string',
         enum: ['CURRENT_CONTEXT', 'STALE_CONTEXT'],

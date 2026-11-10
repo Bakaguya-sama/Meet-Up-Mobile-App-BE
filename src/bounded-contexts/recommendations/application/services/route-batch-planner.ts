@@ -49,33 +49,47 @@ export class RouteBatchPlanner {
     );
     origins.forEach(assertCoordinate);
     destinations.forEach(assertCoordinate);
-    const size = this.chooseChunkSize(origins.length, destinations.length);
     const batches: PlannedRouteBatch[] = [];
-    for (
-      let originStart = 0;
-      originStart < origins.length;
-      originStart += size.origins
-    ) {
+    const modes: Array<RouteBatchRequest['travelMode']> = [
+      'DRIVE',
+      'TWO_WHEELER',
+    ];
+    for (const travelMode of modes) {
+      const groupedOrigins = origins.filter(
+        (origin) => (origin.travelMode ?? 'TWO_WHEELER') === travelMode,
+      );
+      if (!groupedOrigins.length) continue;
+      const size = this.chooseChunkSize(
+        groupedOrigins.length,
+        destinations.length,
+      );
       for (
-        let destinationStart = 0;
-        destinationStart < destinations.length;
-        destinationStart += size.destinations
+        let originStart = 0;
+        originStart < groupedOrigins.length;
+        originStart += size.origins
       ) {
-        const originChunk = origins.slice(
-          originStart,
-          originStart + size.origins,
-        );
-        const destinationChunk = destinations.slice(
-          destinationStart,
-          destinationStart + size.destinations,
-        );
-        batches.push({
-          batchIndex: batches.length,
-          origins: originChunk,
-          destinations: destinationChunk,
-          travelMode: 'TWO_WHEELER',
-          elementCount: originChunk.length * destinationChunk.length,
-        });
+        for (
+          let destinationStart = 0;
+          destinationStart < destinations.length;
+          destinationStart += size.destinations
+        ) {
+          const originChunk = groupedOrigins.slice(
+            originStart,
+            originStart + size.origins,
+          );
+          const destinationChunk = destinations.slice(
+            destinationStart,
+            destinationStart + size.destinations,
+          );
+          batches.push({
+            batchIndex: batches.length,
+            origins: originChunk,
+            destinations: destinationChunk,
+            travelMode,
+            routingPreference: 'TRAFFIC_UNAWARE',
+            elementCount: originChunk.length * destinationChunk.length,
+          });
+        }
       }
     }
     return batches;

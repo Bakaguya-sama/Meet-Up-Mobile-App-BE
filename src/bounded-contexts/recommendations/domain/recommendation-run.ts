@@ -4,6 +4,13 @@ import type {
   ScheduledOpeningStatus,
 } from './temporal-context';
 
+export interface WeatherEvidence {
+  availability: 'AVAILABLE' | 'UNAVAILABLE' | 'OUT_OF_RANGE';
+  severity?: number;
+  provider: string;
+  observedAt?: string;
+}
+
 export type RecommendationRunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED';
 
 export const LEGACY_TEMPORAL_PROVIDER_OPTIONS_VERSION =
@@ -26,6 +33,11 @@ export interface RecommendationRun {
   providerRequestOptionsVersion: string;
   openingFilter: 'ANY' | 'OPEN_AT_REQUEST_TIME' | 'OPEN_AT_SCHEDULED_TIME';
   openingEvaluatorVersion: string;
+  routingPreferenceRequested: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
+  routingPreferenceEffective: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
+  weatherPolicyRequested: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
+  weatherPolicyEffective: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
+  weatherPolicyVersion: string;
   requestedAt: Date;
   scheduledAtSnapshot: Date;
   createdAt: Date;
@@ -67,6 +79,7 @@ export interface RecommendationCandidateSnapshot {
   etaRangeSeconds: number | null;
   scheduledOpeningStatus: ScheduledOpeningStatus | null;
   openingEvidence: ScheduledOpeningEvidence | null;
+  weatherEvidence: WeatherEvidence | null;
 }
 
 export type RecommendationExplanationUnit =
@@ -104,6 +117,7 @@ export interface RecommendationPlaceSnapshot {
   etaRangeSeconds: number;
   scheduledOpeningStatus: ScheduledOpeningStatus | null;
   openingEvidence: ScheduledOpeningEvidence | null;
+  weatherEvidence: WeatherEvidence | null;
   explanation: RecommendationExplanation;
   createdAt: Date;
 }
@@ -116,6 +130,7 @@ export interface RecommendationMemberFeatureSnapshot {
   canonicalCandidateKey: string;
   etaSeconds: number;
   distanceMeters: number;
+  staticDurationSeconds: number | null;
   matchedTags: Array<{
     tagCode: string;
     level: 'high' | 'normal' | 'avoid';
@@ -140,6 +155,8 @@ export interface RecommendationCompletion {
   routeBatchCount: number;
   routeElementCount: number;
   readyEventId: string;
+  routingPreferenceEffective: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
+  weatherPolicyEffective: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
 }
 
 export interface RecommendationRunResult extends RecommendationRun {

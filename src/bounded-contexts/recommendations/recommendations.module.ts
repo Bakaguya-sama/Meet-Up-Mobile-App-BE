@@ -150,9 +150,19 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
     },
     {
       provide: RouteMatrixService,
-      useFactory: (routes: RouteMatrixPort, planner: RouteBatchPlanner) =>
-        new RouteMatrixService(routes, planner),
-      inject: [ROUTE_MATRIX, RouteBatchPlanner],
+      useFactory: (
+        routes: RouteMatrixPort,
+        planner: RouteBatchPlanner,
+        config: ConfigService,
+      ) =>
+        new RouteMatrixService(
+          routes,
+          planner,
+          config.get<'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE'>(
+            'routes.routingPreference',
+          ) ?? 'TRAFFIC_UNAWARE',
+        ),
+      inject: [ROUTE_MATRIX, RouteBatchPlanner, ConfigService],
     },
     {
       provide: MemberUtilityService,
@@ -184,6 +194,7 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
         openingEvaluator: ScheduledOpeningEvaluator,
         freshness: RecommendationRunFreshnessGuard,
         explanations: ExplanationBuilder,
+        config: ConfigService,
       ) =>
         new CreateRecommendationRunUseCase(
           store,
@@ -198,6 +209,10 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
           openingEvaluator,
           freshness,
           explanations,
+          config.get<'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE'>(
+            'routes.routingPreference',
+          ) ?? 'TRAFFIC_UNAWARE',
+          'OFF',
         ),
       inject: [
         RECOMMENDATION_RUN_STORE,
@@ -210,6 +225,7 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
         ScheduledOpeningEvaluator,
         RecommendationRunFreshnessGuard,
         ExplanationBuilder,
+        ConfigService,
       ],
     },
     {

@@ -10,10 +10,7 @@ import {
   RECOMMENDATION_CONFIG_DEV_V1,
   type RecommendationConfig,
 } from '../recommendation-config';
-import {
-  filterCandidatesWithAudit,
-  type EligibleCandidate,
-} from '../services/candidate-filter';
+import { filterCandidatesWithAudit } from '../services/candidate-filter';
 import { CandidateGenerator } from '../services/candidate-generator';
 import { RecommendationContextBuilder } from '../services/recommendation-context.builder';
 import { validateRecommendationRequest } from '../services/recommendation-request-validator';
@@ -31,6 +28,13 @@ import type { RecommendationRunResult } from '../../domain/recommendation-run';
 import { applyScheduledOpeningPolicy } from '../services/scheduled-opening-policy';
 import { ExplanationBuilder } from '../services/explanation-builder';
 import { presentRecommendationResult } from '../services/recommendation-result.presenter';
+import {
+  applyWeatherPolicy,
+  WEATHER_POLICY_VERSION,
+  type WeatherEligibleCandidate,
+  type WeatherPolicy,
+} from '../services/weather-policy';
+import type { WeatherContextPort } from '../ports/weather-context.port';
 
 export class CreateRecommendationRunUseCase {
   constructor(
@@ -46,6 +50,10 @@ export class CreateRecommendationRunUseCase {
     private readonly openingEvaluator: ScheduledOpeningEvaluator = new ScheduledOpeningEvaluator(),
     private readonly freshness?: RecommendationRunFreshnessGuard,
     private readonly explanations: ExplanationBuilder = new ExplanationBuilder(),
+    private readonly routingPreference:
+      'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE' = 'TRAFFIC_UNAWARE',
+    private readonly weatherPolicy: WeatherPolicy = 'OFF',
+    private readonly weather?: WeatherContextPort,
   ) {}
 
   async execute(
@@ -92,6 +100,11 @@ export class CreateRecommendationRunUseCase {
       providerRequestOptionsVersion: PLACE_SEARCH_REQUEST_OPTIONS_VERSION,
       openingFilter: request.openingFilter,
       openingEvaluatorVersion: SCHEDULED_OPENING_EVALUATOR_VERSION,
+      routingPreferenceRequested: this.routingPreference,
+      routingPreferenceEffective: this.routingPreference,
+      weatherPolicyRequested: this.weatherPolicy,
+      weatherPolicyEffective: this.weatherPolicy,
+      weatherPolicyVersion: WEATHER_POLICY_VERSION,
       requestedAt,
       scheduledAtSnapshot: scheduledAt,
       createdAt,
@@ -132,7 +145,13 @@ export class CreateRecommendationRunUseCase {
               filtered: [],
               warnings: [],
             };
-      const eligible = openingPolicy.candidates;
+      const weatherPolicy = await applyWeatherPolicy(
+        openingPolicy.candidates,
+        scheduledAt,
+        this.weatherPolicy,
+        this.weather,
+      );
+      const eligible = weatherPolicy.candidates;
       if (!eligible.length) {
         throw new RecommendationError(
           'NO_ELIGIBLE_CANDIDATES',
@@ -150,6 +169,7 @@ export class CreateRecommendationRunUseCase {
           participantId: member.participantId,
           latitude: member.latitude,
           longitude: member.longitude,
+          travelMode: member.travelMode,
         })),
         eligible.map((candidate) => ({
           canonicalCandidateKey: candidate.canonicalCandidateKey,
@@ -189,7 +209,11 @@ export class CreateRecommendationRunUseCase {
       );
       const completedAt = this.now();
       const completionWarnings = [
-        ...new Set([...routeOutcome.warnings, ...openingPolicy.warnings]),
+        ...new Set([
+          ...routeOutcome.warnings,
+          ...openingPolicy.warnings,
+          ...weatherPolicy.warnings,
+        ]),
       ];
       const candidatesByKey = new Map<string, string>();
       const candidateSnapshots: RecommendationCandidateSnapshot[] =
@@ -228,6 +252,9 @@ export class CreateRecommendationRunUseCase {
             openingEvidence: candidate.openingEvidence
               ? structuredClone(candidate.openingEvidence)
               : null,
+            weatherEvidence: candidate.weatherEvidence
+              ? structuredClone(candidate.weatherEvidence)
+              : null,
           };
         });
       const routableKeys = new Set(
@@ -238,6 +265,7 @@ export class CreateRecommendationRunUseCase {
       const filteredCandidates = [
         ...residualOutcome.filtered,
         ...openingPolicy.filtered,
+        ...weatherPolicy.filtered,
         ...eligible
           .filter(
             (candidate) => !routableKeys.has(candidate.canonicalCandidateKey),
@@ -277,6 +305,9 @@ export class CreateRecommendationRunUseCase {
           openingEvidence: candidate.openingEvidence
             ? structuredClone(candidate.openingEvidence)
             : null,
+          weatherEvidence: candidate.weatherEvidence
+            ? structuredClone(candidate.weatherEvidence)
+            : null,
           explanation: this.explanations.build(
             run.rankingStrategy,
             {
@@ -307,6 +338,7 @@ export class CreateRecommendationRunUseCase {
             canonicalCandidateKey: feature.canonicalCandidateKey,
             etaSeconds: feature.etaSeconds,
             distanceMeters: feature.distanceMeters,
+            staticDurationSeconds: feature.staticDurationSeconds ?? null,
             matchedTags: feature.matchedTags,
             missingFlags: feature.missingFlags,
             travelUtility: feature.travelUtility,
@@ -322,6 +354,8 @@ export class CreateRecommendationRunUseCase {
           randomSeed: seed,
           routeBatchCount: routeOutcome.batchCount,
           routeElementCount: routeOutcome.elementCount,
+          routingPreferenceEffective: routeOutcome.effectiveRoutingPreference,
+          weatherPolicyEffective: weatherPolicy.effectivePolicy,
           readyEventId: randomUUID(),
         },
         completedAt,
@@ -384,7 +418,7 @@ export class CreateRecommendationRunUseCase {
 function filteredSnapshot(
   runId: string,
   id: string,
-  candidate: EligibleCandidate,
+  candidate: WeatherEligibleCandidate,
   reason: string,
   createdAt: Date,
 ) {
@@ -417,6 +451,9 @@ function filteredSnapshot(
     scheduledOpeningStatus: candidate.scheduledOpeningStatus ?? null,
     openingEvidence: candidate.openingEvidence
       ? structuredClone(candidate.openingEvidence)
+      : null,
+    weatherEvidence: candidate.weatherEvidence
+      ? structuredClone(candidate.weatherEvidence)
       : null,
   };
 }

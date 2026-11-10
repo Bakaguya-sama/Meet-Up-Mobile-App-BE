@@ -8,6 +8,7 @@ export interface MemberFeatureInput {
   canonicalCandidateKey: string;
   etaSeconds: number;
   distanceMeters: number;
+  staticDurationSeconds?: number;
   placeTags: string[];
   preferences: Array<{ tagCode: string; level: PreferenceLevel }>;
   rating0To5: number | null;
