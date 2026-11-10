@@ -16,6 +16,16 @@ export class MeetupMembershipReader {
     ]);
   }
 
+  findAcceptedParticipantId(
+    meetupId: string,
+    userId: string,
+  ): Promise<string | null> {
+    return this.store.findAcceptedParticipantId(
+      meetupId.toLowerCase(),
+      userId.toLowerCase(),
+    );
+  }
+
   getChatAccess(
     meetupId: string,
     userId: string,

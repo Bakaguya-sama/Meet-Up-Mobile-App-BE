@@ -167,6 +167,25 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
     return count === ids.length;
   }
 
+  async findAcceptedParticipantId(
+    meetupId: string,
+    userId: string,
+  ): Promise<string | null> {
+    const row = await this.dataSource
+      .getRepository(ParticipantEntity)
+      .createQueryBuilder('participant')
+      .innerJoin(MeetupEntity, 'meetup', 'meetup.id = participant.meetupId')
+      .select('participant.id', 'id')
+      .where('meetup.id = :meetupId', { meetupId })
+      .andWhere('meetup.status IN (:...active)', {
+        active: ['inviting', 'choosing', 'selected'],
+      })
+      .andWhere('participant.userId = :userId', { userId })
+      .andWhere('participant.status = :accepted', { accepted: 'accepted' })
+      .getRawOne<{ id: string }>();
+    return row?.id ?? null;
+  }
+
   async getChatAccess(
     meetupId: string,
     userId: string,

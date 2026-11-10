@@ -35,6 +35,11 @@ export interface MeetupStorePort {
     meetupId: string,
     userIds: string[],
   ): Promise<boolean>;
+  /** The participant id is the stable foreign key used by recommendation features. */
+  findAcceptedParticipantId(
+    meetupId: string,
+    userId: string,
+  ): Promise<string | null>;
   getChatAccess(
     meetupId: string,
     userId: string,

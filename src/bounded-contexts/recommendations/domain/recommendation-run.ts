@@ -2,6 +2,7 @@ import type {
   RecommendationContextStatus,
   ScheduledOpeningEvidence,
   ScheduledOpeningStatus,
+  ClosingEvidence,
 } from './temporal-context';
 
 export interface WeatherEvidence {
@@ -38,6 +39,7 @@ export interface RecommendationRun {
   weatherPolicyRequested: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
   weatherPolicyEffective: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
   weatherPolicyVersion: string;
+  closingPolicyVersion: string;
   requestedAt: Date;
   scheduledAtSnapshot: Date;
   createdAt: Date;
@@ -80,6 +82,7 @@ export interface RecommendationCandidateSnapshot {
   scheduledOpeningStatus: ScheduledOpeningStatus | null;
   openingEvidence: ScheduledOpeningEvidence | null;
   weatherEvidence: WeatherEvidence | null;
+  closingEvidence: ClosingEvidence | null;
 }
 
 export type RecommendationExplanationUnit =
@@ -118,6 +121,7 @@ export interface RecommendationPlaceSnapshot {
   scheduledOpeningStatus: ScheduledOpeningStatus | null;
   openingEvidence: ScheduledOpeningEvidence | null;
   weatherEvidence: WeatherEvidence | null;
+  closingEvidence: ClosingEvidence | null;
   explanation: RecommendationExplanation;
   createdAt: Date;
 }
@@ -141,6 +145,7 @@ export interface RecommendationMemberFeatureSnapshot {
   preferenceUtility: number;
   placeQualityUtility: number;
   memberUtility: number;
+  rankingUtility: number;
   routeStatus: 'OK';
   createdAt: Date;
 }
@@ -169,9 +174,29 @@ export interface RecommendationRunView extends RecommendationRunResult {
   contextStatus: RecommendationContextStatus;
 }
 
-export interface RankedRecommendationResult extends RecommendationPlaceSnapshot {
-  candidate: RecommendationCandidateSnapshot;
-  memberResults: RecommendationMemberFeatureSnapshot[];
+export interface RecommendationPublicResult {
+  rank: number;
+  canonicalCandidateKey: string;
+  candidate: Pick<
+    RecommendationCandidateSnapshot,
+    'canonicalCandidateKey' | 'provider' | 'providerPlaceId' | 'name' | 'rating0To5' | 'userRatingCount'
+  >;
+  avgEtaSeconds: number;
+  maxEtaSeconds: number;
+  etaRangeSeconds: number;
+  memberEtas: Array<{ participantId: string; etaSeconds: number }>;
+  viewerFeature: null | Pick<
+    RecommendationMemberFeatureSnapshot,
+    | 'participantId'
+    | 'matchedTags'
+    | 'travelUtility'
+    | 'preferenceUtility'
+    | 'placeQualityUtility'
+    | 'memberUtility'
+  >;
+  scheduledOpeningStatus: ScheduledOpeningStatus | null;
+  closingEvidence: ClosingEvidence | null;
+  explanation: RecommendationExplanation;
 }
 
 export interface RecommendationPublicView extends Omit<
@@ -179,5 +204,5 @@ export interface RecommendationPublicView extends Omit<
   'candidates' | 'memberFeatures' | 'places'
 > {
   contextStatus: RecommendationContextStatus;
-  results: RankedRecommendationResult[];
+  results: RecommendationPublicResult[];
 }

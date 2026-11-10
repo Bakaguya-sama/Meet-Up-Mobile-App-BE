@@ -29,6 +29,7 @@ import { CreateOutboxEventsTable1760000006000 } from '../src/infrastructure/data
 import { CreateRecommendationResults1792110000000 } from '../src/infrastructure/database/migrations/1792110000000-create-recommendation-results';
 import { AddRecommendationTrafficWeatherContext1792160000000 } from '../src/infrastructure/database/migrations/1792160000000-add-recommendation-traffic-weather-context';
 import { AddRecommendationStaticDurationMetric1792170000000 } from '../src/infrastructure/database/migrations/1792170000000-add-recommendation-static-duration-metric';
+import { AddRecommendationClosingSnapshots1792180000000 } from '../src/infrastructure/database/migrations/1792180000000-add-recommendation-closing-snapshots';
 
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -83,6 +84,7 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         CreateRecommendationResults1792110000000,
         AddRecommendationTrafficWeatherContext1792160000000,
         AddRecommendationStaticDurationMetric1792170000000,
+        AddRecommendationClosingSnapshots1792180000000,
       ],
     }).initialize();
 
@@ -109,6 +111,13 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         'weather_evidence',
       ]),
     );
+    await db.undoLastMigration();
+    expect(
+      await db.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'recommendation_runs' AND column_name = 'closing_policy_version'`,
+        [schema],
+      ),
+    ).toEqual([]);
     await db.undoLastMigration();
     expect(
       await db.query(
@@ -468,7 +477,7 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
     expect(completed.candidates).toHaveLength(1);
     expect(completed.memberFeatures).toHaveLength(1);
     expect(completed.places).toEqual([
-      { ...validPlace, weatherEvidence: null },
+      { ...validPlace, weatherEvidence: null, closingEvidence: null },
     ]);
     expect(completed.memberFeatures[0].etaSeconds).toBe(1_500);
     const persisted = await repository.findById(meetupId, valid.id);

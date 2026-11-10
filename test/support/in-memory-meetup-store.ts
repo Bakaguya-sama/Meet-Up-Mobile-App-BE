@@ -71,6 +71,17 @@ export class InMemoryMeetupStore implements MeetupStorePort {
         ),
     );
   }
+  findAcceptedParticipantId(meetupId: string, userId: string) {
+    const state = this.rows.get(meetupId);
+    const participant = state?.participants.find(
+      (value) => value.userId === userId && value.status === 'accepted',
+    );
+    return Promise.resolve(
+      state && ['inviting', 'choosing', 'selected'].includes(state.status)
+        ? (participant?.id ?? null)
+        : null,
+    );
+  }
   getChatAccess(
     meetupId: string,
     userId: string,

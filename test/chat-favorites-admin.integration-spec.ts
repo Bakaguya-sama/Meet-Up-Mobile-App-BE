@@ -43,6 +43,7 @@ import { AddChatFavoritesAndAdminAudit1792140000000 } from '../src/infrastructur
 import { EnforceMeetupChatAccess1792150000000 } from '../src/infrastructure/database/migrations/1792150000000-enforce-meetup-chat-access';
 import { AddRecommendationTrafficWeatherContext1792160000000 } from '../src/infrastructure/database/migrations/1792160000000-add-recommendation-traffic-weather-context';
 import { AddRecommendationStaticDurationMetric1792170000000 } from '../src/infrastructure/database/migrations/1792170000000-add-recommendation-static-duration-metric';
+import { AddRecommendationClosingSnapshots1792180000000 } from '../src/infrastructure/database/migrations/1792180000000-add-recommendation-closing-snapshots';
 
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
 if (!databaseUrl) throw new Error('MEETUP_TEST_DATABASE_URL is required');
@@ -107,11 +108,13 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
         EnforceMeetupChatAccess1792150000000,
         AddRecommendationTrafficWeatherContext1792160000000,
         AddRecommendationStaticDurationMetric1792170000000,
+        AddRecommendationClosingSnapshots1792180000000,
       ],
     }).initialize();
     await db.runMigrations();
     await expectTrigger(true);
     // 179216 is unrelated to chat but is part of the current schema.
+    await db.undoLastMigration();
     await db.undoLastMigration();
     await db.undoLastMigration();
     await db.undoLastMigration();

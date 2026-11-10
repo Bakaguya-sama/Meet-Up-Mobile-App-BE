@@ -75,6 +75,8 @@ export class RecommendationRunEntity {
   weatherPolicyEffective: 'OFF' | 'WARN_ONLY' | 'FILTER_OUTDOOR';
   @Column('varchar', { name: 'weather_policy_version', length: 100 })
   weatherPolicyVersion: string;
+  @Column('varchar', { name: 'closing_policy_version', length: 100 })
+  closingPolicyVersion: string;
   @Column('timestamptz', { name: 'requested_at' }) requestedAt: Date;
   @Column('timestamptz', { name: 'scheduled_at_snapshot' })
   scheduledAtSnapshot: Date;

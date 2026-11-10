@@ -82,6 +82,7 @@ describe('Meetup Preferences Use Cases and Queries (BE-02, BE-08, S3, Core)', ()
       ),
       listVisible: jest.fn(() => Promise.resolve({ items: [], total: 0 })),
       areAcceptedInActiveMeetup: jest.fn(() => Promise.resolve(true)),
+      findAcceptedParticipantId: jest.fn(() => Promise.resolve('participant-1')),
     };
 
     mockFallback = {

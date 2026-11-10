@@ -26,6 +26,8 @@ export interface MemberFeature extends MemberFeatureInput {
   preferenceUtility: number;
   placeQualityUtility: number;
   memberUtility: number;
+  /** Ranking-only utility; memberUtility remains the auditable U_base. */
+  rankingUtility: number;
 }
 
 export class MemberUtilityService {
@@ -101,6 +103,7 @@ export class MemberUtilityService {
       preferenceUtility,
       placeQualityUtility,
       memberUtility,
+      rankingUtility: memberUtility,
     };
   }
 }

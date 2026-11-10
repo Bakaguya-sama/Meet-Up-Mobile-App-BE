@@ -27,7 +27,9 @@ import { RecommendationRunFreshnessGuard } from '../public/recommendation-run-fr
 import type { RecommendationRunResult } from '../../domain/recommendation-run';
 import { applyScheduledOpeningPolicy } from '../services/scheduled-opening-policy';
 import { ExplanationBuilder } from '../services/explanation-builder';
-import { presentRecommendationResult } from '../services/recommendation-result.presenter';
+import { presentForViewer } from '../services/recommendation-result.presenter';
+import { ClosingSoonEvaluator } from '../services/closing-soon.evaluator';
+import { applyClosingPenalty } from '../services/closing-soon-adjuster';
 import {
   applyWeatherPolicy,
   WEATHER_POLICY_VERSION,
@@ -35,6 +37,7 @@ import {
   type WeatherPolicy,
 } from '../services/weather-policy';
 import type { WeatherContextPort } from '../ports/weather-context.port';
+import { MeetupMembershipReader } from '../../../meetups/application/public/meetup-membership-reader';
 
 export class CreateRecommendationRunUseCase {
   constructor(
@@ -54,6 +57,7 @@ export class CreateRecommendationRunUseCase {
       'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE' = 'TRAFFIC_UNAWARE',
     private readonly weatherPolicy: WeatherPolicy = 'OFF',
     private readonly weather?: WeatherContextPort,
+    private readonly memberships?: MeetupMembershipReader,
   ) {}
 
   async execute(
@@ -68,7 +72,7 @@ export class CreateRecommendationRunUseCase {
     );
     if (existing) {
       this.assertIdempotent(existing, actorId, request.payloadHash);
-      return this.present(existing);
+      return this.present(existing, actorId, request.meetupId);
     }
     const context = await this.contexts.build(actorId, request.meetupId);
     const createdAt = this.now();
@@ -93,7 +97,7 @@ export class CreateRecommendationRunUseCase {
       status: 'RUNNING',
       failureCode: null,
       rankingStrategy: 'fair-pareto-v1',
-      algorithmVersion: 'recommendation-engine-v1',
+      algorithmVersion: 'recommendation-engine-v2',
       configVersion: this.config.version,
       featureSchemaVersion: 'recommendation-features-v1',
       providerMappingVersion: this.config.providerMappingVersion,
@@ -105,6 +109,7 @@ export class CreateRecommendationRunUseCase {
       weatherPolicyRequested: this.weatherPolicy,
       weatherPolicyEffective: this.weatherPolicy,
       weatherPolicyVersion: WEATHER_POLICY_VERSION,
+      closingPolicyVersion: this.config.closingPolicy.version,
       requestedAt,
       scheduledAtSnapshot: scheduledAt,
       createdAt,
@@ -118,7 +123,7 @@ export class CreateRecommendationRunUseCase {
     const persisted = await this.store.create(run);
     if (persisted.id !== run.id) {
       this.assertIdempotent(persisted, actorId, request.payloadHash);
-      return this.present(persisted);
+      return this.present(persisted, actorId, request.meetupId);
     }
     try {
       const raw = await this.candidates.generate({
@@ -145,8 +150,15 @@ export class CreateRecommendationRunUseCase {
               filtered: [],
               warnings: [],
             };
+      const closingEvaluator = new ClosingSoonEvaluator(
+        this.config.closingPolicy,
+      );
+      const closingCandidates = openingPolicy.candidates.map((candidate) => ({
+        ...candidate,
+        closingEvidence: closingEvaluator.evaluate(candidate, scheduledAt),
+      }));
       const weatherPolicy = await applyWeatherPolicy(
-        openingPolicy.candidates,
+        closingCandidates,
         scheduledAt,
         this.weatherPolicy,
         this.weather,
@@ -184,7 +196,7 @@ export class CreateRecommendationRunUseCase {
           candidate,
         ]),
       );
-      const features = this.featureBuilder
+      const baseFeatures = this.featureBuilder
         .build(
           context.members.map((member) => ({
             participantId: member.participantId,
@@ -197,6 +209,16 @@ export class CreateRecommendationRunUseCase {
           routeOutcome.candidates,
         )
         .map((feature) => this.utilities!.score(feature));
+      const features = applyClosingPenalty(
+        baseFeatures,
+        new Map(
+          eligible.flatMap((candidate) =>
+            candidate.closingEvidence
+              ? [[candidate.canonicalCandidateKey, candidate.closingEvidence] as const]
+              : [],
+          ),
+        ),
+      );
       const seed = request.payloadHash.slice(0, 16);
       const ranking = this.ranker.rank(
         features,
@@ -213,6 +235,12 @@ export class CreateRecommendationRunUseCase {
           ...routeOutcome.warnings,
           ...openingPolicy.warnings,
           ...weatherPolicy.warnings,
+          ...eligible
+            .filter(
+              (candidate) =>
+                candidate.closingEvidence?.status === 'CLOSING_SOON',
+            )
+            .map(() => 'CLOSING_SOON'),
         ]),
       ];
       const candidatesByKey = new Map<string, string>();
@@ -254,6 +282,9 @@ export class CreateRecommendationRunUseCase {
               : null,
             weatherEvidence: candidate.weatherEvidence
               ? structuredClone(candidate.weatherEvidence)
+              : null,
+            closingEvidence: candidate.closingEvidence
+              ? structuredClone(candidate.closingEvidence)
               : null,
           };
         });
@@ -308,6 +339,9 @@ export class CreateRecommendationRunUseCase {
           weatherEvidence: candidate.weatherEvidence
             ? structuredClone(candidate.weatherEvidence)
             : null,
+          closingEvidence: candidate.closingEvidence
+            ? structuredClone(candidate.closingEvidence)
+            : null,
           explanation: this.explanations.build(
             run.rankingStrategy,
             {
@@ -319,6 +353,9 @@ export class CreateRecommendationRunUseCase {
               avgEtaSeconds: ranked.avgEtaSeconds,
               maxEtaSeconds: ranked.maxEtaSeconds,
               scheduledOpeningStatus: candidate.scheduledOpeningStatus ?? null,
+              closingEvidence: candidate.closingEvidence
+                ? structuredClone(candidate.closingEvidence)
+                : null,
             },
             routeOutcome.effectiveK,
             completionWarnings,
@@ -345,6 +382,7 @@ export class CreateRecommendationRunUseCase {
             preferenceUtility: feature.preferenceUtility,
             placeQualityUtility: feature.placeQualityUtility,
             memberUtility: feature.memberUtility,
+            rankingUtility: feature.rankingUtility,
             routeStatus: 'OK' as const,
             createdAt: completedAt,
           })),
@@ -360,7 +398,7 @@ export class CreateRecommendationRunUseCase {
         },
         completedAt,
       );
-      return this.present(completed);
+      return this.present(completed, actorId, request.meetupId);
     } catch (error) {
       const code =
         error instanceof RecommendationError
@@ -375,12 +413,24 @@ export class CreateRecommendationRunUseCase {
     }
   }
 
-  private present(run: RecommendationRunResult) {
-    return this.freshness
-      ? this.freshness
-          .status(run)
-          .then((status) => presentRecommendationResult(run, status))
-      : Promise.resolve(presentRecommendationResult(run, 'CURRENT_CONTEXT'));
+  private async present(
+    run: RecommendationRunResult,
+    actorId: string,
+    meetupId: string,
+  ) {
+    const participantId = this.memberships
+      ? await this.memberships.findAcceptedParticipantId(meetupId, actorId)
+      : run.requestedById;
+    if (!participantId) {
+      throw new RecommendationError(
+        'RECOMMENDATION_RUN_FORBIDDEN',
+        'Recommendation run is unavailable to this actor',
+      );
+    }
+    const status = this.freshness
+      ? await this.freshness.status(run)
+      : 'CURRENT_CONTEXT';
+    return presentForViewer(participantId, run, status);
   }
 
   private assertIdempotent(
@@ -454,6 +504,9 @@ function filteredSnapshot(
       : null,
     weatherEvidence: candidate.weatherEvidence
       ? structuredClone(candidate.weatherEvidence)
+      : null,
+    closingEvidence: candidate.closingEvidence
+      ? structuredClone(candidate.closingEvidence)
       : null,
   };
 }

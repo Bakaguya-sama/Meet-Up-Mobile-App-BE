@@ -15,6 +15,7 @@ type ExplanationMetrics = Pick<
   | 'avgEtaSeconds'
   | 'maxEtaSeconds'
   | 'scheduledOpeningStatus'
+  | 'closingEvidence'
 >;
 
 export class ExplanationBuilder {
@@ -44,6 +45,33 @@ export class ExplanationBuilder {
         value: metrics.scheduledOpeningStatus,
         source: 'PLACES',
       });
+    }
+    if (metrics.closingEvidence?.status === 'CLOSING_SOON') {
+      facts.push(
+        {
+          key: 'closingStatus',
+          value: metrics.closingEvidence.status,
+          source: 'PLACES',
+        },
+        fact(
+          'secondsUntilClose',
+          metrics.closingEvidence.secondsUntilClose ?? 0,
+          'SECOND',
+          'PLACES',
+        ),
+        fact(
+          'closingRisk',
+          metrics.closingEvidence.closingRisk,
+          'PROBABILITY_0_1',
+          'ENGINE',
+        ),
+        fact(
+          'closingPenalty',
+          metrics.closingEvidence.closingPenalty,
+          'UTILITY_0_1',
+          'ENGINE',
+        ),
+      );
     }
     if (strategy === 'fair-pareto-v1') {
       facts.push(fact('paretoLevel', metrics.paretoLevel, 'COUNT', 'ENGINE'));

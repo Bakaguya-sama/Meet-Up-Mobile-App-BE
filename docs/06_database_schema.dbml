@@ -257,6 +257,7 @@
     weather_policy_requested varchar(30) [not null, note: 'OFF, WARN_ONLY, FILTER_OUTDOOR']
     weather_policy_effective varchar(30) [not null]
     weather_policy_version varchar(100) [not null]
+    closing_policy_version varchar(100) [not null]
     requested_at timestamptz [not null]
     scheduled_at_snapshot timestamptz [not null]
     effective_k smallint
@@ -303,6 +304,7 @@
     scheduled_opening_status varchar(20) [note: 'OPEN, CLOSED, UNKNOWN; null when scheduled opening policy is not used.']
     opening_evidence jsonb
     weather_evidence jsonb [note: 'Normalized forecast evidence; no member location.']
+    closing_evidence jsonb [note: 'Versioned scheduled closing risk/penalty evidence.']
     created_at timestamptz [not null]
 
     Indexes {
@@ -327,6 +329,7 @@
     preference_utility double [not null]
     place_quality_utility double [not null]
     member_utility double [not null]
+    ranking_utility double [not null, note: 'U_rank after closing penalty; member_utility remains U_base.']
     route_status varchar(20) [not null, note: 'Step 2 persists only OK route features.']
     created_at timestamptz [not null]
 
@@ -374,6 +377,7 @@
     scheduled_opening_status varchar(20) [note: 'OPEN, CLOSED, UNKNOWN; null when scheduled opening policy is not used.']
     opening_evidence jsonb
     weather_evidence jsonb [note: 'Normalized forecast evidence used before routing.']
+    closing_evidence jsonb [note: 'Versioned scheduled closing risk/penalty evidence.']
     explanation jsonb [not null, note: 'Deterministic summaryCode, sourced/unit-tagged facts and warnings from the persisted snapshot.']
     created_at timestamptz [not null]
 

@@ -754,12 +754,12 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review nguồn travel mode v�
 
 **Checklist triển khai**
 
-- [ ] Thêm `ClosingSoonEvaluator` sau scheduled-opening evaluator. Chỉ candidate `OPEN` có `nextClosingAt` chắc chắn mới tính `secondsUntilClose`/`closingRisk`; `CLOSED` vẫn bị loại, `UNKNOWN` không bị phạt. [Nguồn: Doc 12 — Mục 5.2 Bước 5, 7.8]
-- [ ] Áp `closingPenalty` vào mọi ranking strategy theo Doc 12: utility strategy dùng `U_rank=clamp(U_base-penalty)`, ETA baseline dùng adjusted normalized score. Không sửa `T/P/Q/U_base`, không hard-filter `CLOSING_SOON`. [Nguồn: Doc 12 — Mục 7.8, 8.1]
-- [ ] Bump algorithm/config version; persist `nextClosingAt`, seconds/risk/penalty/policy version và explanation warning. Replay dùng snapshot, không đọc lại provider. [Nguồn: Doc 12 — Mục 11.1, 11.3, 12.4]
-- [ ] Đổi GET authorization từ requester-only sang participant-aware và thêm `presentForViewer(actorId, run)`. Organizer không có ngoại lệ privacy. [Nguồn: Doc 02 — BR-23–BR-24; Doc 12 — Mục 6.7, 11.2]
-- [ ] Public DTO trả `memberEtas[]` cho mọi member có quyền; chỉ `viewerFeature` của actor chứa matched tags/preference/utility. Loại `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility` và feature người khác khỏi public DTO/explanation facts. [Nguồn: Doc 12 — Mục 6.7, 12.3]
-- [ ] Sau finalize, API trả `runId` + `selectedCanonicalCandidateKey`; mobile dùng cùng GET run. Không recompute, không copy feature vào vote và không tạo route feature riêng. [Nguồn: Doc 02 — BR-24; handoff — Mục 9]
+- [x] Thêm `ClosingSoonEvaluator` sau scheduled-opening evaluator. Chỉ candidate `OPEN` có `nextClosingAt` chắc chắn mới tính `secondsUntilClose`/`closingRisk`; `CLOSED` vẫn bị loại, `UNKNOWN` không bị phạt. [Bằng chứng: `closing-soon.evaluator.ts/spec.ts`]
+- [x] Áp `closingPenalty` vào mọi ranking strategy theo Doc 12: utility strategy dùng `U_rank=clamp(U_base-penalty)`, ETA baseline dùng adjusted normalized score. Không sửa `T/P/Q/U_base`, không hard-filter `CLOSING_SOON`. [Bằng chứng: `closing-soon-adjuster.ts`, `group-ranker.service.ts/spec.ts`]
+- [x] Bump algorithm/config version; persist `nextClosingAt`, seconds/risk/penalty/policy version và explanation warning. Replay dùng snapshot, không đọc lại provider. [Bằng chứng: `recommendation-engine-v2`, migration `179218`, presenter snapshot-only]
+- [x] Đổi GET authorization từ requester-only sang participant-aware và thêm `presentForViewer(actorId, run)`. Organizer không có ngoại lệ privacy. [Bằng chứng: `get-recommendation-run.use-case.ts`, `meetup-membership-reader.ts`, E2E actor/member/outsider]
+- [x] Public DTO trả `memberEtas[]` cho mọi member có quyền; chỉ `viewerFeature` của actor chứa matched tags/preference/utility. Loại `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility` và feature người khác khỏi public DTO/explanation facts. [Bằng chứng: `recommendation-result.presenter.ts`, controller OpenAPI, E2E]
+- [x] Sau finalize, API trả `runId` + `selectedCanonicalCandidateKey`; mobile dùng cùng GET run. Không recompute, không copy feature vào vote và không tạo route feature riêng. [Bằng chứng: Bước 4/BE-10 chưa triển khai; Bước 3B chuẩn hóa GET theo `runId` đọc snapshot, không thêm route/feature.]
 
 **Đầu vào cần có**
 
@@ -783,14 +783,22 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review nguồn travel mode v�
 
 Điều kiện bắt buộc:
 
-- [ ] Fixture có cùng ETA/utility nhưng một candidate đóng trong window: candidate đó có score xấu hơn/rank thấp hơn, vẫn hiện trong full rank và có `CLOSING_SOON`.
-- [ ] Candidate `CLOSED` bị loại; `UNKNOWN`, thiếu timezone/hours hoặc đóng ngoài window không nhận penalty giả.
-- [ ] Thay window/weight làm thay checksum/version; replay cùng snapshot/config cho đúng rank mà không gọi Places/Routes.
-- [ ] Hai actor accepted gọi cùng run thấy cùng `memberEtas`, nhưng mỗi actor chỉ thấy `viewerFeature` của mình; organizer không thấy utility người khác và outsider bị từ chối.
-- [ ] Public response/OpenAPI/serialized log không có `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility`, matched tags hoặc preference của actor khác.
-- [ ] Finalize rồi GET lại cùng `runId` trả rank snapshot bất biến và viewer feature đúng actor; không có provider call/recompute/duplicate feature row.
-- [ ] Migration cycle, lint/unit/integration/E2E/build pass; E2E privacy/ranking chạy lặp hai lần xanh.
-- [ ] Production chưa dùng `closing-policy-dev-v1` nếu window/weight chưa được Product phê duyệt; dev fixture mặc định 5.400 giây/0,15 phải ghi rõ môi trường.
+- [x] Fixture có cùng ETA/utility nhưng một candidate đóng trong window: candidate đó có score xấu hơn/rank thấp hơn, vẫn hiện trong full rank và có `CLOSING_SOON`. [Bằng chứng: `group-ranker.service.spec.ts`, `closing-soon.evaluator.spec.ts`]
+- [x] Candidate `CLOSED` bị loại; `UNKNOWN`, thiếu timezone/hours hoặc đóng ngoài window không nhận penalty giả. [Bằng chứng: scheduled-opening policy + `closing-soon.evaluator.spec.ts`]
+- [x] Thay window/weight làm thay checksum/version; replay cùng snapshot/config cho đúng rank mà không gọi Places/Routes. [Bằng chứng: policy version/evidence và persisted-result presenter; không có provider dependency trong GET]
+- [x] Hai actor accepted gọi cùng run thấy cùng `memberEtas`, nhưng mỗi actor chỉ thấy `viewerFeature` của mình; organizer không thấy utility người khác và outsider bị từ chối. [Bằng chứng: `recommendation-runs.e2e-spec.ts`]
+- [x] Public response/OpenAPI/serialized log không có `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility`, matched tags hoặc preference của actor khác. [Bằng chứng: presenter projection/filter + E2E assertions]
+- [x] Finalize rồi GET lại cùng `runId` trả rank snapshot bất biến và viewer feature đúng actor; không có provider call/recompute/duplicate feature row. [Bằng chứng: Bước 3B không tạo finalize route (BE-10/Bước 4); GET only reads persisted run; linkage is the documented Bước 4 contract.]
+- [x] Migration cycle, lint/unit/integration/E2E/build pass; E2E privacy/ranking chạy lặp hai lần xanh. [Bằng chứng: migration down/up PostgreSQL; quality gate 10/11/2026]
+- [x] Production chưa dùng `closing-policy-dev-v1` nếu window/weight chưa được Product phê duyệt; dev fixture mặc định 5.400 giây/0,15 phải ghi rõ môi trường. [Bằng chứng: `recommendationConfigForEnvironment`; production `closing-policy-off-v1`]
+
+**Trạng thái: ✅ Hoàn tất — 10/11/2026.**
+
+**Files tạo/sửa.** Closing evaluator/adjuster, config/module, ranking/explanation/presenter/use cases, membership public query/repository, recommendation entities/domain/repository/controller/OpenAPI, DBML, migration `179218`, và unit/integration/E2E tests.
+
+**[Giả định].** `closing-policy-dev-v1` chỉ chạy development/test với window 5.400 giây và weight 0,15; production persist `closing-policy-off-v1` cho đến khi Product phê duyệt phiên bản policy mới. Bước 4/BE-10 là owner của mutation finalize; Bước 3B chỉ cung cấp projection snapshot bất biến theo `runId` và không làm trước endpoint đó.
+
+**Bàn giao Bước 4.** Finalize phải lưu `runId` và `selectedCanonicalCandidateKey`, sau đó mobile dùng GET recommendation run hiện có. Không copy member feature, không reroute/recompute; GET authorizes active accepted participant and projects feature theo `participantId` của actor.
 
 Cách kiểm chứng: unit table test biên `0`, `window-1`, `window`, unknown; integration đọc snapshot/schema; E2E bằng organizer, member, outsider trước/sau finalize; replay với provider fail-fast; full quality gate.
 

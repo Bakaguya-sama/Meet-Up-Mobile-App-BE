@@ -190,6 +190,7 @@ function toDomain(row: RecommendationRunEntity): RecommendationRun {
     weatherPolicyRequested: row.weatherPolicyRequested,
     weatherPolicyEffective: row.weatherPolicyEffective,
     weatherPolicyVersion: row.weatherPolicyVersion,
+    closingPolicyVersion: row.closingPolicyVersion,
     requestedAt: new Date(row.requestedAt),
     scheduledAtSnapshot: new Date(row.scheduledAtSnapshot),
     createdAt: new Date(row.createdAt),
@@ -220,6 +221,9 @@ function cloneCandidate(candidate: RecommendationCandidateSnapshot) {
     weatherEvidence: candidate.weatherEvidence
       ? structuredClone(candidate.weatherEvidence)
       : null,
+    closingEvidence: candidate.closingEvidence
+      ? structuredClone(candidate.closingEvidence)
+      : null,
   };
 }
 
@@ -242,6 +246,9 @@ function clonePlace(place: RecommendationPlaceSnapshot) {
       : null,
     weatherEvidence: place.weatherEvidence
       ? structuredClone(place.weatherEvidence)
+      : null,
+    closingEvidence: place.closingEvidence
+      ? structuredClone(place.closingEvidence)
       : null,
   };
 }

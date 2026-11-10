@@ -201,10 +201,9 @@ function recommendationRunSchema(): Extract<
             'rank',
             'avgEtaSeconds',
             'maxEtaSeconds',
-            'groupUtility',
-            'candidateLeastMiseryUtility',
             'candidate',
-            'memberResults',
+            'memberEtas',
+            'viewerFeature',
             'explanation',
           ],
           properties: {
@@ -212,19 +211,6 @@ function recommendationRunSchema(): Extract<
             avgEtaSeconds: { type: 'number' },
             maxEtaSeconds: { type: 'number' },
             etaRangeSeconds: { type: 'number' },
-            groupUtility: { type: 'number', minimum: 0, maximum: 1 },
-            candidateLeastMiseryUtility: {
-              type: 'number',
-              minimum: 0,
-              maximum: 1,
-            },
-            paretoLevel: { type: 'integer' },
-            inclusionProbability: {
-              type: 'number',
-              minimum: 0,
-              maximum: 1,
-              nullable: true,
-            },
             scheduledOpeningStatus: {
               type: 'string',
               enum: ['OPEN', 'CLOSED', 'UNKNOWN'],
@@ -240,24 +226,30 @@ function recommendationRunSchema(): Extract<
                 name: { type: 'string' },
               },
             },
-            memberResults: {
+            memberEtas: {
               type: 'array',
               items: {
                 type: 'object',
                 required: [
                   'participantId',
                   'etaSeconds',
-                  'distanceMeters',
-                  'memberUtility',
-                  'routeStatus',
                 ],
                 properties: {
                   participantId: { type: 'string', format: 'uuid' },
                   etaSeconds: { type: 'number' },
-                  distanceMeters: { type: 'number' },
-                  memberUtility: { type: 'number' },
-                  routeStatus: { type: 'string', enum: ['OK'] },
                 },
+              },
+            },
+            viewerFeature: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                participantId: { type: 'string', format: 'uuid' },
+                matchedTags: { type: 'array', items: { type: 'object' } },
+                travelUtility: { type: 'number' },
+                preferenceUtility: { type: 'number' },
+                placeQualityUtility: { type: 'number' },
+                memberUtility: { type: 'number' },
               },
             },
             explanation: {
