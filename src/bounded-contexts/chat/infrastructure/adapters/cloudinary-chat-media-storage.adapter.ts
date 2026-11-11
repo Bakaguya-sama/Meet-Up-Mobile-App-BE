@@ -2,6 +2,7 @@ import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 import { randomUUID } from 'node:crypto';
+import { extname } from 'node:path';
 import type {
   ChatAttachmentMetadata,
   ChatMediaStoragePort,
@@ -30,6 +31,11 @@ export class CloudinaryChatMediaStorageAdapter implements ChatMediaStoragePort {
     resourceType: 'image' | 'raw';
   }): Promise<ChatAttachmentMetadata> {
     this.assertEnabled();
+    const publicId = randomUUID();
+    const cloudinaryPublicId =
+      input.resourceType === 'raw'
+        ? `${publicId}${extname(input.fileName).toLowerCase()}`
+        : publicId;
     const result = await new Promise<{
       public_id: string;
       format: string;
@@ -38,7 +44,7 @@ export class CloudinaryChatMediaStorageAdapter implements ChatMediaStoragePort {
       const upload = cloudinary.uploader.upload_stream(
         {
           folder: 'meetup-chat',
-          public_id: randomUUID(),
+          public_id: cloudinaryPublicId,
           resource_type: input.resourceType,
           type: 'authenticated',
           filename_override: input.fileName,
