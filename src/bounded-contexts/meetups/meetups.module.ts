@@ -44,7 +44,10 @@ import { ParticipantEntity } from './infrastructure/persistence/typeorm/entities
 import { ParticipantPreferenceEntity } from './infrastructure/persistence/typeorm/entities/participant-preference.typeorm-entity';
 import { MeetupInviteLinkEntity } from './infrastructure/persistence/typeorm/entities/meetup-invite-link.typeorm-entity';
 import { MeetupVoteEntity } from './infrastructure/persistence/typeorm/entities/meetup-vote.typeorm-entity';
-import { MEETUP_VOTING_UNIT_OF_WORK, type MeetupVotingUnitOfWork } from './application/ports/meetup-voting-unit-of-work.port';
+import {
+  MEETUP_VOTING_UNIT_OF_WORK,
+  type MeetupVotingUnitOfWork,
+} from './application/ports/meetup-voting-unit-of-work.port';
 import { TypeOrmMeetupVotingUnitOfWork } from './infrastructure/persistence/typeorm/typeorm-meetup-voting-unit-of-work';
 import { CastMeetupVoteUseCase } from './application/use-cases/cast-meetup-vote.use-case';
 import { FinalizeMeetupUseCase } from './application/use-cases/finalize-meetup.use-case';
@@ -81,19 +84,31 @@ import {
   ],
   providers: [
     { provide: MEETUP_STORE, useClass: TypeOrmMeetupRepository },
-    { provide: MEETUP_VOTING_UNIT_OF_WORK, useClass: TypeOrmMeetupVotingUnitOfWork },
+    {
+      provide: MEETUP_VOTING_UNIT_OF_WORK,
+      useClass: TypeOrmMeetupVotingUnitOfWork,
+    },
     VoteWinnerDomainService,
     {
       provide: CastMeetupVoteUseCase,
-      useFactory: (uow: MeetupVotingUnitOfWork, recommendations: RecommendationVotingReader) =>
-        new CastMeetupVoteUseCase(uow, recommendations),
+      useFactory: (
+        uow: MeetupVotingUnitOfWork,
+        recommendations: RecommendationVotingReader,
+      ) => new CastMeetupVoteUseCase(uow, recommendations),
       inject: [MEETUP_VOTING_UNIT_OF_WORK, RecommendationVotingReader],
     },
     {
       provide: FinalizeMeetupUseCase,
-      useFactory: (uow: MeetupVotingUnitOfWork, recommendations: RecommendationVotingReader, winner: VoteWinnerDomainService) =>
-        new FinalizeMeetupUseCase(uow, recommendations, winner),
-      inject: [MEETUP_VOTING_UNIT_OF_WORK, RecommendationVotingReader, VoteWinnerDomainService],
+      useFactory: (
+        uow: MeetupVotingUnitOfWork,
+        recommendations: RecommendationVotingReader,
+        winner: VoteWinnerDomainService,
+      ) => new FinalizeMeetupUseCase(uow, recommendations, winner),
+      inject: [
+        MEETUP_VOTING_UNIT_OF_WORK,
+        RecommendationVotingReader,
+        VoteWinnerDomainService,
+      ],
     },
     {
       provide: ListMeetupHistoryQuery,

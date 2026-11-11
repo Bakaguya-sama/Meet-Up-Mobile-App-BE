@@ -31,7 +31,9 @@ export class ListMeetupHistoryQuery {
         place.meetupId !== meetup.id ||
         place.runId !== meetup.chosenRunId
       ) {
-        throw new Error('Selected recommendation snapshot is missing for finished meetup');
+        throw new Error(
+          'Selected recommendation snapshot is missing for finished meetup',
+        );
       }
       return toMeetupHistoryItem(meetup, place);
     });

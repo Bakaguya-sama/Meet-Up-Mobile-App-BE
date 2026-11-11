@@ -21,7 +21,9 @@ export class TypeOrmRecommendationHistoryReader extends RecommendationHistoryRea
     references: SelectedPlaceReference[],
   ): Promise<SelectedPlaceHistorySnapshot[]> {
     const placeIds = [
-      ...new Set(references.map((reference) => reference.recommendationPlaceId)),
+      ...new Set(
+        references.map((reference) => reference.recommendationPlaceId),
+      ),
     ];
     if (!placeIds.length) return [];
     const places = await this.places
