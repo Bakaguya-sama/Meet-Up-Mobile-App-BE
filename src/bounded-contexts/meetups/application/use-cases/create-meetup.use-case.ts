@@ -23,6 +23,7 @@ export class CreateMeetupUseCase {
         recommendationMode: 'balanced',
         scheduledAt: new Date(input.scheduledAt),
         invitationDeadlineAt: new Date(input.invitationDeadlineAt),
+        voteDeadlineAt: input.voteDeadlineAt ? new Date(input.voteDeadlineAt) : null,
         id: randomUUID(),
         organizerId: actorId,
         organizerParticipantId: randomUUID(),

@@ -36,6 +36,10 @@ export const updateMeetupSchema: SchemaObject = {
       description:
         'Future time at or before scheduledAt; explicit UTC offset required.',
     },
+    voteDeadlineAt: {
+      ...nullableDate,
+      description: 'Optional organizer-set voting deadline; null means manual finalization only.',
+    },
     searchRadiusM: { type: 'integer', minimum: 100, maximum: 50000 },
     placeType: {
       type: 'string',
@@ -80,6 +84,11 @@ export const meetupSummarySchema: SchemaObject = {
     updatedAt: date,
     cancelledAt: nullableDate,
     finishedAt: nullableDate,
+    voteDeadlineAt: nullableDate,
+    chosenRecommendationPlaceId: { ...uuid, nullable: true },
+    chosenRunId: { ...uuid, nullable: true },
+    chosenById: { ...uuid, nullable: true },
+    chosenAt: nullableDate,
   },
 };
 export const meetupDetailSchema: SchemaObject = {
