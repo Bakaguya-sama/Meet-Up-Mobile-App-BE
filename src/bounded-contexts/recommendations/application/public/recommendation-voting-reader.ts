@@ -10,6 +10,7 @@ export type VotingRecommendationRun = {
   meetupId: string;
   runId: string;
   scheduledAtSnapshot: Date;
+  isStale: boolean;
   candidates: VotingCandidate[];
 };
 

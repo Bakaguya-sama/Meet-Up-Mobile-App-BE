@@ -15,6 +15,7 @@ export class FinalizeMeetupUseCase {
     runId = runId.toLowerCase();
     const run = await this.recommendations.getDisplayedRun(meetupId, runId);
     if (!run) throw new MeetupError('RECOMMENDATION_STALE_CONTEXT', 'Displayed recommendation run not found');
+    if (run.isStale) throw new MeetupError('RECOMMENDATION_STALE_CONTEXT', 'Recommendation run is stale; request a new run');
     return this.voting.runLocked(meetupId, async (tx) => {
       const votes = await tx.listVotes(runId);
       const counts = new Map<string, number>();

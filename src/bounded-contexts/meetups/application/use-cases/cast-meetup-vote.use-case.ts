@@ -15,6 +15,7 @@ export class CastMeetupVoteUseCase {
     recommendationPlaceId = recommendationPlaceId.toLowerCase();
     const run = await this.recommendations.getDisplayedRun(meetupId, runId);
     if (!run) throw new MeetupError('RECOMMENDATION_STALE_CONTEXT', 'Displayed recommendation run not found');
+    if (run.isStale) throw new MeetupError('RECOMMENDATION_STALE_CONTEXT', 'Recommendation run is stale; request a new run');
     const candidate = run.candidates.find((item) => item.recommendationPlaceId === recommendationPlaceId);
     if (!candidate) throw new MeetupError('INVALID_INPUT', 'Vote must target a displayed recommendation candidate');
 

@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { RecommendationRunEntity } from '../persistence/typeorm/entities/recommendation-run.typeorm-entity';
 import { RecommendationPlaceEntity } from '../persistence/typeorm/entities/recommendation-place.typeorm-entity';
 import { RecommendationVotingReader, type VotingRecommendationRun } from '../../application/public/recommendation-voting-reader';
+import { LEGACY_TEMPORAL_PROVIDER_OPTIONS_VERSION } from '../../domain/recommendation-run';
 
 @Injectable()
 export class TypeOrmRecommendationVotingReader extends RecommendationVotingReader {
@@ -21,6 +22,7 @@ export class TypeOrmRecommendationVotingReader extends RecommendationVotingReade
     });
     return {
       meetupId: run.meetupId, runId: run.id, scheduledAtSnapshot: run.scheduledAtSnapshot,
+      isStale: run.providerRequestOptionsVersion === LEGACY_TEMPORAL_PROVIDER_OPTIONS_VERSION,
       candidates: candidates.map((candidate) => ({
         recommendationPlaceId: candidate.id, canonicalCandidateKey: candidate.canonicalCandidateKey,
         rank: candidate.rank, maxEtaSeconds: candidate.maxEtaSeconds, groupUtility: candidate.groupUtility,
