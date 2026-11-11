@@ -68,6 +68,7 @@ export type MeetupFinalizedV1 = EventMetadata<'MeetupFinalized.v1'> & {
   meetupId: string;
   runId: string;
   placeId: string;
+  canonicalCandidateKey: string;
   scheduledAt: string;
 };
 
@@ -162,7 +163,7 @@ export function isIntegrationEvent(value: unknown): value is IntegrationEvent {
         Number.isFinite(value.voteCount)
       );
     case 'MeetupFinalized.v1':
-      return hasStrings(value, 'meetupId', 'runId', 'placeId', 'scheduledAt');
+      return hasStrings(value, 'meetupId', 'runId', 'placeId', 'canonicalCandidateKey', 'scheduledAt');
     case 'MeetupInviteLinkAccepted.v1':
       return hasStrings(value, 'meetupId', 'participantId', 'inviteLinkId');
   }

@@ -19,6 +19,9 @@ export class FinalizeMeetupUseCase {
       const votes = await tx.listVotes(runId);
       const counts = new Map<string, number>();
       for (const vote of votes) counts.set(vote.recommendationPlaceId, (counts.get(vote.recommendationPlaceId) ?? 0) + 1);
+      if (!selectedPlaceId && votes.length === 0) {
+        throw new MeetupError('INVALID_INPUT', 'At least one vote is required when the organizer does not select a candidate explicitly');
+      }
       const candidates = run.candidates.map((candidate) => ({
         ...candidate,
         voteCount: counts.get(candidate.recommendationPlaceId) ?? 0,
@@ -30,6 +33,7 @@ export class FinalizeMeetupUseCase {
       const now = new Date();
       tx.meetup.finalize(actorId.toLowerCase(), {
         runId, recommendationPlaceId: chosen.recommendationPlaceId,
+        canonicalCandidateKey: chosen.canonicalCandidateKey,
         scheduledAtSnapshot: run.scheduledAtSnapshot,
       }, votes.map((vote) => vote.meetupParticipantId), now);
       return {

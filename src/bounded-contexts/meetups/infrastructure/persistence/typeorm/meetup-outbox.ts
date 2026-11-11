@@ -45,6 +45,7 @@ export async function writeMeetupEvents(
           eventName: 'MeetupFinalized.v1',
           runId: event.runId!,
           placeId: event.placeId!,
+          canonicalCandidateKey: event.canonicalCandidateKey!,
           scheduledAt: state.scheduledAt.toISOString(),
         };
         break;

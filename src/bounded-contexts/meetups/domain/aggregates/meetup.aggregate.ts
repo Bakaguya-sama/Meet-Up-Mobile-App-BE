@@ -84,6 +84,7 @@ export type MeetupEvent = {
   participantId?: string;
   runId?: string;
   placeId?: string;
+  canonicalCandidateKey?: string;
 };
 
 /** BR-02/07/19, UC-05/06. All participant mutations belong to this aggregate. */
@@ -437,6 +438,7 @@ export class Meetup {
     input: {
       runId: string;
       recommendationPlaceId: string;
+      canonicalCandidateKey: string;
       scheduledAtSnapshot: Date;
     },
     voterParticipantIds: string[],
@@ -478,6 +480,7 @@ export class Meetup {
     const event = this.events[this.events.length - 1];
     event.runId = input.runId;
     event.placeId = input.recommendationPlaceId;
+    event.canonicalCandidateKey = input.canonicalCandidateKey;
   }
 
   private assertRecommendationContext(runScheduledAt: Date): void {

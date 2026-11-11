@@ -77,6 +77,7 @@ export class AddMeetupVoting1792150000000 implements MigrationInterface {
         DROP CONSTRAINT fk_meetups_chosen_place,
         DROP CONSTRAINT fk_meetups_chosen_run,
         DROP CONSTRAINT chk_meetups_finalized_fields,
+        DROP CONSTRAINT chk_meetups_selected_has_place,
         DROP CONSTRAINT chk_meetups_vote_deadline,
         DROP COLUMN chosen_at,
         DROP COLUMN chosen_by_id,

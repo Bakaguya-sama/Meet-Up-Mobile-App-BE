@@ -1,7 +1,7 @@
 import { Column, Entity, Index, PrimaryColumn } from 'typeorm';
 
-@Entity('meetup_votes')
-@Index('uq_meetup_votes_meetup_participant', ['meetupId', 'meetupParticipantId'], { unique: true })
+@Entity('votes')
+@Index('uq_votes_meetup_participant', ['meetupId', 'meetupParticipantId'], { unique: true })
 export class MeetupVoteEntity {
   @PrimaryColumn('uuid') id: string;
   @Column('uuid', { name: 'meetup_id' }) meetupId: string;
