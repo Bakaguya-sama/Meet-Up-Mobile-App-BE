@@ -1,0 +1,61 @@
+import { FriendshipReader } from '../../../friends/application/public/friendship-reader';
+import type { DirectChatMessagePublisherPort } from '../ports/direct-chat-message-publisher.port';
+import type {
+  DirectChatMessage,
+  DirectChatStore,
+} from '../ports/direct-chat-store.port';
+import { ChatAttachmentService } from '../services/chat-attachment.service';
+import { SendDirectChatMessageUseCase } from './send-direct-chat-message.use-case';
+
+describe('SendDirectChatMessageUseCase', () => {
+  const actorId = '00000000-0000-4000-8000-000000000001';
+  const peerId = '00000000-0000-4000-8000-000000000002';
+  let friendships: jest.Mocked<Pick<FriendshipReader, 'areAccepted'>>;
+  let store: jest.Mocked<DirectChatStore>;
+  let publisher: jest.Mocked<DirectChatMessagePublisherPort>;
+  let attachments: jest.Mocked<
+    Pick<ChatAttachmentService, 'upload' | 'createViews' | 'delete'>
+  >;
+  let useCase: SendDirectChatMessageUseCase;
+
+  beforeEach(() => {
+    friendships = { areAccepted: jest.fn().mockResolvedValue(true) };
+    const message: DirectChatMessage = {
+      id: '00000000-0000-4000-8000-000000000003',
+      conversationId: '00000000-0000-4000-8000-000000000004',
+      senderUserId: actorId,
+      recipientUserId: peerId,
+      textContent: 'hello',
+      sentAt: new Date('2026-01-01T00:00:00Z'),
+      attachments: [],
+    };
+    store = { append: jest.fn().mockResolvedValue(message), list: jest.fn() };
+    publisher = { publish: jest.fn().mockResolvedValue(undefined) };
+    attachments = {
+      upload: jest.fn().mockResolvedValue([]),
+      createViews: jest.fn().mockResolvedValue([]),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
+    useCase = new SendDirectChatMessageUseCase(
+      store,
+      friendships as FriendshipReader,
+      publisher,
+      attachments as ChatAttachmentService,
+    );
+  });
+
+  it('persists then publishes a message for accepted friends', async () => {
+    await useCase.execute({ actorId, peerId, text: 'hello' });
+    expect(store.append.mock.calls).toHaveLength(1);
+    expect(publisher.publish.mock.calls).toHaveLength(1);
+  });
+
+  it('rejects before reading or writing when the friendship is not accepted', async () => {
+    friendships.areAccepted.mockResolvedValue(false);
+    await expect(
+      useCase.execute({ actorId, peerId, text: 'hello' }),
+    ).rejects.toMatchObject({ code: 'DIRECT_CHAT_FORBIDDEN' });
+    expect(store.append.mock.calls).toHaveLength(0);
+    expect(publisher.publish.mock.calls).toHaveLength(0);
+  });
+});
