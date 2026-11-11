@@ -57,6 +57,7 @@ describe('TypeOrmMeetupPreferenceReader (Infrastructure Adapter)', () => {
         Promise.resolve(id === 'meetup-1' ? meetup.snapshot() : null),
       ),
       listVisible: jest.fn(() => Promise.resolve({ items: [], total: 0 })),
+      listFinishedHistory: jest.fn(() => Promise.resolve({ items: [], total: 0 })),
       areAcceptedInActiveMeetup: jest.fn(() => Promise.resolve(true)),
     };
 
