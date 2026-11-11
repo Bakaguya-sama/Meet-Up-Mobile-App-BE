@@ -436,32 +436,47 @@
     Note: 'Contains only a small candidate snapshot. Never stores route history or exact user coordinates.'
   }
 
-  Enum chat_message_kind {
-    text
-    media
-    mixed
-    system
-  }
-
-  Enum chat_media_type {
-    image
-    video
-    audio
-    file
-  }
-
   Table meetup_chat_messages {
     id uuid [pk]
     meetup_id uuid [not null]
     sender_user_id uuid [not null]
     text_content varchar(2000) [not null]
+    attachments jsonb [not null, default: `[]`]
     sent_at timestamptz [not null]
 
     Indexes {
       (meetup_id, sent_at, id)
     }
 
-    Note: 'BE-11: PostgreSQL trigger only allows insert when sender is an accepted member and meetup is active. A former left/removed member may read only messages sent at or before left_at; no new message/event is delivered to them.'
+    Note: 'BE-11: Attachments contain Cloudinary private asset metadata only, never file bytes or long-lived access URLs. PostgreSQL trigger only allows insert when sender is accepted and meetup active.'
+  }
+
+  Table direct_chat_conversations {
+    id uuid [pk]
+    user_a_id uuid [not null]
+    user_b_id uuid [not null]
+    created_at timestamptz [not null]
+
+    Indexes {
+      (user_a_id, user_b_id) [unique]
+    }
+
+    Note: 'Canonical sorted pair; both users must remain accepted friends to use direct chat.'
+  }
+
+  Table direct_chat_messages {
+    id uuid [pk]
+    conversation_id uuid [not null]
+    sender_user_id uuid [not null]
+    text_content varchar(2000) [not null, default: '']
+    attachments jsonb [not null, default: `[]`]
+    sent_at timestamptz [not null]
+
+    Indexes {
+      (conversation_id, sent_at, id)
+    }
+
+    Note: 'A message needs text or at least one attachment. PostgreSQL checks accepted friendship at insert.'
   }
 
   Table device_tokens {
@@ -515,23 +530,6 @@
       (recipient_user_id, read_at)
       (meetup_id, notification_event)
     }
-  }
-
-  Table chat_message_attachments {
-    id uuid [pk]
-    chat_message_id uuid [not null]
-    media_type chat_media_type [not null]
-    storage_key varchar(1000) [not null]
-    original_file_name varchar(255)
-    mime_type varchar(100) [not null]
-    byte_size bigint [not null]
-    width_px integer
-    height_px integer
-    duration_seconds integer
-    upload_status varchar(30) [not null, default: 'pending']
-    created_at timestamptz [not null]
-
-    Note: 'Future media support. The binary file stays in object storage, not PostgreSQL.'
   }
 
   Table outbox_events {
@@ -653,8 +651,11 @@
   Ref: user_accounts.id < favorite_places.user_id
   Ref: place_snapshots.id < favorite_places.place_snapshot_id
   Ref: meetup_sessions.id < meetup_chat_messages.meetup_id
-Ref: meetup_participants.id < meetup_chat_messages.sender_participant_id
-  Ref: meetup_chat_messages.id < chat_message_attachments.chat_message_id
+  Ref: user_accounts.id < meetup_chat_messages.sender_user_id
+  Ref: user_accounts.id < direct_chat_conversations.user_a_id
+  Ref: user_accounts.id < direct_chat_conversations.user_b_id
+  Ref: direct_chat_conversations.id < direct_chat_messages.conversation_id
+  Ref: user_accounts.id < direct_chat_messages.sender_user_id
   Ref: user_accounts.id < device_tokens.user_account_id
   Ref: user_accounts.id < notification_campaigns.created_by_user_id
   Ref: user_accounts.id < notification_deliveries.recipient_user_id
