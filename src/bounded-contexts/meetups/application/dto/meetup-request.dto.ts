@@ -138,3 +138,20 @@ export class SetMeetupPreferencesRequest {
   @Type(() => PreferenceTagInput)
   preferences: PreferenceTagInput[];
 }
+
+export class CastMeetupVoteRequest {
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsUUID('all')
+  recommendationPlaceId: string;
+}
+
+export class FinalizeMeetupRequest {
+  @ValidateIf(optional)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsUUID('all')
+  recommendationPlaceId?: string;
+}
