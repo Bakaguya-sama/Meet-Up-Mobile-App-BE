@@ -1,0 +1,124 @@
+name: CI and deploy production
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meetup-production-deployment
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Test and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test -- --runInBand
+
+      - name: Build production artifact
+        run: npm run build
+
+  deploy:
+    name: Deploy Azure VM
+    needs: ci
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy tested commit through SSH
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          VM_DEPLOY_SSH_KEY: ${{ secrets.VM_DEPLOY_SSH_KEY }}
+          VM_KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VM_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          eval "$(ssh-agent -s)"
+          trap 'ssh-agent -k' EXIT
+          ssh-add - <<< "$VM_DEPLOY_SSH_KEY"
+
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            azureuser@mobile-meetup-prod.eastasia.cloudapp.azure.com \
+            "bash -s -- '$DEPLOY_SHA'" <<'REMOTE'
+              set -Eeuo pipefail
+
+              deploy_sha="$1"
+              app_dir="/home/azureuser/apps/Meet-Up-Mobile-App-BE"
+
+              cd "$app_dir"
+
+              if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+                echo "Deployment stopped: tracked files on VM were manually modified."
+                exit 1
+              fi
+
+              git fetch --prune origin
+
+              if ! git cat-file -e "${deploy_sha}^{commit}"; then
+                echo "Cannot find deployment commit: ${deploy_sha}"
+                exit 1
+              fi
+
+              git checkout --detach "$deploy_sha"
+
+              docker compose \
+                --env-file .env.production \
+                -f compose.prod.yaml \
+                up -d --wait postgres redis
+
+              docker compose \
+                --env-file .env.production \
+                -f compose.prod.yaml \
+                build api
+
+              docker compose \
+                --env-file .env.production \
+                -f compose.prod.yaml \
+                run --rm api npm run migration:run:prod
+
+              docker compose \
+                --env-file .env.production \
+                -f compose.prod.yaml \
+                up -d --wait api
+
+              curl \
+                --fail \
+                --silent \
+                --show-error \
+                https://mobile-meetup-prod.eastasia.cloudapp.azure.com/api/v1/health
+
+              echo
+              echo "Deployment successful: ${deploy_sha}"
+REMOTE
