@@ -826,6 +826,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review membership/finalize; P
 - [x] Finalize response/event giữ `runId` và selected candidate key; client xem lại feature qua viewer-aware GET run, không có route feature riêng và không copy utility sang vote/history. [Nguồn: Doc 02 — BR-24; handoff — Mục 9]
 - [x] Từ chối vote/chốt khi run có `contextStatus=STALE_CONTEXT`; client phải tạo run mới sau khi `scheduledAt` đổi. [Nguồn: Doc 12 — Mục 5.2 Bước 2, 11.4]
 - [x] BE-11 kiểm tra accepted membership và meetup state trước join/send; PostgreSQL trigger cưỡng chế quyền insert, former member chỉ đọc đến `leftAt`, và event fan-out vào user room active. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts` (03/11/2026). [Nguồn: workbook — BE-11; `03_usecase_users.puml`; DBML — `meetup_chat_messages`]
+- [x] Chat nhóm hỗ trợ tệp allow-list và chat riêng chỉ cho friendship accepted; metadata tệp ở PostgreSQL, nội dung tệp private trên Cloudinary, URL tải ký hạn 15 phút. Migration `1792190000000-add-direct-chat-and-attachments`; unit coverage ở `chat-attachment.service.spec.ts` và `send-direct-chat-message.use-case.spec.ts`.
 - [x] BE-12 chỉ trả meetup đã hoàn tất/đủ quyền cùng selected place snapshot; không lưu hoặc trả GPS/route history. API dùng `GET /meetups/history` và phân trang theo `offset`/`limit` hiện có. [Nguồn: workbook — BE-12; `02_nghiep_vu_va_dac_ta.md` — BR-14, UC-11]
 - [x] BE-20 add/remove favorite theo canonical Place ID/snapshot, unique theo user/place; DTO/use case/URL/entity cùng giới hạn 300, duplicate idempotent và không lưu route history. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts` (03/11/2026). [Nguồn: workbook — BE-20; DBML — `favorite_places`, `place_snapshots`]
 
@@ -857,7 +858,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review membership/finalize; P
 - [ ] Non-member không join/send chat; persisted message và emitted event có cùng identity/version.
 - [ ] History/favorite response không chứa member coordinates hoặc route history; duplicate favorite không tạo row thứ hai.
 - [ ] Lint/unit/integration/E2E/build pass; migration cycle pass nếu có.
-- [ ] **[Thiếu tiêu chí trong nguồn]** Sheet chưa chốt pagination, edit/delete/attachment rule cho chat và pagination/retention cho history. Không mở rộng các hành vi này nếu chưa được duyệt.
+- [x] Chat attachments: tối đa 5 tệp/message, 10 MiB/tệp, 25 MiB tổng; chỉ nhận ảnh, PDF, Office, văn bản và archive allow-list sau kiểm tra chữ ký file. Chat 1–1 yêu cầu bạn bè đã chấp nhận; unfriend/block ngăn gửi/đọc mới.
 
 Cách kiểm chứng: E2E với hai member và một outsider; test đồng thời vote/favorite; đọc outbox; scan response/log không có coordinates; chạy bộ lệnh chuẩn.
 

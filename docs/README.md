@@ -45,3 +45,6 @@ Các quyết định mở rộng đã khóa gồm: địa điểm còn mở như
 Sở thích profile chỉ là giá trị mặc định. Khi tạo hoặc nhận meetup, mỗi người chọn sở thích tạm thời cho meetup; lựa chọn này là dữ liệu chính để xếp hạng.
 
 Budget filter và PricePenalty không nằm trong phạm vi vì `priceLevel` của Google Places là mức phân loại tham khảo, không đủ đáng tin để quyết định hoặc hạ hạng địa điểm. Giọng nói và gợi ý theo thời tiết vẫn là phần mở rộng. AI chỉ nhận dữ liệu tổng hợp của nhóm và kết quả xếp hạng; không gửi tọa độ chính xác hoặc lịch sử GPS cho dịch vụ AI.
+# Chat media configuration
+
+Set `CLOUDINARY_ENABLED=true` and provide `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to enable image/file uploads. Keep the API secret only in the backend environment. With the flag unset or false, text chat remains available and file uploads return a service-unavailable response. The backend stores assets as authenticated Cloudinary resources and returns signed download links that expire after 15 minutes. If the Cloudinary product environment blocks PDF/archive delivery, allow those delivery formats in the Cloudinary security settings.

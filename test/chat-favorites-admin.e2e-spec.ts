@@ -54,6 +54,7 @@ import { AddRecommendationClosingSnapshots1792180000000 } from '../src/infrastru
 import { AddPublicHandleToUserAccounts1792130000000 } from '../src/infrastructure/database/migrations/1792130000000-add-public-handle-to-user-accounts';
 import { AddChatFavoritesAndAdminAudit1792140000000 } from '../src/infrastructure/database/migrations/1792140000000-add-chat-favorites-admin-audit';
 import { EnforceMeetupChatAccess1792150000000 } from '../src/infrastructure/database/migrations/1792150000000-enforce-meetup-chat-access';
+import { AddDirectChatAndAttachments1792190000000 } from '../src/infrastructure/database/migrations/1792190000000-add-direct-chat-and-attachments';
 import { AccessTokenGuard } from '../src/presentation/http/guards/access-token.guard';
 import { RolesGuard } from '../src/presentation/http/guards/roles.guard';
 import type { RealtimePublisherPort } from '../src/shared-kernel/application/realtime-publisher.port';
@@ -114,6 +115,7 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
         AddPublicHandleToUserAccounts1792130000000,
         AddChatFavoritesAndAdminAudit1792140000000,
         EnforceMeetupChatAccess1792150000000,
+        AddDirectChatAndAttachments1792190000000,
       ],
     }).initialize();
     await db.runMigrations();

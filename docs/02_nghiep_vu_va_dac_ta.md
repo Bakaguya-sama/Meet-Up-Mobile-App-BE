@@ -119,7 +119,7 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 ### UC-01 Đăng ký và đăng nhập
 
-**Tác nhân:** Người dùng.  
+**Tác nhân:** Người dùng.
 **Điều kiện trước:** Chưa có phiên đăng nhập hợp lệ.
 **Luồng chính:** Người dùng chọn Email hoặc Google, nhập/ủy quyền thông tin, hệ thống xác thực và tạo phiên JWT.
 **Ngoại lệ:** Email đã tồn tại, thông tin không hợp lệ, Google OAuth bị hủy hoặc mạng lỗi.
@@ -127,15 +127,15 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 ### UC-02 Quản lý bạn bè
 
-**Tác nhân:** Người dùng.  
+**Tác nhân:** Người dùng.
 **Điều kiện trước:** Đã đăng nhập.
 **Luồng chính:** Tìm theo tên/email, gửi lời mời; người nhận chấp nhận/từ chối; danh sách bạn bè cập nhật và có thông báo.
-**Quy tắc:** Không thể tự kết bạn, không tạo lời mời trùng hoặc mời tài khoản đã bị khóa.  
+**Quy tắc:** Không thể tự kết bạn, không tạo lời mời trùng hoặc mời tài khoản đã bị khóa.
 **Kết quả:** Có friendship được chấp nhận hoặc lời mời được đóng.
 
 ### UC-03 Thiết lập và chia sẻ vị trí
 
-**Tác nhân:** Người dùng.  
+**Tác nhân:** Người dùng.
 **Điều kiện trước:** Đã đăng nhập; có quyền hệ điều hành nếu muốn bật chia sẻ.
 **Luồng chính:** Chọn một trong bốn chế độ chia sẻ, thời hạn tùy chọn và độ chính xác; app lấy GPS theo tần suất phù hợp; backend kiểm tra quyền từng yêu cầu, lưu TTL và phát tới đúng bạn bè/room meetup. Chi tiết API và ranh giới tích hợp tại `11_location_privacy_api.md`.
 **Ngoại lệ:** Từ chối quyền GPS, GPS tắt, accuracy kém, mạng mất, hết thời hạn.
@@ -143,7 +143,7 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 ### UC-04 Xem bản đồ bạn bè
 
-**Tác nhân:** Người dùng.  
+**Tác nhân:** Người dùng.
 **Điều kiện trước:** Đã có ít nhất một bạn được phép chia sẻ.
 **Luồng chính:** Mở bản đồ, hệ thống trả latest location được phép; app hiển thị ghim, độ chính xác và “cập nhật x phút trước”; nhận cập nhật socket.
 **Ngoại lệ:** Vị trí cũ/hết TTL thì đổi nhãn, không giả vờ realtime.
@@ -151,7 +151,7 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 ### UC-05 Tạo meetup và mời thành viên
 
-**Tác nhân:** Người tạo meetup.  
+**Tác nhân:** Người tạo meetup.
 **Điều kiện trước:** Đã đăng nhập và có ít nhất một bạn bè.
 **Luồng chính:** Nhập thông tin meetup, chọn bạn, xác nhận tạo; backend tạo trạng thái Đang mời và FCM gửi lời mời.
 **Ngoại lệ:** Thời gian bắt đầu ở quá khứ, không có thành viên hoặc bán kính không hợp lệ. Không có giới hạn cứng số người được mời.
@@ -159,7 +159,7 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 ### UC-06 Phản hồi lời mời meetup
 
-**Tác nhân:** Thành viên meetup.  
+**Tác nhân:** Thành viên meetup.
 **Điều kiện trước:** Có lời mời đang hiệu lực.
 **Luồng chính:** Mở lời mời, xem thông tin, chọn Chấp nhận hoặc Từ chối; nếu chấp nhận, chọn/sửa sở thích tạm thời. Nếu cờ chia sẻ vị trí trong hồ sơ đang bật, vị trí hợp lệ tự được dùng cho meetup.
 **Ngoại lệ:** Meetup đã hủy/đã chốt hoặc lời mời hết hạn.
@@ -167,7 +167,7 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 ### UC-07 Gợi ý địa điểm cho nhóm
 
-**Tác nhân:** Người tạo meetup; Google Maps Platform.  
+**Tác nhân:** Người tạo meetup; Google Maps Platform.
 **Điều kiện trước:** Có tối thiểu 2 thành viên và 2 vị trí còn hiệu lực; meetup chưa chốt.
 **Luồng chính:** Người tạo bấm tìm; backend đọc sở thích meetup, tính search-center medoid, lấy nơi ứng viên, chia Route Matrix theo batch khi cần, chấm điểm theo thuật toán có version và trả top 5. Candidate mở nhưng sắp đóng chịu soft penalty và có warning; candidate đóng tại `scheduledAt` bị loại.
 **Ngoại lệ:** Thiếu vị trí, API giới hạn/lỗi, không tìm thấy nơi phù hợp.
@@ -175,7 +175,7 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 ### UC-08 Vote và chốt địa điểm
 
-**Tác nhân:** Thành viên meetup, Người tạo meetup.  
+**Tác nhân:** Thành viên meetup, Người tạo meetup.
 **Điều kiện trước:** Có danh sách đề xuất và meetup ở Đang chọn.
 **Luồng chính:** Thành viên chọn một nơi; hệ thống phát số vote mới; hết hạn hoặc khi đủ phản hồi, người tạo chốt.
 **Ngoại lệ:** Vote sau hạn, vote nơi không nằm trong danh sách hiện tại, người tạo không có quyền với meetup khác.
@@ -185,7 +185,7 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 
 ### UC-09 Thiết lập sở thích meetup
 
-**Tác nhân:** Người tạo meetup, Thành viên meetup.  
+**Tác nhân:** Người tạo meetup, Thành viên meetup.
 **Điều kiện trước:** Meetup chưa chốt.
 **Luồng chính:** Mỗi thành viên chọn tag hoạt động/bối cảnh với mức `high`, `normal` hoặc `avoid`. Profile có thể gợi ý form; chỉ tag được xác nhận mới lưu là lựa chọn meetup. Lưu thay thế danh sách tag đã chọn; danh sách rỗng xóa lựa chọn meetup.
 
@@ -195,14 +195,14 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 
 ### UC-10 Dẫn đường và kết thúc meetup
 
-**Tác nhân:** Thành viên meetup; Google Maps Platform.  
+**Tác nhân:** Thành viên meetup; Google Maps Platform.
 **Điều kiện trước:** Meetup đã chốt.
 **Luồng chính:** Người dùng bấm Dẫn đường để mở Google Maps; khi meetup kết thúc/hủy, backend ngừng phát vị trí vào room meetup và xóa cache phù hợp.
 **Kết quả:** Meetup được lưu lịch sử, không còn phát vị trí theo meetup.
 
 ### UC-11 Lọc, yêu thích, lịch sử và dẫn đường
 
-**Tác nhân:** Người dùng; Google Maps Platform.  
+**Tác nhân:** Người dùng; Google Maps Platform.
 **Điều kiện trước:** Đã đăng nhập; với dẫn đường, meetup đã chốt.
 **Luồng chính:** Người dùng bật/tắt bộ lọc đang mở cửa; lưu/bỏ lưu địa điểm; xem lịch sử meetup; bấm Dẫn đường để mở Google Maps.
 **Ngoại lệ:** Places không có giờ mở thì hiển thị “chưa có dữ liệu”; địa điểm đã đóng không bị ẩn nếu người dùng không bật lọc.
@@ -210,15 +210,23 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 
 ### UC-12 Chat nhóm trong meetup
 
-**Tác nhân:** Thành viên meetup.  
+**Tác nhân:** Thành viên meetup.
 **Điều kiện trước:** Là accepted member của meetup còn active để gửi/nhận tin; former member `left`/`removed` chỉ có quyền đọc đến `leftAt`.
-**Luồng chính:** Mở phòng chat, gửi tin nhắn văn bản, nhận tin mới gần thời gian thực. Server lưu message trước, sau đó lấy lại danh sách accepted member active và fan-out event vào `user:{userId}`; không broadcast tin chat qua meetup room có thể còn socket cũ.
+**Luồng chính:** Mở phòng chat, gửi tin nhắn văn bản hoặc tối đa 5 tệp (ảnh, PDF, Office, văn bản và tệp nén trong allow-list; tối đa 10 MiB/tệp, 25 MiB/tin), nhận tin mới gần thời gian thực. Tệp được xác minh extension/MIME/chữ ký, lưu riêng tư trên Cloudinary; API chỉ trả URL tải có hạn 15 phút. Server lưu message trước, sau đó fan-out event vào `user:{userId}`; không broadcast tin chat qua meetup room có thể còn socket cũ.
 **Ngoại lệ:** Không phải member, declined, meetup inactive hoặc former member gửi tin thì bị từ chối; former member không thấy message sau `leftAt`; mạng mất thì HTTP vẫn đọc lại message đã lưu và UI báo trạng thái gửi.
 **Kết quả:** Các thành viên trao đổi được về kế hoạch trong đúng meetup.
 
+### UC-12A Chat riêng giữa bạn bè
+
+**Tác nhân:** Hai tài khoản đã chấp nhận kết bạn.
+**Điều kiện trước:** Friendship vẫn ở trạng thái `accepted`; mỗi message có văn bản hoặc tệp hợp lệ.
+**Luồng chính:** Gửi/đọc lịch sử tại `GET/POST /api/v1/chats/direct/:peerId/messages`; message được lưu theo conversation chuẩn hóa cặp user và phát `direct:chat-message` vào hai user room. Có thể gửi kèm tệp theo cùng giới hạn UC-12.
+**Ngoại lệ:** Người lạ, lời mời pending, đã unfriend hoặc bị chặn không thể gửi/đọc; PostgreSQL kiểm tra friendship khi insert để đóng race với thao tác unfriend.
+**Kết quả:** Chỉ hai người bạn đã chấp nhận trao đổi được tin nhắn riêng.
+
 ### UC-13 AI giải thích đề xuất
 
-**Tác nhân:** Người dùng; Dịch vụ AI.  
+**Tác nhân:** Người dùng; Dịch vụ AI.
 **Điều kiện trước:** Đã có danh sách địa điểm đã chấm điểm.
 **Luồng chính:** Người dùng bấm “Vì sao gợi ý?”; backend tạo dữ liệu tổng hợp đã bỏ tọa độ, gọi dịch vụ AI và trả 1–3 câu giải thích dễ hiểu.
 **Ngoại lệ:** Dịch vụ AI lỗi hoặc quá thời gian chờ thì hiển thị lý do có sẵn từ thuật toán, ví dụ “Max ETA thấp hơn các nơi khác”.
@@ -226,7 +234,7 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 
 ### UC-14 Phát hiện bạn ở gần
 
-**Tác nhân:** Người dùng.  
+**Tác nhân:** Người dùng.
 **Điều kiện trước:** Hai người là bạn bè, cùng bật tính năng, có quyền chia sẻ phù hợp và vị trí còn hiệu lực.
 **Luồng chính:** Backend kiểm tra khoảng cách gần đúng theo ngưỡng người dùng chọn, áp dụng giới hạn 2 giờ và gửi thông báo “Bạn và một người bạn đang ở gần nhau. Tạo meetup?”.
 **Ngoại lệ:** Một bên tắt quyền, vị trí cũ hoặc đã gửi gợi ý gần đây thì không gửi thông báo.
@@ -234,7 +242,7 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 
 ### UC-15 Quản trị tối giản
 
-**Tác nhân:** Quản trị viên.  
+**Tác nhân:** Quản trị viên.
 **Luồng chính:** Xem báo cáo, khóa/mở khóa tài khoản, xem số liệu người dùng/meetup và trạng thái dịch vụ.
 **Kết quả:** Có công cụ xử lý vi phạm mà không làm phức tạp phần mobile.
 
