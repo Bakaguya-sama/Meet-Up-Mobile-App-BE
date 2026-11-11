@@ -35,9 +35,8 @@ export class CastMeetupVoteUseCase {
       const votes = await tx.listVotes(runId);
       const recipients = tx.meetup.snapshot().participants.filter((p) => p.status === 'accepted').map((p) => p.userId);
       if (previous) {
-        const oldCount = previous.runId === runId
-          ? votes.filter((item) => item.recommendationPlaceId === previous.recommendationPlaceId).length
-          : 0;
+        const oldVotes = previous.runId === runId ? votes : await tx.listVotes(previous.runId);
+        const oldCount = oldVotes.filter((item) => item.recommendationPlaceId === previous.recommendationPlaceId).length;
         await tx.outbox.add({ eventId: randomUUID(), eventName: 'VoteUpdated.v1', occurredAt: now.toISOString(), meetupId, runId: previous.runId, placeId: previous.recommendationPlaceId, voteCount: oldCount }, { destination: 'realtime', recipientIds: recipients });
       }
       const voteCount = votes.filter((item) => item.recommendationPlaceId === recommendationPlaceId).length;

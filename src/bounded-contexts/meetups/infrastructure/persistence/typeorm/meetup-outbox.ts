@@ -39,6 +39,15 @@ export async function writeMeetupEvents(
           participantId: event.participantId!,
         };
         break;
+      case 'MeetupFinalized':
+        integration = {
+          ...metadata,
+          eventName: 'MeetupFinalized.v1',
+          runId: event.runId!,
+          placeId: event.placeId!,
+          scheduledAt: state.scheduledAt.toISOString(),
+        };
+        break;
       default:
         integration = { ...metadata, eventName: `${event.name}.v1` };
     }
@@ -50,6 +59,7 @@ export async function writeMeetupEvents(
       event.name === 'MeetupCreated' ||
       event.name === 'MeetupUpdated' ||
       event.name === 'MeetupCancelled' ||
+      event.name === 'MeetupFinalized' ||
       (event.name === 'MeetupMemberChanged' &&
         event.membershipStatus === 'invited')
     ) {
