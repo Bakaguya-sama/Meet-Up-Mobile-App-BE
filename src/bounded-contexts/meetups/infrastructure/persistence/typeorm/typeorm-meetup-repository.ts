@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { TypeOrmTransactionalOutbox } from '../../../../../infrastructure/outbox/persistence/typeorm-outbox.port';
-import type { MeetupStorePort } from '../../../application/ports/persistence/meetup-store.port';
+import type { MeetupHistoryRecord, MeetupStorePort } from '../../../application/ports/persistence/meetup-store.port';
 import type {
   Meetup,
   MeetupState,
@@ -141,6 +141,50 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
       .offset(input.offset)
       .limit(input.limit)
       .getManyAndCount();
+    return { items, total };
+  }
+
+  async listFinishedHistory(input: { actorId: string; offset: number; limit: number }) {
+    const [rows, total] = await this.dataSource.manager
+      .getRepository(MeetupEntity)
+      .createQueryBuilder('meetup')
+      .innerJoin(
+        ParticipantEntity,
+        'membership',
+        'membership.meetupId = meetup.id AND membership.userId = :actorId AND membership.status = :accepted',
+        { actorId: input.actorId, accepted: 'accepted' },
+      )
+      .select([
+        'meetup.id',
+        'meetup.title',
+        'meetup.description',
+        'meetup.scheduledAt',
+        'meetup.finishedAt',
+        'meetup.chosenRunId',
+        'meetup.chosenRecommendationPlaceId',
+      ])
+      .where('meetup.status = :finished', { finished: 'finished' })
+      .andWhere('meetup.finishedAt IS NOT NULL')
+      .andWhere('meetup.chosenRunId IS NOT NULL')
+      .andWhere('meetup.chosenRecommendationPlaceId IS NOT NULL')
+      .orderBy('meetup.finishedAt', 'DESC')
+      .addOrderBy('meetup.id', 'DESC')
+      .offset(input.offset)
+      .limit(input.limit)
+      .getManyAndCount();
+    const items: MeetupHistoryRecord[] = rows.flatMap((row) =>
+      row.finishedAt && row.chosenRunId && row.chosenRecommendationPlaceId
+        ? [{
+            id: row.id,
+            title: row.title,
+            description: row.description,
+            scheduledAt: row.scheduledAt,
+            finishedAt: row.finishedAt,
+            chosenRunId: row.chosenRunId,
+            chosenRecommendationPlaceId: row.chosenRecommendationPlaceId,
+          }]
+        : [],
+    );
     return { items, total };
   }
 
