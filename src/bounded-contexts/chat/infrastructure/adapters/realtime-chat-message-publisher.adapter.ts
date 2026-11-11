@@ -9,7 +9,7 @@ import {
   MEETUP_CHAT_ACCESS,
   type MeetupChatAccessPort,
 } from '../../application/ports/meetup-chat-access.port';
-import type { MeetupChatMessage } from '../../application/ports/meetup-chat-store.port';
+import type { MeetupChatMessageView } from '../../application/ports/meetup-chat-store.port';
 
 @Injectable()
 export class RealtimeChatMessagePublisherAdapter implements ChatMessagePublisherPort {
@@ -24,7 +24,7 @@ export class RealtimeChatMessagePublisherAdapter implements ChatMessagePublisher
     private readonly membership: MeetupChatAccessPort,
   ) {}
 
-  async publish(message: MeetupChatMessage): Promise<void> {
+  async publish(message: MeetupChatMessageView): Promise<void> {
     try {
       const recipientIds = [
         ...new Set(
@@ -36,6 +36,7 @@ export class RealtimeChatMessagePublisherAdapter implements ChatMessagePublisher
         meetupId: message.meetupId,
         senderUserId: message.senderUserId,
         textContent: message.textContent,
+        attachments: message.attachments,
         sentAt: message.sentAt.toISOString(),
       };
       const deliveries = await Promise.allSettled(
