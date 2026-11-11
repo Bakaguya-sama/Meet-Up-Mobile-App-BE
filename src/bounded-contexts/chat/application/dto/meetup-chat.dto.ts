@@ -11,12 +11,13 @@ import {
 } from 'class-validator';
 
 export class SendMeetupChatMessageRequest {
+  @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @Length(1, 2000)
-  text: string;
+  @Length(0, 2000)
+  text?: string;
 }
 
 export class ListMeetupChatMessagesRequest {

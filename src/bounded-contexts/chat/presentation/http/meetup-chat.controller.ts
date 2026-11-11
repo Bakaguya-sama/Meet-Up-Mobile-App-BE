@@ -8,8 +8,17 @@ import {
   Post,
   Query,
   UseGuards,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiForbiddenResponse, ApiTags } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiForbiddenResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../../../../presentation/http/decorators/current-user.decorator';
 import { Roles } from '../../../../presentation/http/decorators/roles.decorator';
 import { AccessTokenGuard } from '../../../../presentation/http/guards/access-token.guard';
@@ -20,6 +29,11 @@ import {
   ListMeetupChatMessagesRequest,
   SendMeetupChatMessageRequest,
 } from '../../application/dto/meetup-chat.dto';
+import {
+  IncomingChatFile,
+  MAX_CHAT_ATTACHMENT_BYTES,
+  MAX_CHAT_ATTACHMENT_COUNT,
+} from '../../application/services/chat-attachment.service';
 
 @ApiTags('Meetup chat')
 @ApiBearerAuth()
@@ -52,16 +66,45 @@ export class MeetupChatController {
   }
 
   @Post()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', maxLength: 2000 },
+        files: { type: 'array', items: { type: 'string', format: 'binary' } },
+      },
+    },
+  })
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_CHAT_ATTACHMENT_COUNT, {
+      limits: {
+        fileSize: MAX_CHAT_ATTACHMENT_BYTES,
+        files: MAX_CHAT_ATTACHMENT_COUNT,
+      },
+    }),
+  )
   @Header('Cache-Control', 'no-store')
   send(
     @CurrentUser('id') actorId: string,
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
     @Body() body: SendMeetupChatMessageRequest,
+    @UploadedFiles() files: Express.Multer.File[] = [],
   ) {
     return this.sendMessage.execute({
       actorId,
       meetupId,
       text: body.text,
+      files: files.map(toIncomingChatFile),
     });
   }
+}
+
+function toIncomingChatFile(file: Express.Multer.File): IncomingChatFile {
+  return {
+    buffer: file.buffer,
+    originalName: file.originalname,
+    mimeType: file.mimetype,
+    size: file.size,
+  };
 }
