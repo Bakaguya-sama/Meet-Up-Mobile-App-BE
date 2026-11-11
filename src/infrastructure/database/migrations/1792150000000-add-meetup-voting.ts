@@ -24,18 +24,21 @@ export class AddMeetupVoting1792150000000 implements MigrationInterface {
         ADD CONSTRAINT chk_meetups_finalized_fields
           CHECK (
             (
-              status = 'selected' AND
               chosen_recommendation_place_id IS NOT NULL AND
               chosen_run_id IS NOT NULL AND
               chosen_by_id IS NOT NULL AND
               chosen_at IS NOT NULL
             ) OR (
-              status <> 'selected' AND
               chosen_recommendation_place_id IS NULL AND
               chosen_run_id IS NULL AND
               chosen_by_id IS NULL AND
               chosen_at IS NULL
             )
+          ),
+        ADD CONSTRAINT chk_meetups_selected_has_place
+          CHECK (
+            status <> 'selected' OR
+            chosen_recommendation_place_id IS NOT NULL
           ),
         ADD CONSTRAINT fk_meetups_chosen_run
           FOREIGN KEY (id, chosen_run_id)
