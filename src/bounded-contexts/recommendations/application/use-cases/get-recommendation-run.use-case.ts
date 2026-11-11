@@ -2,11 +2,13 @@ import type { RecommendationRunStore } from '../ports/recommendation-run-store.p
 import { RecommendationError } from '../../domain/recommendation.error';
 import { RecommendationRunFreshnessGuard } from '../public/recommendation-run-freshness.guard';
 import { presentRecommendationResult } from '../services/recommendation-result.presenter';
+import { MeetupMembershipReader } from '../../../meetups/application/public/meetup-membership-reader';
 
 export class GetRecommendationRunUseCase {
   constructor(
     private readonly store: RecommendationRunStore,
     private readonly freshness: RecommendationRunFreshnessGuard,
+    private readonly membership: MeetupMembershipReader,
   ) {}
 
   async execute(actorId: string, meetupId: string, runId: string) {
@@ -20,7 +22,7 @@ export class GetRecommendationRunUseCase {
         'Recommendation run not found',
       );
     }
-    if (run.requestedById !== actorId.toLowerCase()) {
+    if (!(await this.membership.areAcceptedInActiveMeetup(meetupId, [actorId]))) {
       throw new RecommendationError(
         'RECOMMENDATION_RUN_FORBIDDEN',
         'Recommendation run is unavailable to this actor',

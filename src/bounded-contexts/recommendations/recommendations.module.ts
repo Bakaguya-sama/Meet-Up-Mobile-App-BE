@@ -216,8 +216,9 @@ import { FavoritePlacesController } from './presentation/http/favorite-places.co
       useFactory: (
         store: RecommendationRunStore,
         freshness: RecommendationRunFreshnessGuard,
-      ) => new GetRecommendationRunUseCase(store, freshness),
-      inject: [RECOMMENDATION_RUN_STORE, RecommendationRunFreshnessGuard],
+        membership: MeetupMembershipReader,
+      ) => new GetRecommendationRunUseCase(store, freshness, membership),
+      inject: [RECOMMENDATION_RUN_STORE, RecommendationRunFreshnessGuard, MeetupMembershipReader],
     },
     {
       provide: MEETUP_LOCATION,
