@@ -25,6 +25,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `12_meetup_group_recommendation_engine.md` | Thiết kế kỹ thuật recommendation pipeline, fairness ranking, feedback logging và lộ trình offline learning/LTR. |
 | `13_implementation_plan.md` | Thứ tự triển khai, dependency, exit gate và quyết định đã khóa cho toàn bộ function backend. |
 | `18_be11_be19_be20_delivery.md` | API, ranh giới context và lưu ý triển khai cho BE-11, BE-19, BE-20. |
+| `20_be12_meetup_history.md` | API lịch sử meetup, quyền xem và snapshot địa điểm đã chốt theo BE-12. |
 
 ## Cách dùng nhanh
 
