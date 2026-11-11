@@ -103,6 +103,25 @@ const environmentSchema = Joi.object({
     then: Joi.string().min(1).required(),
     otherwise: Joi.string().allow('').optional(),
   }),
+  CLOUDINARY_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
+  CLOUDINARY_CLOUD_NAME: Joi.when('CLOUDINARY_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  CLOUDINARY_API_KEY: Joi.when('CLOUDINARY_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  CLOUDINARY_API_SECRET: Joi.when('CLOUDINARY_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
   DEVICE_TOKEN_ENCRYPTION_KEY: Joi.when('NODE_ENV', {
     is: 'test',
     then: Joi.string().allow('').optional(),

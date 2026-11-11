@@ -36,6 +36,12 @@ export const configuration = () => ({
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     privateKey: process.env.FIREBASE_PRIVATE_KEY,
   },
+  cloudinary: {
+    enabled: process.env.CLOUDINARY_ENABLED === 'true',
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
   deviceTokens: {
     encryptionKey: process.env.DEVICE_TOKEN_ENCRYPTION_KEY,
   },
