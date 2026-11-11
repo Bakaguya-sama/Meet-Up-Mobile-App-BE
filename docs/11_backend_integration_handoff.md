@@ -68,8 +68,8 @@ Event phải có `eventId`, `eventName` versioned và `occurredAt`. Không đưa
 | `MeetupMemberChanged.v1` | Backend 1 / BE-08 | Backend 2 Socket/location          | `eventId`, `meetupId`, `userId`, `membershipStatus`, `occurredAt`                                                         |
 | `PreferenceUpdated.v1`   | Backend 1 / BE-09 | Backend 2 recommendation           | `eventId`, `meetupId`, `participantId`, `occurredAt`                                                                      |
 | `RecommendationReady.v1` | Backend 2 / BE-23 | Mobile/Socket, Backend 1 vote flow | `eventId`, `meetupId`, `runId`, ordered top-K `placeIds`, route execution `strategy` (`exact` or `batched`), `occurredAt` |
-| `VoteUpdated.v1`         | Backend 1 / BE-10 | Backend 2 Socket                   | `eventId`, `meetupId`, `placeId`, `voteCount`, `occurredAt`                                                               |
-| `MeetupFinalized.v1`     | Backend 1 / BE-10 | Backend 2 Socket + FCM             | `eventId`, `meetupId`, `placeId`, `scheduledAt`, `occurredAt`                                                             |
+| `VoteUpdated.v1`         | Backend 1 / BE-10 | Backend 2 Socket                   | `eventId`, `meetupId`, `runId`, `placeId`, `voteCount`, `occurredAt`                                                      |
+| `MeetupFinalized.v1`     | Backend 1 / BE-10 | Backend 2 Socket + FCM             | `eventId`, `meetupId`, `runId`, `placeId`, `canonicalCandidateKey`, `scheduledAt`, `occurredAt`                          |
 
 Backend 1 ghi event vào `outbox_events` bằng `OutboxPort` trong cùng transaction persist Meetup/Vote. Worker chỉ dispatch sau commit; consumer phải xử lý idempotent theo `eventId`.
 

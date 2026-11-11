@@ -76,7 +76,7 @@ Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ET
 | BR-05 | Vị trí trong meetup yêu cầu thành viên `accepted`, meetup còn hoạt động và chế độ/thời hạn chia sẻ của chủ vị trí cho phép người xem. `selected_friends` vẫn giới hạn người xem trong meetup. Khi rời/hủy/kết thúc meetup, backend ngừng phát vị trí vào room đó. |
 | BR-06 | Meetup cần ít nhất 2 thành viên chấp nhận và ít nhất 2 vị trí còn hiệu lực mới cho phép tìm địa điểm theo nhóm. |
 | BR-07 | Người tạo chỉ được sửa thông tin, bộ lọc và quản lý lời mời/thành viên trước cả hạn mời và khi chưa chốt. Từ đúng thời điểm hạn mời, không sửa các nội dung đó, không mời thêm hoặc phản hồi lời mời; organizer vẫn có thể hủy. Trước khi chốt, thành viên đã chấp nhận vẫn có thể rời và thành viên invited/accepted vẫn có thể sửa preference của chính mình. Sau khi chốt, organizer không sửa meetup và có thể hủy hoặc kết thúc theo điều kiện của meetup. Khi được mời lại vào cùng meetup, thành viên giữ preference tạm thời đã lưu trước đó. |
-| BR-08 | Mỗi thành viên có tối đa một vote cho một meetup; vote mới thay vote cũ trước hạn vote. |
+| BR-08 | Mỗi thành viên có tối đa một vote cho một meetup; vote mới thay vote cũ trước hạn vote. Organizer có thể đặt `voteDeadlineAt` khi tạo/cập nhật meetup; nếu bỏ trống thì không có hạn tự động và organizer chốt thủ công. |
 | BR-09 | Người tạo quyết định cuối cùng. Nếu chọn theo đa số, hòa phiếu ưu tiên nơi có `Max ETA` thấp hơn, sau đó điểm tổng cao hơn. |
 | BR-10 | Không lưu lịch sử GPS trong PostgreSQL ở MVP. Chỉ lưu latest location tạm thời trong Redis. |
 | BR-11 | Dữ liệu vị trí có accuracy trên 100 m được gắn cảnh báo và không dùng để khẳng định người dùng đã đến nơi. |

@@ -805,10 +805,10 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review membership/finalize; P
 
 **Checklist triển khai**
 
-- [ ] BE-10 chỉ cho accepted participant vote candidate thuộc displayed run; một vote/member/meetup, cho đổi vote, tôn trọng deadline và quyền finalize. [Nguồn: workbook — BE-10; `02_nghiep_vu_va_dac_ta.md` — BR-17 đến BR-20; Doc 12 — Mục 9.1]
-- [ ] Vote payload có `runId`; không rerank cùng run; ghi `VoteUpdated.v1`/`MeetupFinalized.v1` qua outbox sau commit. [Nguồn: workbook — BE-10; handoff — Mục 4; Doc 12 — Mục 11.2]
-- [ ] Finalize response/event giữ `runId` và selected candidate key; client xem lại feature qua viewer-aware GET run, không có route feature riêng và không copy utility sang vote/history. [Nguồn: Doc 02 — BR-24; handoff — Mục 9]
-- [ ] Từ chối vote/chốt khi run có `contextStatus=STALE_CONTEXT`; client phải tạo run mới sau khi `scheduledAt` đổi. [Nguồn: Doc 12 — Mục 5.2 Bước 2, 11.4]
+- [x] BE-10 chỉ cho accepted participant vote candidate thuộc displayed run; một vote/member/meetup, cho đổi vote, tôn trọng deadline và quyền finalize. [Nguồn: workbook — BE-10; `02_nghiep_vu_va_dac_ta.md` — BR-17 đến BR-20; Doc 12 — Mục 9.1]
+- [x] Vote payload có `runId`; không rerank cùng run; ghi `VoteUpdated.v1`/`MeetupFinalized.v1` qua outbox sau commit. [Nguồn: workbook — BE-10; handoff — Mục 4; Doc 12 — Mục 11.2]
+- [x] Finalize response/event giữ `runId` và selected candidate key; client xem lại feature qua viewer-aware GET run, không có route feature riêng và không copy utility sang vote/history. [Nguồn: Doc 02 — BR-24; handoff — Mục 9]
+- [x] Từ chối vote/chốt khi run có `contextStatus=STALE_CONTEXT`; client phải tạo run mới sau khi `scheduledAt` đổi. [Nguồn: Doc 12 — Mục 5.2 Bước 2, 11.4]
 - [ ] BE-11 kiểm tra accepted membership và meetup state trước join/send; persist message và phát qua shared Socket publisher. [Nguồn: workbook — BE-11; `03_usecase_users.puml`; DBML — `meetup_chat_messages`]
 - [ ] BE-12 chỉ trả meetup đã hoàn tất/đủ quyền cùng selected place snapshot; không lưu hoặc trả GPS/route history. [Nguồn: workbook — BE-12; `02_nghiep_vu_va_dac_ta.md` — UC-12]
 - [ ] BE-20 add/remove favorite theo canonical Place ID/snapshot, unique theo user/place; invalid Place ID được xử lý theo contract. Không lưu route history. [Nguồn: workbook — BE-20; DBML — `favorite_places`, `place_snapshots`]

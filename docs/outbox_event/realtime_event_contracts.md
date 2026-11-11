@@ -30,8 +30,8 @@ Room chỉ là routing. Gateway ở BE-06 vẫn phải xác thực JWT khi hands
 | `PreferenceUpdated.v1`   | `meetupId`, `participantId`                                                      |
 | `LocationUpdated.v1`     | `ownerId`, `meetupId?`, `location.visibility` (`exact`, `approximate`, `hidden`) |
 | `RecommendationReady.v1` | `meetupId`, `runId`, `placeIds`, `strategy` (`exact`, `batched`)                 |
-| `VoteUpdated.v1`         | `meetupId`, `placeId`, `voteCount`                                               |
-| `MeetupFinalized.v1`     | `meetupId`, `placeId`, `scheduledAt`                                             |
+| `VoteUpdated.v1`         | `meetupId`, `runId`, `placeId`, `voteCount`                                      |
+| `MeetupFinalized.v1`     | `meetupId`, `runId`, `placeId`, `canonicalCandidateKey`, `scheduledAt`          |
 | `MeetupInviteLinkAccepted.v1` | `meetupId`, `participantId`, `inviteLinkId`                                 |
 
 `LocationUpdated.v1` chỉ truyền trạng thái location đã được project cho người xem; event contract không có trường tọa độ.
