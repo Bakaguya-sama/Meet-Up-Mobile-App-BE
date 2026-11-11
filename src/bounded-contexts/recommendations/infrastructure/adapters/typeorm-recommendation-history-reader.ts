@@ -1,9 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { RecommendationCandidateEntity } from '../persistence/typeorm/entities/recommendation-candidate.typeorm-entity';
 import { RecommendationPlaceEntity } from '../persistence/typeorm/entities/recommendation-place.typeorm-entity';
-import { RecommendationRunEntity } from '../persistence/typeorm/entities/recommendation-run.typeorm-entity';
 import {
   RecommendationHistoryReader,
   type SelectedPlaceHistorySnapshot,
@@ -22,7 +20,9 @@ export class TypeOrmRecommendationHistoryReader extends RecommendationHistoryRea
   async getSelectedPlaceSnapshots(
     references: SelectedPlaceReference[],
   ): Promise<SelectedPlaceHistorySnapshot[]> {
-    const placeIds = [...new Set(references.map((reference) => reference.recommendationPlaceId))];
+    const placeIds = [
+      ...new Set(references.map((reference) => reference.recommendationPlaceId)),
+    ];
     if (!placeIds.length) return [];
     const places = await this.places
       .createQueryBuilder('place')

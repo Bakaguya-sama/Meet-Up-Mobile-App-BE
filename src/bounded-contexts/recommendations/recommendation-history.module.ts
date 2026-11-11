@@ -7,8 +7,19 @@ import { RecommendationPlaceEntity } from './infrastructure/persistence/typeorm/
 import { RecommendationRunEntity } from './infrastructure/persistence/typeorm/entities/recommendation-run.typeorm-entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RecommendationCandidateEntity, RecommendationPlaceEntity, RecommendationRunEntity])],
-  providers: [{ provide: RecommendationHistoryReader, useClass: TypeOrmRecommendationHistoryReader }],
+  imports: [
+    TypeOrmModule.forFeature([
+      RecommendationCandidateEntity,
+      RecommendationPlaceEntity,
+      RecommendationRunEntity,
+    ]),
+  ],
+  providers: [
+    {
+      provide: RecommendationHistoryReader,
+      useClass: TypeOrmRecommendationHistoryReader,
+    },
+  ],
   exports: [RecommendationHistoryReader],
 })
 export class RecommendationHistoryModule {}

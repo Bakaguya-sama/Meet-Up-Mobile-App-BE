@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { TypeOrmTransactionalOutbox } from '../../../../../infrastructure/outbox/persistence/typeorm-outbox.port';
-import type { MeetupHistoryRecord, MeetupStorePort } from '../../../application/ports/persistence/meetup-store.port';
+import type {
+  MeetupHistoryRecord,
+  MeetupStorePort,
+} from '../../../application/ports/persistence/meetup-store.port';
 import type {
   Meetup,
   MeetupState,
@@ -144,7 +147,11 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
     return { items, total };
   }
 
-  async listFinishedHistory(input: { actorId: string; offset: number; limit: number }) {
+  async listFinishedHistory(input: {
+    actorId: string;
+    offset: number;
+    limit: number;
+  }) {
     const [rows, total] = await this.dataSource.manager
       .getRepository(MeetupEntity)
       .createQueryBuilder('meetup')
@@ -172,19 +179,24 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
       .offset(input.offset)
       .limit(input.limit)
       .getManyAndCount();
-    const items: MeetupHistoryRecord[] = rows.flatMap((row) =>
-      row.finishedAt && row.chosenRunId && row.chosenRecommendationPlaceId
-        ? [{
-            id: row.id,
-            title: row.title,
-            description: row.description,
-            scheduledAt: row.scheduledAt,
-            finishedAt: row.finishedAt,
-            chosenRunId: row.chosenRunId,
-            chosenRecommendationPlaceId: row.chosenRecommendationPlaceId,
-          }]
-        : [],
-    );
+    const items: MeetupHistoryRecord[] = rows.flatMap((row) => {
+      if (
+        !row.finishedAt ||
+        !row.chosenRunId ||
+        !row.chosenRecommendationPlaceId
+      ) {
+        return [];
+      }
+      return [{
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        scheduledAt: row.scheduledAt,
+        finishedAt: row.finishedAt,
+        chosenRunId: row.chosenRunId,
+        chosenRecommendationPlaceId: row.chosenRecommendationPlaceId,
+      }];
+    });
     return { items, total };
   }
 

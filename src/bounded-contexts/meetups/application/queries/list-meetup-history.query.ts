@@ -19,13 +19,18 @@ export class ListMeetupHistoryQuery {
       runId: item.chosenRunId,
       recommendationPlaceId: item.chosenRecommendationPlaceId,
     }));
-    const snapshots = await this.recommendationHistory.getSelectedPlaceSnapshots(references);
+    const snapshots =
+      await this.recommendationHistory.getSelectedPlaceSnapshots(references);
     const snapshotsByPlaceId = new Map(
       snapshots.map((snapshot) => [snapshot.recommendationPlaceId, snapshot]),
     );
     const items = page.items.map((meetup) => {
       const place = snapshotsByPlaceId.get(meetup.chosenRecommendationPlaceId);
-      if (!place || place.meetupId !== meetup.id || place.runId !== meetup.chosenRunId) {
+      if (
+        !place ||
+        place.meetupId !== meetup.id ||
+        place.runId !== meetup.chosenRunId
+      ) {
         throw new Error('Selected recommendation snapshot is missing for finished meetup');
       }
       return toMeetupHistoryItem(meetup, place);
