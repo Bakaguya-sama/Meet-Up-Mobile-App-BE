@@ -58,6 +58,7 @@ import {
   inviteParticipantsSchema,
   meetupDetailSchema,
   meetupMemberPreferenceSchema,
+  meetupHistoryPageSchema,
   meetupPageSchema,
   meetupPreferencesSummarySchema,
   setMeetupPreferencesBodySchema,
@@ -67,6 +68,7 @@ import {
 } from './meetups.openapi';
 import { CastMeetupVoteUseCase } from '../../application/use-cases/cast-meetup-vote.use-case';
 import { FinalizeMeetupUseCase } from '../../application/use-cases/finalize-meetup.use-case';
+import { ListMeetupHistoryQuery } from '../../application/queries/list-meetup-history.query';
 
 @ApiTags('Meetups')
 @ApiBearerAuth()
@@ -102,6 +104,7 @@ export class MeetupsController {
     private readonly getPreferencesSummary: GetMeetupPreferencesSummaryQuery,
     private readonly castVote: CastMeetupVoteUseCase,
     private readonly finalizeMeetup: FinalizeMeetupUseCase,
+    private readonly listMeetupHistory: ListMeetupHistoryQuery,
   ) {}
 
   @Post()
@@ -137,6 +140,29 @@ export class MeetupsController {
   @ApiOkResponse({ schema: meetupPageSchema })
   list(@CurrentUser('id') actorId: string, @Query() query: MeetupPageRequest) {
     return this.listMeetups.execute(actorId, query.offset, query.limit);
+  }
+
+  @Get('history')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'List finished meetups where you were an accepted participant',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    schema: { type: 'integer', default: 0, minimum: 0, maximum: 100000 },
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    schema: { type: 'integer', default: 20, minimum: 1, maximum: 100 },
+  })
+  @ApiOkResponse({ schema: meetupHistoryPageSchema })
+  history(
+    @CurrentUser('id') actorId: string,
+    @Query() query: MeetupPageRequest,
+  ) {
+    return this.listMeetupHistory.execute(actorId, query.offset, query.limit);
   }
 
   @Get(':meetupId')

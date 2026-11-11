@@ -4,6 +4,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { FriendsModule } from '../friends/friends.module';
 import { RecommendationVotingModule } from '../recommendations/recommendation-voting.module';
+import { RecommendationHistoryModule } from '../recommendations/recommendation-history.module';
+import { RecommendationHistoryReader } from '../recommendations/application/public/recommendation-history-reader';
 import { RecommendationVotingReader } from '../recommendations/application/public/recommendation-voting-reader';
 import { MEETUP_STORE } from './application/ports/persistence/meetup-store.port';
 import type { MeetupStorePort } from './application/ports/persistence/meetup-store.port';
@@ -47,6 +49,7 @@ import { TypeOrmMeetupVotingUnitOfWork } from './infrastructure/persistence/type
 import { CastMeetupVoteUseCase } from './application/use-cases/cast-meetup-vote.use-case';
 import { FinalizeMeetupUseCase } from './application/use-cases/finalize-meetup.use-case';
 import { VoteWinnerDomainService } from './domain/services/vote-winner.domain-service';
+import { ListMeetupHistoryQuery } from './application/queries/list-meetup-history.query';
 import { TypeOrmMeetupRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-repository';
 import { TypeOrmMeetupInviteLinkRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-invite-link.repository';
 import { MeetupsController } from './presentation/http/meetups.controller';
@@ -61,6 +64,7 @@ import {
     AuthModule,
     FriendsModule,
     RecommendationVotingModule,
+    RecommendationHistoryModule,
     TypeOrmModule.forFeature([
       MeetupEntity,
       ParticipantEntity,
@@ -90,6 +94,14 @@ import {
       useFactory: (uow: MeetupVotingUnitOfWork, recommendations: RecommendationVotingReader, winner: VoteWinnerDomainService) =>
         new FinalizeMeetupUseCase(uow, recommendations, winner),
       inject: [MEETUP_VOTING_UNIT_OF_WORK, RecommendationVotingReader, VoteWinnerDomainService],
+    },
+    {
+      provide: ListMeetupHistoryQuery,
+      useFactory: (
+        store: MeetupStorePort,
+        places: RecommendationHistoryReader,
+      ) => new ListMeetupHistoryQuery(store, places),
+      inject: [MEETUP_STORE, RecommendationHistoryReader],
     },
     {
       provide: MEETUP_INVITE_LINK_STORE,

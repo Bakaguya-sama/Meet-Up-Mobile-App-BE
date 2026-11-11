@@ -133,6 +133,53 @@ export const meetupPageSchema: SchemaObject = {
   },
 };
 
+export const meetupHistoryPageSchema: SchemaObject = {
+  type: 'object',
+  required: ['items', 'total', 'offset', 'limit'],
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: [
+          'meetupId',
+          'title',
+          'scheduledAt',
+          'finishedAt',
+          'selectedPlace',
+        ],
+        properties: {
+          meetupId: uuid,
+          title: { type: 'string' },
+          description: { type: 'string', nullable: true },
+          scheduledAt: date,
+          finishedAt: date,
+          selectedPlace: {
+            type: 'object',
+            required: [
+              'recommendationPlaceId',
+              'canonicalCandidateKey',
+              'provider',
+              'providerPlaceId',
+              'name',
+            ],
+            properties: {
+              recommendationPlaceId: uuid,
+              canonicalCandidateKey: { type: 'string' },
+              provider: { type: 'string' },
+              providerPlaceId: { type: 'string' },
+              name: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    total: { type: 'integer', minimum: 0 },
+    offset: { type: 'integer', minimum: 0 },
+    limit: { type: 'integer', minimum: 1, maximum: 100 },
+  },
+};
+
 export const setMeetupPreferencesBodySchema: SchemaObject = {
   type: 'object',
   required: ['preferences'],
