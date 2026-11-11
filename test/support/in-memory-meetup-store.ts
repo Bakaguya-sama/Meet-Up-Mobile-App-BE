@@ -1,4 +1,7 @@
-import type { MeetupStorePort } from '../../src/bounded-contexts/meetups/application/ports/persistence/meetup-store.port';
+import type {
+  MeetupChatAccessState,
+  MeetupStorePort,
+} from '../../src/bounded-contexts/meetups/application/ports/persistence/meetup-store.port';
 import {
   Meetup,
   type MeetupState,
@@ -66,6 +69,56 @@ export class InMemoryMeetupStore implements MeetupStorePort {
             (p) => p.userId === id && p.status === 'accepted',
           ),
         ),
+    );
+  }
+  findAcceptedParticipantId(meetupId: string, userId: string) {
+    const state = this.rows.get(meetupId);
+    const participant = state?.participants.find(
+      (value) => value.userId === userId && value.status === 'accepted',
+    );
+    return Promise.resolve(
+      state && ['inviting', 'choosing', 'selected'].includes(state.status)
+        ? (participant?.id ?? null)
+        : null,
+    );
+  }
+  getChatAccess(
+    meetupId: string,
+    userId: string,
+  ): Promise<MeetupChatAccessState | null> {
+    const state = this.rows.get(meetupId);
+    const participant = state?.participants.find((p) => p.userId === userId);
+    if (!state || !participant) return Promise.resolve(null);
+    if (
+      ['inviting', 'choosing', 'selected'].includes(state.status) &&
+      participant.status === 'accepted'
+    ) {
+      return Promise.resolve({ canSend: true });
+    }
+    if (
+      ['left', 'removed'].includes(participant.status) &&
+      participant.leftAt
+    ) {
+      return Promise.resolve({
+        canSend: false,
+        historyVisibleUntil: participant.leftAt,
+      });
+    }
+    return Promise.resolve(null);
+  }
+  listActiveChatRecipientIds(meetupId: string): Promise<string[]> {
+    const state = this.rows.get(meetupId);
+    if (
+      !state ||
+      !['inviting', 'choosing', 'selected'].includes(state.status)
+    ) {
+      return Promise.resolve([]);
+    }
+    return Promise.resolve(
+      state.participants
+        .filter((participant) => participant.status === 'accepted')
+        .map((participant) => participant.userId)
+        .sort(),
     );
   }
   private async persist(meetup: Meetup) {

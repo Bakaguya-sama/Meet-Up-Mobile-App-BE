@@ -19,6 +19,8 @@ import type {
 } from '../../../../domain/temporal-context';
 import { RecommendationCandidateEntity } from './recommendation-candidate.typeorm-entity';
 import { RecommendationRunEntity } from './recommendation-run.typeorm-entity';
+import type { WeatherEvidence } from '../../../../domain/recommendation-run';
+import type { ClosingEvidence } from '../../../../domain/temporal-context';
 
 @Entity('recommendation_places')
 @Unique('uq_recommendation_places_candidate', ['runId', 'candidateId'])
@@ -64,6 +66,10 @@ export class RecommendationPlaceEntity implements RecommendationPlaceSnapshot {
   scheduledOpeningStatus: ScheduledOpeningStatus | null;
   @Column('jsonb', { name: 'opening_evidence', nullable: true })
   openingEvidence: ScheduledOpeningEvidence | null;
+  @Column('jsonb', { name: 'weather_evidence', nullable: true })
+  weatherEvidence: WeatherEvidence | null;
+  @Column('jsonb', { name: 'closing_evidence', nullable: true })
+  closingEvidence: ClosingEvidence | null;
   @Column('jsonb') explanation: RecommendationExplanation;
   @Column('timestamptz', { name: 'created_at' }) createdAt: Date;
 

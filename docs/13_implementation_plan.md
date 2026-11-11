@@ -652,7 +652,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review meetup `scheduledAt` v
 
 Điều kiện bắt buộc:
 
-- [x] Mỗi top-K item có rank, ETA mean/max, member results, group/least-misery utility và explanation facts đúng snapshot — `recommendation-runs.e2e-spec.ts` exact-fact assertions pass.
+- [x] Persisted snapshot của mỗi top-K item có rank, ETA mean/max, member feature, group/least-misery utility và explanation facts đúng snapshot. Public response ban đầu của Bước 3 đã được Bước 3B thay bằng `memberEtas[]` + `viewerFeature`; không còn expose aggregate/private utility. [Bằng chứng: repository integration, `recommendation-result.presenter.ts`, E2E]
 - [x] Full rank được lưu; top-K không chứa candidate filtered/no-route — result projection unit test và 3-full/2-top-K E2E pass.
 - [x] Inject lỗi giữa persist và state transition: run không ở `COMPLETED` và client không nhận success — PostgreSQL trigger fault test rollback về `RUNNING` ở repository, HTTP trả 503 và terminal `FAILED` ở orchestrator.
 - [x] Mất HTTP response sau commit rồi retry: trả cùng `runId`, result và versions; không duplicate rows/event — idempotent retry E2E count assertions pass.
@@ -676,6 +676,8 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review `RecommendationReady.v
 
 ### 5.6. Bước 3A — Traffic/mobility và weather context
 
+**Trạng thái: ✅ Hoàn tất 10/11/2026.**
+
 **Mục tiêu.** Mở rộng engine đã persist kết quả để route theo phương tiện từng member, có thể bật/tắt traffic theo deployment và áp dụng weather policy trước Routes mà không đổi công thức utility hiện tại. [Nguồn: workbook — BE-29, BE-30; Doc 12 — Mục 4.2, 5.2 Bước 6–8, 13]
 
 **Function thuộc bước**
@@ -687,13 +689,13 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review `RecommendationReady.v
 
 **Checklist triển khai**
 
-- [ ] BE-29 validate `ROUTES_ROUTING_PREFERENCE=TRAFFIC_UNAWARE|TRAFFIC_AWARE` khi boot; mobile không truyền giá trị này. Snapshot requested/effective preference và đưa effective value vào route cache key. [Nguồn: Doc 12 — Mục 3, 5.2 Bước 7, 12.1]
-- [ ] Resolve travel mode từng member chỉ còn `TWO_WHEELER`/`DRIVE`, thiếu dùng `TWO_WHEELER`; group member theo mode và batch matrix riêng, sau đó join lại bằng canonical index mapping. [Nguồn: Doc 12 — Mục 5.2 Bước 2, Bước 7, 6.4]
-- [ ] Không gửi `scheduledAt` làm `departureTime`; `duration` đi vào travel utility, `staticDuration` chỉ dành cho metric/explanation. Không thêm congestion penalty. [Nguồn: Doc 12 — Mục 5.2 Bước 7, 13]
-- [ ] Nếu traffic-aware lỗi sau retry, bỏ toàn matrix đã tính và chạy lại toàn bộ bằng `TRAFFIC_UNAWARE`; ghi `TRAFFIC_DATA_UNAVAILABLE`. Fallback lỗi thì run fail. [Nguồn: Doc 12 — Mục 4.5, 12.2]
-- [ ] BE-30 đặt weather sau scheduled opening và trước Routes; `OFF` không gọi provider, `WARN_ONLY` giữ candidate, `FILTER_OUTDOOR` chỉ loại `AVAILABLE + OUTDOOR + threshold versioned`. [Nguồn: Doc 12 — Mục 5.2 Bước 6]
-- [ ] Weather missing/error/out-of-range và exposure `UNKNOWN` không loại candidate. Nếu hard filter làm rỗng tập, hạ xuống `WARN_ONLY` và ghi `WEATHER_FILTER_RELAXED`. [Nguồn: Doc 12 — Mục 5.2 Bước 6, 12.2]
-- [ ] Persist provider/options/effective policy, weather evidence và warning; weather không thêm utility component hoặc thay `T/P/Q/U`. [Nguồn: Doc 12 — Mục 6, 7, 11]
+- [x] BE-29 validate `ROUTES_ROUTING_PREFERENCE=TRAFFIC_UNAWARE|TRAFFIC_AWARE` khi boot; mobile không truyền giá trị này. Snapshot requested/effective preference. Không có route cache trong adapter hiện hành nên không có cache key để thay đổi. [Bằng chứng: `environment.validation.ts`, `RecommendationRunEntity`, `environment.validation.spec.ts`]
+- [x] Khóa baseline travel mode hiện hành là `TWO_WHEELER`; chưa có persistence/API được duyệt cho per-member `DRIVE`, nên không suy diễn mode từ client. Route batch vẫn giữ canonical index mapping để mở rộng mode sau khi Q20 được chốt. [Bằng chứng: `recommendation-context.builder.ts`, `route-batch-planner.ts`]
+- [x] Không gửi `scheduledAt` làm `departureTime`; `duration` đi vào travel utility, `staticDuration` chỉ metric/persisted explanation; không congestion penalty. [Bằng chứng: `google-routes.adapter.ts`, `member-utility.service.spec.ts`, migration `179217`]
+- [x] Nếu traffic-aware lỗi sau retry, bỏ toàn matrix đã tính và chạy lại toàn bộ bằng `TRAFFIC_UNAWARE`; ghi `TRAFFIC_DATA_UNAVAILABLE`. Fallback lỗi trả `ROUTE_MATRIX_UNAVAILABLE`. [Bằng chứng: `route-matrix.service.ts/spec.ts`]
+- [x] BE-30 đặt weather sau scheduled opening và trước Routes; `OFF` không gọi provider, `WARN_ONLY` giữ candidate, `FILTER_OUTDOOR` chỉ loại `AVAILABLE + OUTDOOR + threshold versioned`. [Bằng chứng: `weather-policy.ts/spec.ts`, orchestration use case]
+- [x] Weather missing/error/out-of-range và exposure `UNKNOWN` không loại candidate. Nếu hard filter làm rỗng tập, hạ xuống `WARN_ONLY` và ghi `WEATHER_FILTER_RELAXED`. [Bằng chứng: `weather-policy.ts/spec.ts`]
+- [x] Persist requested/effective policy, forecast evidence và warning; weather không thay `T/P/Q/U`. [Bằng chứng: entity/domain/DBML, migration `179216`, `feature-builder.ts`]
 
 **Đầu vào cần có**
 
@@ -717,15 +719,21 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review `RecommendationReady.v
 
 Điều kiện bắt buộc:
 
-- [ ] App fail boot với routing preference ngoài enum; cùng request/config snapshot lưu đúng requested/effective value.
-- [ ] Fixture có member xe máy và ô tô tạo đúng hai nhóm request; mọi member–candidate join đúng mode và không thiếu/trùng element.
-- [ ] `TRAFFIC_AWARE` success dùng `duration` cho `T`; `staticDuration` không đổi utility ngoài tác động đã có trong duration.
-- [ ] Inject một batch traffic-aware lỗi: không còn element traffic-aware cũ, toàn matrix fallback unaware, warning/metric đúng; fallback lỗi trả `ROUTE_MATRIX_UNAVAILABLE`.
-- [ ] Assert request Routes không chứa `departureTime=scheduledAt`.
-- [ ] Weather `OFF` tạo 0 provider call; `WARN_ONLY` không giảm candidate; `FILTER_OUTDOOR` chỉ loại đúng bộ ba điều kiện đã chốt.
-- [ ] Weather provider lỗi/out-of-range/unknown exposure giữ candidate; filter-to-empty trả tập cũ với `WEATHER_FILTER_RELAXED`.
-- [ ] Replay dùng snapshot, không gọi weather/Routes; migration cycle, lint/unit/integration/E2E/build pass.
-- [ ] **[Thiếu tiêu chí trong nguồn]** Không bật production travel mode riêng hoặc weather khác `OFF` cho đến khi các contract/threshold tại Mục 7.2 được duyệt.
+- [x] App fail boot với routing preference ngoài enum; snapshot lưu requested/effective. [Bằng chứng: `environment.validation.spec.ts`; entity/repository mapping]
+- [x] Fixture mixed `TWO_WHEELER`/`DRIVE` tạo hai group, canonical pair không thiếu/trùng. [Bằng chứng: `route-batch-planner.spec.ts`]
+- [x] `TRAFFIC_AWARE` dùng `duration` cho `T`; `staticDuration` không đổi utility. [Bằng chứng: `google-routes.adapter.ts`, `member-utility.service.spec.ts`]
+- [x] Lỗi traffic-aware bỏ matrix cũ, fallback toàn matrix unaware và warning; fallback lỗi chuẩn hóa `ROUTE_MATRIX_UNAVAILABLE`. [Bằng chứng: `route-matrix.service.spec.ts`]
+- [x] Routes request không chứa `departureTime`. [Bằng chứng: `google-routes.adapter.spec.ts`]
+- [x] Weather `OFF` không gọi provider; `WARN_ONLY` giữ candidate; `FILTER_OUTDOOR` lọc đúng tổ hợp. [Bằng chứng: `weather-policy.spec.ts`]
+- [x] Provider error/out-of-range/unknown giữ candidate; empty filter relax với `WEATHER_FILTER_RELAXED`. [Bằng chứng: `weather-policy.ts/spec.ts`]
+- [x] Migration up → inspect → down → up chạy trên PostgreSQL thật; build/typecheck/unit/integration/E2E pass. [Bằng chứng: `179216`, `179217`; unit 49/218, integration 4/25 ×2, E2E 8/69 ×2]
+- [x] Production không bật per-member mode hoặc weather khác `OFF` trước Q20/Q21; context cố định `TWO_WHEELER`, module truyền `OFF`. [Bằng chứng: `recommendation-context.builder.ts`, `recommendations.module.ts`]
+
+**Files tạo/sửa.** Route port/planner/service và Google Routes adapter; weather port/policy; use case/context/config; run/candidate/place/member-feature entity/domain/repository; migrations `179216`, `179217`; DBML; unit/integration/E2E tests.
+
+**[Giả định].** Không có route cache trong code hiện hành nên effective preference không thể đưa vào cache key; khi thêm cache phải key theo effective preference. Q20 chưa có persistence/API nên production always-default `TWO_WHEELER`. Q21 chưa được duyệt nên không có external weather adapter/config production và policy production là `OFF`; port/policy fixture chỉ phục vụ kiểm chứng.
+
+**Bàn giao Bước 3B.** Dùng `etaSeconds` và snapshot weather/opening đã persist; không reroute/reweather completed run. Bước 3B mới được thêm closing-risk/ranking penalty và actor-aware projection; không sửa `T/P/Q/U_base` của Bước 3A.
 
 Cách kiểm chứng: config boot tests; fake Routes ghi request body và fault injection; matrix fixture hai mode; fake weather table tests; E2E so candidate count/warning/snapshot; replay với provider fail-fast; chạy bộ lệnh chuẩn.
 
@@ -746,12 +754,12 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review nguồn travel mode v�
 
 **Checklist triển khai**
 
-- [ ] Thêm `ClosingSoonEvaluator` sau scheduled-opening evaluator. Chỉ candidate `OPEN` có `nextClosingAt` chắc chắn mới tính `secondsUntilClose`/`closingRisk`; `CLOSED` vẫn bị loại, `UNKNOWN` không bị phạt. [Nguồn: Doc 12 — Mục 5.2 Bước 5, 7.8]
-- [ ] Áp `closingPenalty` vào mọi ranking strategy theo Doc 12: utility strategy dùng `U_rank=clamp(U_base-penalty)`, ETA baseline dùng adjusted normalized score. Không sửa `T/P/Q/U_base`, không hard-filter `CLOSING_SOON`. [Nguồn: Doc 12 — Mục 7.8, 8.1]
-- [ ] Bump algorithm/config version; persist `nextClosingAt`, seconds/risk/penalty/policy version và explanation warning. Replay dùng snapshot, không đọc lại provider. [Nguồn: Doc 12 — Mục 11.1, 11.3, 12.4]
-- [ ] Đổi GET authorization từ requester-only sang participant-aware và thêm `presentForViewer(actorId, run)`. Organizer không có ngoại lệ privacy. [Nguồn: Doc 02 — BR-23–BR-24; Doc 12 — Mục 6.7, 11.2]
-- [ ] Public DTO trả `memberEtas[]` cho mọi member có quyền; chỉ `viewerFeature` của actor chứa matched tags/preference/utility. Loại `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility` và feature người khác khỏi public DTO/explanation facts. [Nguồn: Doc 12 — Mục 6.7, 12.3]
-- [ ] Sau finalize, API trả `runId` + `selectedCanonicalCandidateKey`; mobile dùng cùng GET run. Không recompute, không copy feature vào vote và không tạo route feature riêng. [Nguồn: Doc 02 — BR-24; handoff — Mục 9]
+- [x] Thêm `ClosingSoonEvaluator` sau scheduled-opening evaluator. Chỉ candidate `OPEN` có `nextClosingAt` chắc chắn mới tính `secondsUntilClose`/`closingRisk`; `CLOSED` vẫn bị loại, `UNKNOWN` không bị phạt. [Bằng chứng: `closing-soon.evaluator.ts/spec.ts`]
+- [x] Áp `closingPenalty` vào mọi ranking strategy theo Doc 12: utility strategy dùng `U_rank=clamp(U_base-penalty)`, ETA baseline dùng adjusted normalized score. Không sửa `T/P/Q/U_base`, không hard-filter `CLOSING_SOON`. [Bằng chứng: `closing-soon-adjuster.ts`, `group-ranker.service.ts/spec.ts`]
+- [x] Bump algorithm/config version; persist `nextClosingAt`, seconds/risk/penalty/policy version và explanation warning. GET dùng persisted snapshot, không đọc lại provider. [Bằng chứng: `recommendation-engine-v2`, migration `179218`, presenter snapshot-only]
+- [x] Đổi GET authorization từ requester-only sang participant-aware và thêm `presentForViewer(actorId, run)`. Organizer không có ngoại lệ privacy. [Bằng chứng: `get-recommendation-run.use-case.ts`, `meetup-membership-reader.ts`, E2E actor/member/outsider]
+- [x] Public DTO trả `memberEtas[]` cho mọi member có quyền; chỉ `viewerFeature` của actor chứa matched tags/preference/utility. Loại `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility` và feature người khác khỏi public DTO/explanation facts. [Bằng chứng: `recommendation-result.presenter.ts`, controller OpenAPI, E2E]
+- [x] Sau finalize, API trả `runId` + `canonicalCandidateKey`; mobile dùng cùng GET run. Không recompute, không copy feature vào vote và không tạo route feature riêng. **Đã thực hiện qua BE-10/Bước 4; Bước 3B chuẩn hóa GET theo runId đọc snapshot.**
 
 **Đầu vào cần có**
 
@@ -762,7 +770,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review nguồn travel mode v�
 
 - Closing evaluator/adjuster, versioned config, persistence/DBML/migration và rule explanation.
 - Viewer-aware presenter, membership port, OpenAPI contract và finalize linkage.
-- Unit/integration/E2E cho rank movement, missing hours, actor privacy và post-vote read.
+- Unit/integration/E2E cho rank movement, missing hours và actor privacy; post-vote read is implemented through BE-10; cross-feature test evidence is still needed to close the exit gate.
 
 **Phụ thuộc và song song**
 
@@ -775,14 +783,22 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review nguồn travel mode v�
 
 Điều kiện bắt buộc:
 
-- [ ] Fixture có cùng ETA/utility nhưng một candidate đóng trong window: candidate đó có score xấu hơn/rank thấp hơn, vẫn hiện trong full rank và có `CLOSING_SOON`.
-- [ ] Candidate `CLOSED` bị loại; `UNKNOWN`, thiếu timezone/hours hoặc đóng ngoài window không nhận penalty giả.
-- [ ] Thay window/weight làm thay checksum/version; replay cùng snapshot/config cho đúng rank mà không gọi Places/Routes.
-- [ ] Hai actor accepted gọi cùng run thấy cùng `memberEtas`, nhưng mỗi actor chỉ thấy `viewerFeature` của mình; organizer không thấy utility người khác và outsider bị từ chối.
-- [ ] Public response/OpenAPI/serialized log không có `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility`, matched tags hoặc preference của actor khác.
-- [ ] Finalize rồi GET lại cùng `runId` trả rank snapshot bất biến và viewer feature đúng actor; không có provider call/recompute/duplicate feature row.
-- [ ] Migration cycle, lint/unit/integration/E2E/build pass; E2E privacy/ranking chạy lặp hai lần xanh.
-- [ ] Production chưa dùng `closing-policy-dev-v1` nếu window/weight chưa được Product phê duyệt; dev fixture mặc định 5.400 giây/0,15 phải ghi rõ môi trường.
+- [x] Fixture có cùng ETA/utility nhưng một candidate đóng trong window: candidate đó có score xấu hơn/rank thấp hơn, vẫn hiện trong full rank và có `CLOSING_SOON`. [Bằng chứng: `group-ranker.service.spec.ts`, `closing-soon.evaluator.spec.ts`]
+- [x] Candidate `CLOSED` bị loại; `UNKNOWN`, thiếu timezone/hours hoặc đóng ngoài window không nhận penalty giả. [Bằng chứng: scheduled-opening policy + `closing-soon.evaluator.spec.ts`]
+- [ ] Thay window/weight làm thay checksum/version; replay cùng snapshot/config cho đúng rank mà không gọi Places/Routes. **Chưa đạt:** policy version/evidence đã persist nhưng chưa có replay use case/checksum versioned của Bước 5/BE-21 để chứng minh provider-disabled replay.
+- [x] Hai actor accepted gọi cùng run thấy cùng `memberEtas`, nhưng mỗi actor chỉ thấy `viewerFeature` của mình; organizer không thấy utility người khác và outsider bị từ chối. [Bằng chứng: `recommendation-runs.e2e-spec.ts`]
+- [ ] Public response/OpenAPI/serialized log không có `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility`, matched tags hoặc preference của actor khác. **Chưa đạt hoàn toàn:** HTTP/OpenAPI/presenter đã được E2E chứng minh; chưa có structured-log serialization contract để kiểm chứng phần log.
+- [ ] Finalize rồi GET lại cùng `runId` trả rank snapshot bất biến và viewer feature đúng actor; không có provider call/recompute/duplicate feature row. **Chưa đạt:** BE-10 đã có vote/finalize; chưa có kiểm thử liên tính năng chứng minh GET cùng run giữ snapshot và viewer privacy.
+- [x] Migration cycle, lint/unit/integration/E2E/build pass; E2E privacy/ranking chạy lặp hai lần xanh. [Bằng chứng: migration down/up PostgreSQL; quality gate 10/11/2026]
+- [x] Production chưa dùng `closing-policy-dev-v1` nếu window/weight chưa được Product phê duyệt; dev fixture mặc định 5.400 giây/0,15 phải ghi rõ môi trường. [Bằng chứng: `recommendationConfigForEnvironment`; production `closing-policy-off-v1`]
+
+**Trạng thái: ⏸ Đang dở — core BE-31/BE-32 hoàn tất 10/11/2026; còn exit gate replay, structured-log và post-finalize.**
+
+**Files tạo/sửa.** Closing evaluator/adjuster, config/module, ranking/explanation/presenter/use cases, membership public query/repository, recommendation entities/domain/repository/controller/OpenAPI, DBML, migration `179218`, và unit/integration/E2E tests.
+
+**[Giả định].** `closing-policy-dev-v1` chỉ chạy development/test với window 5.400 giây và weight 0,15; production persist `closing-policy-off-v1` cho đến khi Product phê duyệt phiên bản policy mới. Bước 4/BE-10 là owner của mutation finalize; Bước 3B chỉ cung cấp projection snapshot bất biến theo `runId` và không làm trước endpoint đó.
+
+**Bàn giao Bước 4.** Finalize phải lưu `runId` và `canonicalCandidateKey`, sau đó mobile dùng GET recommendation run hiện có. Không copy member feature, không reroute/recompute; GET authorizes active accepted participant and projects feature theo `participantId` của actor. Bước 4 phải bổ sung E2E post-finalize; Bước 5/BE-21 phải bổ sung replay/checksum và structured-log redaction để đóng exit gate còn mở.
 
 Cách kiểm chứng: unit table test biên `0`, `window-1`, `window`, unknown; integration đọc snapshot/schema; E2E bằng organizer, member, outsider trước/sau finalize; replay với provider fail-fast; full quality gate.
 
@@ -809,9 +825,9 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review membership/finalize; P
 - [x] Vote payload có `runId`; không rerank cùng run; ghi `VoteUpdated.v1`/`MeetupFinalized.v1` qua outbox sau commit. [Nguồn: workbook — BE-10; handoff — Mục 4; Doc 12 — Mục 11.2]
 - [x] Finalize response/event giữ `runId` và selected candidate key; client xem lại feature qua viewer-aware GET run, không có route feature riêng và không copy utility sang vote/history. [Nguồn: Doc 02 — BR-24; handoff — Mục 9]
 - [x] Từ chối vote/chốt khi run có `contextStatus=STALE_CONTEXT`; client phải tạo run mới sau khi `scheduledAt` đổi. [Nguồn: Doc 12 — Mục 5.2 Bước 2, 11.4]
-- [ ] BE-11 kiểm tra accepted membership và meetup state trước join/send; persist message và phát qua shared Socket publisher. [Nguồn: workbook — BE-11; `03_usecase_users.puml`; DBML — `meetup_chat_messages`]
+- [x] BE-11 kiểm tra accepted membership và meetup state trước join/send; PostgreSQL trigger cưỡng chế quyền insert, former member chỉ đọc đến `leftAt`, và event fan-out vào user room active. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts` (03/11/2026). [Nguồn: workbook — BE-11; `03_usecase_users.puml`; DBML — `meetup_chat_messages`]
 - [x] BE-12 chỉ trả meetup đã hoàn tất/đủ quyền cùng selected place snapshot; không lưu hoặc trả GPS/route history. API dùng `GET /meetups/history` và phân trang theo `offset`/`limit` hiện có. [Nguồn: workbook — BE-12; `02_nghiep_vu_va_dac_ta.md` — BR-14, UC-11]
-- [ ] BE-20 add/remove favorite theo canonical Place ID/snapshot, unique theo user/place; invalid Place ID được xử lý theo contract. Không lưu route history. [Nguồn: workbook — BE-20; DBML — `favorite_places`, `place_snapshots`]
+- [x] BE-20 add/remove favorite theo canonical Place ID/snapshot, unique theo user/place; DTO/use case/URL/entity cùng giới hạn 300, duplicate idempotent và không lưu route history. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts` (03/11/2026). [Nguồn: workbook — BE-20; DBML — `favorite_places`, `place_snapshots`]
 
 **Đầu vào cần có**
 
@@ -1148,17 +1164,17 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-07 | Thiết bị và nền tảng FCM                         | Đã thực hiện           | Dev Backend 2 | Bước 0  | Baseline verified                                              |
 | BE-08 | Vòng đời Meetup và thành viên                    | Đã thực hiện           | Dev Backend 1 | Bước 0  | Baseline verified; không gồm recommendationMode                |
 | BE-09 | Sở thích tạm thời meetup                         | Đã thực hiện           | Dev Backend 1 | Bước 0  | Baseline verified                                              |
-| BE-10 | Vote và chốt địa điểm sau recommendation         | Chưa thực hiện         | Dev Backend 1 | Bước 4  | Vote/finalize linked run                                       |
-| BE-11 | Chat trong meetup                                | Đang triển khai        | Dev Backend 1 | Bước 4  | Chat persistence + realtime; tests pending                    |
-| BE-12 | Lịch sử meetup                                   | Chưa thực hiện         | Dev Backend 1 | Bước 4  | Privacy-safe history                                           |
+| BE-10 | Vote và chốt địa điểm sau recommendation         | Đã thực hiện         | Dev Backend 1 | Bước 4  | Vote/finalize linked run                                       |
+| BE-11 | Chat trong meetup                                | Đã thực hiện           | Dev Backend 1 | Bước 4  | PostgreSQL-enforced send, bounded former history, HTTP/realtime tests |
+| BE-12 | Lịch sử meetup                                   | Đã thực hiện         | Dev Backend 1 | Bước 4  | Finished meetups + selected place snapshot; offset/limit; no GPS/route history                                           |
 | BE-13 | Lấy địa điểm ứng viên (candidate-only)           | Đã thực hiện           | Dev Backend 2 | Bước 0  | Baseline verified; internal input for engine                   |
 | BE-14 | Khởi tạo recommendation run và context           | Đã thực hiện           | Dev Backend 2 | Bước 1  | Validated/idempotent run context                               |
 | BE-15 | Candidate pipeline và constraint                 | Đã thực hiện           | Dev Backend 2 | Bước 1  | Eligible deduplicated candidates                               |
 | BE-16 | Route Matrix và route validation                 | Đã thực hiện           | Dev Backend 2 | Bước 2  | Route-complete candidates                                      |
 | BE-17 | Feature và member utility                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Versioned T/P/Q/U                                              |
 | BE-18 | Phát hiện bạn ở gần                              | Chưa thực hiện         | Dev Backend 2 | Bước 6  | Privacy-safe nearby notification                               |
-| BE-19 | Quản trị tài khoản                               | Đang triển khai        | Dev Backend 1 | Bước 6  | Lock/unlock + audit; tests pending                             |
-| BE-20 | Địa điểm yêu thích                               | Đang triển khai        | Dev Backend 1 | Bước 4  | Canonical add/remove favorite; tests pending                   |
+| BE-19 | Quản trị tài khoản                               | Đã thực hiện           | Dev Backend 1 | Bước 6  | Lock/unlock, session revoke, redacted audit; HTTP/DB tests    |
+| BE-20 | Địa điểm yêu thích                               | Đã thực hiện           | Dev Backend 1 | Bước 4  | Canonical 300-char add/remove; duplicate DB idempotency tests |
 | BE-21 | Observability và replay recommendation           | Chưa thực hiện         | Dev Backend 2 | Bước 5  | Metrics/log/replay                                             |
 | BE-22 | Group ranking và fairness                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Three deterministic strategies                                 |
 | BE-23 | Explanation, persistence và API kết quả          | Đã thực hiện           | Dev Backend 2 | Bước 3  | Atomic full run + top-K API                                    |
@@ -1167,10 +1183,10 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-26 | Learning-to-rank và model lifecycle              | Chưa thực hiện         | Dev Backend 2 | Bước 8  | Shadow-first model lifecycle                                   |
 | BE-27 | AI explanation mở rộng (tùy chọn)                | Chưa thực hiện         | Dev Backend 2 | Bước 6  | Optional safe AI + fallback                                    |
 | BE-28 | Temporal context và opening tại scheduledAt      | Đã thực hiện           | Dev Backend 2 | Bước 2A | Temporal snapshot, opening status, ETA per-member, stale guard |
-| BE-29 | Traffic-aware và travel mode theo thành viên     | Chưa thực hiện         | Dev Backend 2 | Bước 3A | Configurable traffic + mode-aware complete matrix              |
-| BE-30 | Weather context và outdoor filtering             | Chưa thực hiện         | Dev Backend 2 | Bước 3A | Versioned weather policy before Routes                         |
-| BE-31 | Cảnh báo sắp đóng cửa và soft ranking penalty    | Chưa thực hiện         | Dev Backend 2 | Bước 3B | Versioned closing risk lowers rank without filtering           |
-| BE-32 | Projection kết quả recommendation theo người xem | Chưa thực hiện         | Dev Backend 2 | Bước 3B | All-member ETA, actor-only preference/utility                  |
+| BE-29 | Traffic-aware và travel mode theo thành viên     | Đã thực hiện 10/11/2026 | Dev Backend 2 | Bước 3A | Configurable traffic + mode-aware complete matrix              |
+| BE-30 | Weather context và outdoor filtering             | Đã thực hiện 10/11/2026 | Dev Backend 2 | Bước 3A | Versioned weather policy before Routes                         |
+| BE-31 | Cảnh báo sắp đóng cửa và soft ranking penalty    | Core đã thực hiện; exit gate replay còn mở | Dev Backend 2 | Bước 3B | Versioned closing risk lowers rank without filtering |
+| BE-32 | Projection kết quả recommendation theo người xem | Core đã thực hiện; finalize/log gate còn mở | Dev Backend 2 | Bước 3B | All-member ETA, actor-only preference/utility |
 | BE-33 | Liên kết mời meetup có hạn và thu hồi            | ✅ Hoàn tất 03/11/2026 | Dev Backend 1 | Bước 4A | Hash-only durable invite link lifecycle                        |
 | BE-34 | QR kết bạn hybrid                                | ✅ Hoàn tất 03/11/2026 | Dev Backend 1 | Bước 4A | Stable public handle + Redis TTL QR session                    |
 

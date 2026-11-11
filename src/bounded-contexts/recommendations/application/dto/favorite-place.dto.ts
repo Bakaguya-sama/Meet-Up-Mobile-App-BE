@@ -6,6 +6,15 @@ export class AddFavoritePlaceRequest {
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @Length(1, 255)
+  @Length(1, 300)
+  placeId: string;
+}
+
+export class FavoritePlaceParams {
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(1, 300)
   placeId: string;
 }

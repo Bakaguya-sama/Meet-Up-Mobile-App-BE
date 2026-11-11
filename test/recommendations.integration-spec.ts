@@ -27,6 +27,9 @@ import { RecommendationPlaceEntity } from '../src/bounded-contexts/recommendatio
 import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persistence/outbox-event.typeorm-entity';
 import { CreateOutboxEventsTable1760000006000 } from '../src/infrastructure/database/migrations/1760000006000-create-outbox-events-table';
 import { CreateRecommendationResults1792110000000 } from '../src/infrastructure/database/migrations/1792110000000-create-recommendation-results';
+import { AddRecommendationTrafficWeatherContext1792160000000 } from '../src/infrastructure/database/migrations/1792160000000-add-recommendation-traffic-weather-context';
+import { AddRecommendationStaticDurationMetric1792170000000 } from '../src/infrastructure/database/migrations/1792170000000-add-recommendation-static-duration-metric';
+import { AddRecommendationClosingSnapshots1792180000000 } from '../src/infrastructure/database/migrations/1792180000000-add-recommendation-closing-snapshots';
 
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -79,6 +82,9 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         AddRecommendationRankingSnapshots1792090000000,
         AddRecommendationTemporalContext1792100000000,
         CreateRecommendationResults1792110000000,
+        AddRecommendationTrafficWeatherContext1792160000000,
+        AddRecommendationStaticDurationMetric1792170000000,
+        AddRecommendationClosingSnapshots1792180000000,
       ],
     }).initialize();
 
@@ -100,12 +106,29 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         'final_rank',
         'scheduled_at_snapshot',
         'scheduled_opening_status',
+        'routing_preference_requested',
+        'weather_policy_effective',
+        'weather_evidence',
       ]),
     );
     await db.undoLastMigration();
     expect(
       await db.query(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'recommendation_places'`,
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'recommendation_runs' AND column_name = 'closing_policy_version'`,
+        [schema],
+      ),
+    ).toEqual([]);
+    await db.undoLastMigration();
+    expect(
+      await db.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'recommendation_member_features' AND column_name = 'static_duration_seconds'`,
+        [schema],
+      ),
+    ).toEqual([]);
+    await db.undoLastMigration();
+    expect(
+      await db.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'recommendation_runs' AND column_name = 'routing_preference_requested'`,
         [schema],
       ),
     ).toEqual([]);
@@ -170,6 +193,11 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         'google-places-text-search-v2-scheduled-opening',
       openingFilter: 'OPEN_AT_SCHEDULED_TIME',
       openingEvaluatorVersion: 'scheduled-opening-evaluator-v1',
+      routingPreferenceRequested: 'TRAFFIC_UNAWARE',
+      routingPreferenceEffective: 'TRAFFIC_UNAWARE',
+      weatherPolicyRequested: 'OFF',
+      weatherPolicyEffective: 'OFF',
+      weatherPolicyVersion: 'weather-policy-v1',
       requestedAt: new Date('2026-10-30T10:00:00Z'),
       scheduledAtSnapshot: new Date('2026-10-30T19:00:00Z'),
       createdAt: new Date(),
@@ -435,6 +463,8 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         randomSeed: 'seed',
         routeBatchCount: 1,
         routeElementCount: 1,
+        routingPreferenceEffective: 'TRAFFIC_UNAWARE',
+        weatherPolicyEffective: 'OFF',
         readyEventId,
       },
       new Date(),
@@ -446,7 +476,9 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
     });
     expect(completed.candidates).toHaveLength(1);
     expect(completed.memberFeatures).toHaveLength(1);
-    expect(completed.places).toEqual([validPlace]);
+    expect(completed.places).toEqual([
+      { ...validPlace, weatherEvidence: null, closingEvidence: null },
+    ]);
     expect(completed.memberFeatures[0].etaSeconds).toBe(1_500);
     const persisted = await repository.findById(meetupId, valid.id);
     expect(persisted).toMatchObject({

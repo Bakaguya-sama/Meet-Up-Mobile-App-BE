@@ -14,6 +14,8 @@ import type {
   ScheduledOpeningStatus,
 } from '../../../../domain/temporal-context';
 import { RecommendationRunEntity } from './recommendation-run.typeorm-entity';
+import type { WeatherEvidence } from '../../../../domain/recommendation-run';
+import type { ClosingEvidence } from '../../../../domain/temporal-context';
 
 @Entity('recommendation_candidates')
 @Unique('uq_recommendation_candidate', ['runId', 'canonicalCandidateKey'])
@@ -102,6 +104,10 @@ export class RecommendationCandidateEntity {
   scheduledOpeningStatus: ScheduledOpeningStatus | null;
   @Column('jsonb', { name: 'opening_evidence', nullable: true })
   openingEvidence: ScheduledOpeningEvidence | null;
+  @Column('jsonb', { name: 'weather_evidence', nullable: true })
+  weatherEvidence: WeatherEvidence | null;
+  @Column('jsonb', { name: 'closing_evidence', nullable: true })
+  closingEvidence: ClosingEvidence | null;
   @ManyToOne(() => RecommendationRunEntity, (run) => run.candidates, {
     onDelete: 'CASCADE',
   })

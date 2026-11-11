@@ -14,8 +14,13 @@ import { CurrentUser } from '../../../../presentation/http/decorators/current-us
 import { Roles } from '../../../../presentation/http/decorators/roles.decorator';
 import { AccessTokenGuard } from '../../../../presentation/http/guards/access-token.guard';
 import { RolesGuard } from '../../../../presentation/http/guards/roles.guard';
-import { AddFavoritePlaceRequest } from '../../application/dto/favorite-place.dto';
-import { ManageFavoritePlaceUseCase } from '../../application/use-cases/manage-favorite-place.use-case';
+import {
+  AddFavoritePlaceRequest,
+  FavoritePlaceParams,
+} from '../../application/dto/favorite-place.dto';
+import { AddFavoritePlaceUseCase } from '../../application/use-cases/add-favorite-place.use-case';
+import { ListFavoritePlacesUseCase } from '../../application/use-cases/list-favorite-places.use-case';
+import { RemoveFavoritePlaceUseCase } from '../../application/use-cases/remove-favorite-place.use-case';
 
 @ApiTags('Favorite places')
 @ApiBearerAuth()
@@ -26,12 +31,16 @@ import { ManageFavoritePlaceUseCase } from '../../application/use-cases/manage-f
 @Roles('user')
 @Controller('favorites/places')
 export class FavoritePlacesController {
-  constructor(private readonly favorites: ManageFavoritePlaceUseCase) {}
+  constructor(
+    private readonly addFavorite: AddFavoritePlaceUseCase,
+    private readonly listFavorites: ListFavoritePlacesUseCase,
+    private readonly removeFavorite: RemoveFavoritePlaceUseCase,
+  ) {}
 
   @Get()
   @Header('Cache-Control', 'no-store')
   list(@CurrentUser('id') userId: string) {
-    return this.favorites.list(userId);
+    return this.listFavorites.execute(userId);
   }
 
   @Post()
@@ -40,15 +49,15 @@ export class FavoritePlacesController {
     @CurrentUser('id') userId: string,
     @Body() body: AddFavoritePlaceRequest,
   ) {
-    return this.favorites.add(userId, body.placeId);
+    return this.addFavorite.execute(userId, body.placeId);
   }
 
   @Delete(':placeId')
   @HttpCode(204)
   remove(
     @CurrentUser('id') userId: string,
-    @Param('placeId') placeId: string,
+    @Param() params: FavoritePlaceParams,
   ) {
-    return this.favorites.remove(userId, placeId);
+    return this.removeFavorite.execute(userId, params.placeId);
   }
 }

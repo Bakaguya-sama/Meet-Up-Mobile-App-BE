@@ -123,7 +123,7 @@ describe('recommendation run orchestration', () => {
       contextStatus: 'CURRENT_CONTEXT',
     });
     expect(
-      created.results[0].memberResults.map((feature) => feature.etaSeconds),
+      created.results[0].memberEtas.map((feature) => feature.etaSeconds),
     ).toEqual([300, 300]);
     await expect(
       useCase.execute('actor', created.meetupId, input),

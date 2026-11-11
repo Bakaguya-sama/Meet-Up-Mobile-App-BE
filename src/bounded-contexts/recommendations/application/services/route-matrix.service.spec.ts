@@ -91,4 +91,62 @@ describe('RouteMatrixService', () => {
       code: 'NO_ROUTABLE_CANDIDATES',
     });
   });
+
+  it('discards all traffic-aware results and retries the whole matrix unaware', async () => {
+    const calls: string[] = [];
+    const provider: RouteMatrixPort = {
+      calculateBatch: (input) => {
+        calls.push(
+          `${input.routingPreference}:${input.origins.map((origin) => origin.participantId).join(',')}`,
+        );
+        if (
+          input.routingPreference === 'TRAFFIC_AWARE' &&
+          input.origins.some((origin) => origin.participantId === 'p2')
+        )
+          throw new Error('traffic failure');
+        return Promise.resolve({
+          features: input.origins.flatMap((origin) =>
+            input.destinations.map((destination) => ({
+              participantId: origin.participantId,
+              canonicalCandidateKey: destination.canonicalCandidateKey,
+              etaSeconds:
+                input.routingPreference === 'TRAFFIC_AWARE' ? 200 : 100,
+              distanceMeters: 1000,
+              status: 'OK' as const,
+              staticDurationSeconds: 80,
+            })),
+          ),
+          failures: [],
+        });
+      },
+    };
+    const result = await new RouteMatrixService(
+      provider,
+      new RouteBatchPlanner(1),
+      'TRAFFIC_AWARE',
+    ).calculate(origins, destinations, 2);
+    expect(result.effectiveRoutingPreference).toBe('TRAFFIC_UNAWARE');
+    expect(result.warnings).toContain('TRAFFIC_DATA_UNAVAILABLE');
+    expect(
+      result.candidates
+        .flatMap((candidate) => candidate.routes)
+        .every((route) => route.etaSeconds === 100),
+    ).toBe(true);
+    expect(
+      calls.filter((call) => call.startsWith('TRAFFIC_UNAWARE')),
+    ).toHaveLength(4);
+  });
+
+  it('returns ROUTE_MATRIX_UNAVAILABLE when the unaware fallback also fails', async () => {
+    const provider: RouteMatrixPort = {
+      calculateBatch: () => Promise.reject(new Error('provider down')),
+    };
+    await expect(
+      new RouteMatrixService(
+        provider,
+        new RouteBatchPlanner(),
+        'TRAFFIC_AWARE',
+      ).calculate(origins, destinations, 2),
+    ).rejects.toMatchObject({ code: 'ROUTE_MATRIX_UNAVAILABLE' });
+  });
 });

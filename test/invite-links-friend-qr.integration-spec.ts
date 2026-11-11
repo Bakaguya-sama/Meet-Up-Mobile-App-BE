@@ -29,6 +29,7 @@ import { CreateMeetupsTables1792070000000 } from '../src/infrastructure/database
 import { CreateMeetupParticipantPreferencesTable1792070001000 } from '../src/infrastructure/database/migrations/1792070001000-create-meetup-participant-preferences-table';
 import { CreateMeetupInviteLinks1792120000000 } from '../src/infrastructure/database/migrations/1792120000000-create-meetup-invite-links';
 import { AddPublicHandleToUserAccounts1792130000000 } from '../src/infrastructure/database/migrations/1792130000000-add-public-handle-to-user-accounts';
+import { AddChatFavoritesAndAdminAudit1792140000000 } from '../src/infrastructure/database/migrations/1792140000000-add-chat-favorites-admin-audit';
 import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persistence/outbox-event.typeorm-entity';
 import { RedisRateLimiter } from '../src/infrastructure/redis/redis-rate-limiter.service';
 import { RedisService } from '../src/infrastructure/redis/redis.service';
@@ -83,12 +84,14 @@ describe('BE-33/BE-34 PostgreSQL and Redis integration', () => {
         CreateMeetupParticipantPreferencesTable1792070001000,
         CreateMeetupInviteLinks1792120000000,
         AddPublicHandleToUserAccounts1792130000000,
+        AddChatFavoritesAndAdminAudit1792140000000,
       ],
     }).initialize();
 
     await db.runMigrations();
     expect(await hasColumn('user_accounts', 'public_handle')).toBe(true);
     expect(await hasTable('meetup_invite_links')).toBe(true);
+    await db.undoLastMigration();
     await db.undoLastMigration();
     await db.undoLastMigration();
     expect(await hasColumn('user_accounts', 'public_handle')).toBe(false);
@@ -99,7 +102,7 @@ describe('BE-33/BE-34 PostgreSQL and Redis integration', () => {
 
     await seedUsers();
     inviteLinks = new TypeOrmMeetupInviteLinkRepository(db);
-    redisClient = new Redis(redisUrl!, { lazyConnect: false });
+    redisClient = new Redis(redisUrl, { lazyConnect: false });
     await redisClient.flushdb();
     redisService = new RedisService(redisClient);
     qrStore = new RedisFriendQrSessionStore(redisService);
@@ -118,10 +121,10 @@ describe('BE-33/BE-34 PostgreSQL and Redis integration', () => {
   });
 
   async function hasTable(tableName: string): Promise<boolean> {
-    const [{ exists }] = (await db.query(
+    const [{ exists }] = await db.query<Array<{ exists: boolean }>>(
       `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = $2)`,
       [schema, tableName],
-    )) as Array<{ exists: boolean }>;
+    );
     return exists;
   }
 
@@ -129,10 +132,10 @@ describe('BE-33/BE-34 PostgreSQL and Redis integration', () => {
     tableName: string,
     columnName: string,
   ): Promise<boolean> {
-    const [{ exists }] = (await db.query(
+    const [{ exists }] = await db.query<Array<{ exists: boolean }>>(
       `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 AND column_name = $3)`,
       [schema, tableName, columnName],
-    )) as Array<{ exists: boolean }>;
+    );
     return exists;
   }
 
@@ -185,11 +188,11 @@ describe('BE-33/BE-34 PostgreSQL and Redis integration', () => {
   }
 
   it('runs invite/public-handle migrations through up, down, up with matching schema', async () => {
-    const inviteColumns = (await db.query(
+    const inviteColumns = await db.query<Array<{ column_name: string }>>(
       `SELECT column_name FROM information_schema.columns
        WHERE table_schema = $1 AND table_name = 'meetup_invite_links'`,
       [schema],
-    )) as Array<{ column_name: string }>;
+    );
     expect(inviteColumns.map((row) => row.column_name).sort()).toEqual(
       [
         'created_at',
@@ -300,14 +303,11 @@ describe('BE-33/BE-34 PostgreSQL and Redis integration', () => {
       }),
     ]);
     expect(race[1].status).toBe('fulfilled');
-    const participantCount = Number(
-      (
-        await db.query(
-          `SELECT COUNT(*)::int AS count FROM meetup_participants WHERE meetup_id = $1 AND user_id = $2`,
-          [raceMeetupId, carolId],
-        )
-      )[0].count,
+    const participantCounts = await db.query<Array<{ count: number }>>(
+      `SELECT COUNT(*)::int AS count FROM meetup_participants WHERE meetup_id = $1 AND user_id = $2`,
+      [raceMeetupId, carolId],
     );
+    const participantCount = participantCounts[0]?.count ?? 0;
     const accepted = race[0].status === 'fulfilled';
     expect(participantCount).toBe(accepted ? 1 : 0);
   });

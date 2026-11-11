@@ -86,6 +86,8 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
         randomSeed: completion.randomSeed,
         routeBatchCount: completion.routeBatchCount,
         routeElementCount: completion.routeElementCount,
+        routingPreferenceEffective: completion.routingPreferenceEffective,
+        weatherPolicyEffective: completion.weatherPolicyEffective,
       });
       const candidatesById = new Map(
         completion.candidates.map((candidate) => [candidate.id, candidate]),
@@ -115,6 +117,8 @@ export class TypeOrmRecommendationRunRepository implements RecommendationRunStor
         randomSeed: completion.randomSeed,
         routeBatchCount: completion.routeBatchCount,
         routeElementCount: completion.routeElementCount,
+        routingPreferenceEffective: completion.routingPreferenceEffective,
+        weatherPolicyEffective: completion.weatherPolicyEffective,
         candidates: completion.candidates.map(cloneCandidate),
         memberFeatures: completion.memberFeatures.map(cloneMemberFeature),
         places: completion.places.map(clonePlace),
@@ -181,6 +185,12 @@ function toDomain(row: RecommendationRunEntity): RecommendationRun {
     providerRequestOptionsVersion: row.providerRequestOptionsVersion,
     openingFilter: row.openingFilter,
     openingEvaluatorVersion: row.openingEvaluatorVersion,
+    routingPreferenceRequested: row.routingPreferenceRequested,
+    routingPreferenceEffective: row.routingPreferenceEffective,
+    weatherPolicyRequested: row.weatherPolicyRequested,
+    weatherPolicyEffective: row.weatherPolicyEffective,
+    weatherPolicyVersion: row.weatherPolicyVersion,
+    closingPolicyVersion: row.closingPolicyVersion,
     requestedAt: new Date(row.requestedAt),
     scheduledAtSnapshot: new Date(row.scheduledAtSnapshot),
     createdAt: new Date(row.createdAt),
@@ -208,6 +218,12 @@ function cloneCandidate(candidate: RecommendationCandidateSnapshot) {
     openingEvidence: candidate.openingEvidence
       ? structuredClone(candidate.openingEvidence)
       : null,
+    weatherEvidence: candidate.weatherEvidence
+      ? structuredClone(candidate.weatherEvidence)
+      : null,
+    closingEvidence: candidate.closingEvidence
+      ? structuredClone(candidate.closingEvidence)
+      : null,
   };
 }
 
@@ -227,6 +243,12 @@ function clonePlace(place: RecommendationPlaceSnapshot) {
     explanation: structuredClone(place.explanation),
     openingEvidence: place.openingEvidence
       ? structuredClone(place.openingEvidence)
+      : null,
+    weatherEvidence: place.weatherEvidence
+      ? structuredClone(place.weatherEvidence)
+      : null,
+    closingEvidence: place.closingEvidence
+      ? structuredClone(place.closingEvidence)
       : null,
   };
 }

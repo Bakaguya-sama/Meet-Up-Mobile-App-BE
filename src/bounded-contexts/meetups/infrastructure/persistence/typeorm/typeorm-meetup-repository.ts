@@ -3,6 +3,7 @@ import { DataSource, EntityManager, In } from 'typeorm';
 import { TypeOrmTransactionalOutbox } from '../../../../../infrastructure/outbox/persistence/typeorm-outbox.port';
 import type {
   MeetupHistoryRecord,
+  MeetupChatAccessState,
   MeetupStorePort,
 } from '../../../application/ports/persistence/meetup-store.port';
 import type {
@@ -218,6 +219,79 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
       .andWhere('participant.status = :accepted', { accepted: 'accepted' })
       .getCount();
     return count === ids.length;
+  }
+
+  async findAcceptedParticipantId(
+    meetupId: string,
+    userId: string,
+  ): Promise<string | null> {
+    const row = await this.dataSource
+      .getRepository(ParticipantEntity)
+      .createQueryBuilder('participant')
+      .innerJoin(MeetupEntity, 'meetup', 'meetup.id = participant.meetupId')
+      .select('participant.id', 'id')
+      .where('meetup.id = :meetupId', { meetupId })
+      .andWhere('meetup.status IN (:...active)', {
+        active: ['inviting', 'choosing', 'selected'],
+      })
+      .andWhere('participant.userId = :userId', { userId })
+      .andWhere('participant.status = :accepted', { accepted: 'accepted' })
+      .getRawOne<{ id: string }>();
+    return row?.id ?? null;
+  }
+
+  async getChatAccess(
+    meetupId: string,
+    userId: string,
+  ): Promise<MeetupChatAccessState | null> {
+    const row = await this.dataSource
+      .getRepository(ParticipantEntity)
+      .createQueryBuilder('participant')
+      .innerJoin(MeetupEntity, 'meetup', 'meetup.id = participant.meetupId')
+      .select('participant.status', 'participant_status')
+      .addSelect('participant.leftAt', 'participant_left_at')
+      .addSelect('meetup.status', 'meetup_status')
+      .where('meetup.id = :meetupId', { meetupId })
+      .andWhere('participant.userId = :userId', { userId })
+      .getRawOne<{
+        participant_status: string;
+        participant_left_at: Date | null;
+        meetup_status: string;
+      }>();
+    if (!row) return null;
+
+    const active = ['inviting', 'choosing', 'selected'].includes(
+      row.meetup_status,
+    );
+    if (active && row.participant_status === 'accepted') {
+      return { canSend: true };
+    }
+    if (
+      ['left', 'removed'].includes(row.participant_status) &&
+      row.participant_left_at
+    ) {
+      return {
+        canSend: false,
+        historyVisibleUntil: new Date(row.participant_left_at),
+      };
+    }
+    return null;
+  }
+
+  async listActiveChatRecipientIds(meetupId: string): Promise<string[]> {
+    const rows = await this.dataSource
+      .getRepository(ParticipantEntity)
+      .createQueryBuilder('participant')
+      .innerJoin(MeetupEntity, 'meetup', 'meetup.id = participant.meetupId')
+      .select('participant.userId', 'user_id')
+      .where('meetup.id = :meetupId', { meetupId })
+      .andWhere('meetup.status IN (:...active)', {
+        active: ['inviting', 'choosing', 'selected'],
+      })
+      .andWhere('participant.status = :accepted', { accepted: 'accepted' })
+      .orderBy('participant.userId', 'ASC')
+      .getRawMany<{ user_id: string }>();
+    return rows.map((row) => row.user_id);
   }
 
   private visibleQuery(manager: EntityManager, actorId: string) {

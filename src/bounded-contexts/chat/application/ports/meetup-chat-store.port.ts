@@ -13,6 +13,7 @@ export interface MeetupChatStore {
     meetupId: string;
     before?: Date;
     beforeId?: string;
+    historyVisibleUntil?: Date;
     limit: number;
   }): Promise<MeetupChatMessage[]>;
 }

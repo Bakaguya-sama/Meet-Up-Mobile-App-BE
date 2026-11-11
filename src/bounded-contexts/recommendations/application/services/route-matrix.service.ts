@@ -4,6 +4,7 @@ import type {
   RouteFeature,
   RouteMatrixPort,
   RouteOrigin,
+  RoutingPreference,
 } from '../ports/route-matrix.port';
 import { RecommendationError } from '../../domain/recommendation.error';
 import { RouteBatchPlanner } from './route-batch-planner';
@@ -20,12 +21,15 @@ export interface RouteMatrixOutcome {
   warnings: string[];
   batchCount: number;
   elementCount: number;
+  requestedRoutingPreference: RoutingPreference;
+  effectiveRoutingPreference: RoutingPreference;
 }
 
 export class RouteMatrixService {
   constructor(
     private readonly provider: RouteMatrixPort,
     private readonly planner: RouteBatchPlanner,
+    private readonly requestedRoutingPreference: RoutingPreference = 'TRAFFIC_UNAWARE',
   ) {}
 
   async calculate(
@@ -39,7 +43,45 @@ export class RouteMatrixService {
         'requestedK must be a positive integer',
       );
     }
-    const batches = this.planner.plan(origins, destinations);
+    try {
+      return await this.calculateWithPreference(
+        origins,
+        destinations,
+        requestedK,
+        this.requestedRoutingPreference,
+      );
+    } catch (error) {
+      if (this.requestedRoutingPreference !== 'TRAFFIC_AWARE')
+        throw routeError(error);
+      try {
+        const fallback = await this.calculateWithPreference(
+          origins,
+          destinations,
+          requestedK,
+          'TRAFFIC_UNAWARE',
+        );
+        return {
+          ...fallback,
+          requestedRoutingPreference: 'TRAFFIC_AWARE',
+          warnings: [
+            ...new Set([...fallback.warnings, 'TRAFFIC_DATA_UNAVAILABLE']),
+          ],
+        };
+      } catch (fallbackError) {
+        throw routeError(fallbackError);
+      }
+    }
+  }
+
+  private async calculateWithPreference(
+    origins: RouteOrigin[],
+    destinations: RouteDestination[],
+    requestedK: number,
+    routingPreference: RoutingPreference,
+  ): Promise<RouteMatrixOutcome> {
+    const batches = this.planner
+      .plan(origins, destinations)
+      .map((batch) => ({ ...batch, routingPreference }));
     const featureByPair = new Map<string, RouteFeature>();
     const failureByPair = new Map<string, RouteFailure>();
     for (const batch of batches) {
@@ -101,8 +143,22 @@ export class RouteMatrixService {
         effectiveK < requestedK ? ['RESULT_COUNT_BELOW_REQUESTED_K'] : [],
       batchCount: batches.length,
       elementCount: origins.length * destinations.length,
+      requestedRoutingPreference: this.requestedRoutingPreference,
+      effectiveRoutingPreference: routingPreference,
     };
   }
+}
+
+function routeError(error: unknown): RecommendationError {
+  if (
+    error instanceof RecommendationError &&
+    error.code === 'NO_ROUTABLE_CANDIDATES'
+  )
+    return error;
+  return new RecommendationError(
+    'ROUTE_MATRIX_UNAVAILABLE',
+    'Route matrix could not be calculated',
+  );
 }
 
 function pairKey(value: {

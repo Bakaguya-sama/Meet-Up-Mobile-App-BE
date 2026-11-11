@@ -3,6 +3,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { AuthModule } from '../auth/auth.module';
 import { MeetupsModule } from '../meetups/meetups.module';
+import {
+  REALTIME_PUBLISHER,
+  type RealtimePublisherPort,
+} from '../../shared-kernel/application/realtime-publisher.port';
 import { CHAT_MESSAGE_PUBLISHER } from './application/ports/chat-message-publisher.port';
 import type { ChatMessagePublisherPort } from './application/ports/chat-message-publisher.port';
 import { MEETUP_CHAT_ACCESS } from './application/ports/meetup-chat-access.port';
@@ -30,7 +34,11 @@ import { MeetupChatController } from './presentation/http/meetup-chat.controller
     { provide: MEETUP_CHAT_ACCESS, useClass: MeetupChatAccessAdapter },
     {
       provide: CHAT_MESSAGE_PUBLISHER,
-      useClass: RealtimeChatMessagePublisherAdapter,
+      useFactory: (
+        publisher: RealtimePublisherPort,
+        access: MeetupChatAccessPort,
+      ) => new RealtimeChatMessagePublisherAdapter(publisher, access),
+      inject: [REALTIME_PUBLISHER, MEETUP_CHAT_ACCESS],
     },
     {
       provide: SendMeetupChatMessageUseCase,

@@ -1,5 +1,6 @@
 import type { NormalizedOpeningHours } from '../ports/place-search.port';
 import type {
+  ClosingEvidence,
   ScheduledOpeningEvidence,
   ScheduledOpeningStatus,
 } from '../../domain/temporal-context';
@@ -33,6 +34,7 @@ export interface EligibleCandidate extends RawCandidate {
   normalizedTags: string[];
   scheduledOpeningStatus?: ScheduledOpeningStatus;
   openingEvidence?: ScheduledOpeningEvidence;
+  closingEvidence?: ClosingEvidence;
 }
 
 export interface FilteredCandidateAudit {

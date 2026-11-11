@@ -58,13 +58,20 @@ export class GroupRankerService {
     );
     const metrics = [...grouped.entries()].map(([key, values]) => {
       const utilities = values.map((value) => value.memberUtility);
+      const rankingUtilities = values.map(
+        (value) => value.rankingUtility ?? value.memberUtility,
+      );
       const etas = values.map((value) => value.etaSeconds);
+      const closingPenalty =
+        values[0].memberUtility -
+        (values[0].rankingUtility ?? values[0].memberUtility);
       return {
         canonicalCandidateKey: key,
         finalRank: 0,
         groupUtility:
-          utilities.reduce((sum, value) => sum + value, 0) / utilities.length,
-        leastMiseryUtility: Math.min(...utilities),
+          rankingUtilities.reduce((sum, value) => sum + value, 0) /
+          rankingUtilities.length,
+        leastMiseryUtility: Math.min(...rankingUtilities),
         paretoLevel: 0,
         inclusionProbability: null as number | null,
         avgEtaSeconds:
@@ -72,6 +79,7 @@ export class GroupRankerService {
         maxEtaSeconds: Math.max(...etas),
         etaRangeSeconds: Math.max(...etas) - Math.min(...etas),
         memberRanks: memberRanks.get(key)!,
+        closingPenalty,
       };
     });
     for (const candidate of metrics) {
@@ -87,14 +95,17 @@ export class GroupRankerService {
     if (strategy === 'min-sum') {
       ordered = [...metrics].sort(
         (a, b) =>
-          a.avgEtaSeconds - b.avgEtaSeconds ||
+          a.avgEtaSeconds / this.config.tauSeconds + a.closingPenalty -
+            (b.avgEtaSeconds / this.config.tauSeconds + b.closingPenalty) ||
           a.canonicalCandidateKey.localeCompare(b.canonicalCandidateKey),
       );
     } else if (strategy === 'min-max') {
       ordered = [...metrics].sort(
         (a, b) =>
-          a.maxEtaSeconds - b.maxEtaSeconds ||
-          a.avgEtaSeconds - b.avgEtaSeconds ||
+          a.maxEtaSeconds / this.config.tauSeconds + a.closingPenalty -
+            (b.maxEtaSeconds / this.config.tauSeconds + b.closingPenalty) ||
+          a.avgEtaSeconds / this.config.tauSeconds + a.closingPenalty -
+            (b.avgEtaSeconds / this.config.tauSeconds + b.closingPenalty) ||
           a.canonicalCandidateKey.localeCompare(b.canonicalCandidateKey),
       );
     } else {
@@ -123,13 +134,17 @@ function buildMemberRanks(
   );
   for (const participantId of participantIds) {
     const sorted = [...grouped.entries()]
-      .map(([key, values]) => ({
-        key,
-        quantized: Math.round(
-          values.find((value) => value.participantId === participantId)!
-            .memberUtility / epsilon,
-        ),
-      }))
+      .map(([key, values]) => {
+        const feature = values.find(
+          (value) => value.participantId === participantId,
+        )!;
+        return {
+          key,
+          quantized: Math.round(
+            (feature.rankingUtility ?? feature.memberUtility) / epsilon,
+          ),
+        };
+      })
       .sort((a, b) => b.quantized - a.quantized || a.key.localeCompare(b.key));
     let rank = 1;
     sorted.forEach((value, index) => {

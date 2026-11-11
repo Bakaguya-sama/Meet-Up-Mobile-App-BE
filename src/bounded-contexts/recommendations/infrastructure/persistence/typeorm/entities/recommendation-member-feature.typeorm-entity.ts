@@ -37,6 +37,11 @@ export class RecommendationMemberFeatureEntity {
   @Column('double precision', { name: 'eta_seconds' }) etaSeconds: number;
   @Column('double precision', { name: 'distance_meters' })
   distanceMeters: number;
+  @Column('double precision', {
+    name: 'static_duration_seconds',
+    nullable: true,
+  })
+  staticDurationSeconds: number | null;
   @Column('jsonb', { name: 'matched_tags' })
   matchedTags: Array<{
     tagCode: string;
@@ -52,6 +57,8 @@ export class RecommendationMemberFeatureEntity {
   placeQualityUtility: number;
   @Column('double precision', { name: 'member_utility' })
   memberUtility: number;
+  @Column('double precision', { name: 'ranking_utility' })
+  rankingUtility: number;
   @Column('varchar', { name: 'route_status', length: 20 })
   routeStatus: 'OK';
   @Column('timestamptz', { name: 'created_at' }) createdAt: Date;

@@ -8,6 +8,7 @@ export interface MemberFeatureInput {
   canonicalCandidateKey: string;
   etaSeconds: number;
   distanceMeters: number;
+  staticDurationSeconds?: number;
   placeTags: string[];
   preferences: Array<{ tagCode: string; level: PreferenceLevel }>;
   rating0To5: number | null;
@@ -25,6 +26,8 @@ export interface MemberFeature extends MemberFeatureInput {
   preferenceUtility: number;
   placeQualityUtility: number;
   memberUtility: number;
+  /** Ranking-only utility; memberUtility remains the auditable U_base. */
+  rankingUtility: number;
 }
 
 export class MemberUtilityService {
@@ -100,6 +103,7 @@ export class MemberUtilityService {
       preferenceUtility,
       placeQualityUtility,
       memberUtility,
+      rankingUtility: memberUtility,
     };
   }
 }

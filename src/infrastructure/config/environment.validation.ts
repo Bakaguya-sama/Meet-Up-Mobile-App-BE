@@ -84,6 +84,9 @@ const environmentSchema = Joi.object({
     otherwise: Joi.number().integer().min(1).max(100000).required(),
   }),
   GOOGLE_MAPS_API_KEY: Joi.string().allow('').optional(),
+  ROUTES_ROUTING_PREFERENCE: Joi.string()
+    .valid('TRAFFIC_UNAWARE', 'TRAFFIC_AWARE')
+    .default('TRAFFIC_UNAWARE'),
   FIREBASE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   FIREBASE_PROJECT_ID: Joi.when('FIREBASE_ENABLED', {
     is: true,

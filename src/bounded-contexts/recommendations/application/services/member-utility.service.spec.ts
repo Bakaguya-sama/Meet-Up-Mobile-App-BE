@@ -11,6 +11,24 @@ function expectCode(action: () => unknown, code: string) {
 }
 
 describe('MemberUtilityService', () => {
+  it('does not use staticDurationSeconds when scoring travel utility', () => {
+    const service = new MemberUtilityService(RECOMMENDATION_CONFIG_DEV_V1);
+    const base = {
+      participantId: 'p1',
+      canonicalCandidateKey: 'c1',
+      etaSeconds: 600,
+      distanceMeters: 1000,
+      placeTags: [],
+      preferences: [],
+      rating0To5: null,
+      userRatingCount: null,
+    };
+    expect(
+      service.score({ ...base, staticDurationSeconds: 300 }).travelUtility,
+    ).toBe(
+      service.score({ ...base, staticDurationSeconds: 9_000 }).travelUtility,
+    );
+  });
   it('matches every documented golden vector including avoid soft penalty', () => {
     const result = new MemberUtilityService(RECOMMENDATION_CONFIG_DEV_V1).score(
       {

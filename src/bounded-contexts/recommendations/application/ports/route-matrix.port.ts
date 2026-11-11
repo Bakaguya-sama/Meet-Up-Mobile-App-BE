@@ -1,9 +1,14 @@
 export const ROUTE_MATRIX = Symbol('ROUTE_MATRIX');
 
+export type TravelMode = 'TWO_WHEELER' | 'DRIVE';
+export type RoutingPreference = 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE';
+
 export interface RouteOrigin {
   participantId: string;
   latitude: number;
   longitude: number;
+  /** Until Q20 is approved, production contexts intentionally omit this. */
+  travelMode?: TravelMode;
 }
 
 export interface RouteDestination {
@@ -15,7 +20,8 @@ export interface RouteDestination {
 export interface RouteBatchRequest {
   origins: RouteOrigin[];
   destinations: RouteDestination[];
-  travelMode: 'TWO_WHEELER';
+  travelMode: TravelMode;
+  routingPreference: RoutingPreference;
 }
 
 export interface RouteFeature {
@@ -23,6 +29,8 @@ export interface RouteFeature {
   canonicalCandidateKey: string;
   etaSeconds: number;
   distanceMeters: number;
+  /** Provider metric only; utility is always computed from etaSeconds/duration. */
+  staticDurationSeconds?: number;
   status: 'OK';
 }
 
