@@ -20,19 +20,14 @@
 
 ### BE-11 chat delivery
 
-- `meetup:chat-message` là realtime notification của một message đã được persist; payload gồm `id`, `meetupId`, `senderUserId`, `textContent`, `attachments`, `sentAt` (ISO-8601). `attachments` chỉ có URL ký hết hạn sau 15 phút và metadata tệp. `eventId = message.id`; mobile phải de-duplicate theo `id` và dùng HTTP history làm nguồn phục hồi khi socket mất.
+- `meetup:chat-message` là realtime delivery của `MeetupChatMessageCreated.v1` trong outbox sau khi message đã commit; payload gồm `messageId`, `meetupId`, `senderUserId`, `textContent`, `attachments`, `sentAt` (ISO-8601). `attachments` chỉ có URL ký hết hạn sau 15 phút và metadata tệp. `eventId = message.id`; mobile phải de-duplicate theo `messageId` và dùng HTTP history làm nguồn phục hồi khi socket mất.
 - Server **không** phát chat vào `meetup:{meetupId}`. Sau khi insert thành công, publisher đọc lại accepted members của meetup còn active và fan-out cùng payload vào từng `user:{userId}`. Vì vậy socket từng join meetup room trước đó không làm former member nhận tin mới.
 - PostgreSQL trigger từ chối insert khi sender không còn `accepted` hoặc meetup không active. Member `left`/`removed` được HTTP history giới hạn `sentAt <= leftAt`, không được gửi hoặc nhận event mới. Failure của fan-out chỉ log warning; message đã persist vẫn đọc được qua HTTP.
 
 ### Direct chat
 
-- `direct:chat-message` phát đến `user:{senderUserId}` và `user:{recipientUserId}` sau khi message được persist. Payload gồm `id`, `conversationId`, `senderUserId`, `recipientUserId`, `textContent`, `attachments`, `sentAt`; `eventId = message.id`.
-- HTTP history/send và PostgreSQL trigger đều yêu cầu friendship `accepted`; người đã unfriend hoặc bị block không gửi/đọc được. Mobile dùng `GET /api/v1/chats/direct/:peerId/messages` để đồng bộ lại.
-
-### Direct chat
-
-- `direct:chat-message` phát đến `user:{senderUserId}` và `user:{recipientUserId}` sau khi message được persist. Payload gồm `id`, `conversationId`, `senderUserId`, `recipientUserId`, `textContent`, `attachments`, `sentAt`; `eventId = message.id`.
-- HTTP history/send và PostgreSQL trigger đều yêu cầu friendship `accepted`; người đã unfriend hoặc bị block không gửi/đọc được. Mobile dùng `GET /api/v1/chats/direct/:peerId/messages` để đồng bộ lại.
+- `direct:chat-message` là realtime delivery của `DirectChatMessageCreated.v1` trong outbox sau khi message đã commit, phát đến `user:{senderUserId}` và `user:{recipientUserId}`. Payload gồm `messageId`, `conversationId`, `senderUserId`, `recipientUserId`, `textContent`, `attachments`, `sentAt`; `eventId = message.id`.
+- HTTP send và PostgreSQL trigger đều yêu cầu friendship `accepted`. Sau unfriend/block, không gửi mới nhưng hai participant của conversation đã tồn tại vẫn đọc lịch sử qua `GET /api/v1/chats/direct/:peerId/messages`; không có event mới để fan-out.
 | Payload              | `INVALID_EVENT_PAYLOAD`, `EVENT_SCHEMA_INVALID`     |
 | Idempotency/delivery | `EVENT_ALREADY_PROCESSED`, `OUTBOX_DELIVERY_FAILED` |
 

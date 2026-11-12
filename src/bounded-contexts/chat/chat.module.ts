@@ -9,8 +9,6 @@ import {
   REALTIME_PUBLISHER,
   type RealtimePublisherPort,
 } from '../../shared-kernel/application/realtime-publisher.port';
-import { CHAT_MESSAGE_PUBLISHER } from './application/ports/chat-message-publisher.port';
-import type { ChatMessagePublisherPort } from './application/ports/chat-message-publisher.port';
 import { MEETUP_CHAT_ACCESS } from './application/ports/meetup-chat-access.port';
 import type { MeetupChatAccessPort } from './application/ports/meetup-chat-access.port';
 import { MEETUP_CHAT_STORE } from './application/ports/meetup-chat-store.port';
@@ -18,7 +16,6 @@ import type { MeetupChatStore } from './application/ports/meetup-chat-store.port
 import { ListMeetupChatMessagesQuery } from './application/queries/list-meetup-chat-messages.query';
 import { SendMeetupChatMessageUseCase } from './application/use-cases/send-meetup-chat-message.use-case';
 import { MeetupChatAccessAdapter } from './infrastructure/adapters/meetup-chat-access.adapter';
-import { RealtimeChatMessagePublisherAdapter } from './infrastructure/adapters/realtime-chat-message-publisher.adapter';
 import { MeetupChatMessageEntity } from './infrastructure/persistence/typeorm/entities/meetup-chat-message.typeorm-entity';
 import { TypeOrmMeetupChatStore } from './infrastructure/persistence/typeorm/typeorm-meetup-chat-store';
 import { MeetupChatController } from './presentation/http/meetup-chat.controller';
@@ -32,9 +29,6 @@ import type { DirectChatStore } from './application/ports/direct-chat-store.port
 import { DirectChatConversationEntity } from './infrastructure/persistence/typeorm/entities/direct-chat-conversation.typeorm-entity';
 import { DirectChatMessageEntity } from './infrastructure/persistence/typeorm/entities/direct-chat-message.typeorm-entity';
 import { TypeOrmDirectChatStore } from './infrastructure/persistence/typeorm/typeorm-direct-chat-store';
-import { DIRECT_CHAT_MESSAGE_PUBLISHER } from './application/ports/direct-chat-message-publisher.port';
-import type { DirectChatMessagePublisherPort } from './application/ports/direct-chat-message-publisher.port';
-import { RealtimeDirectChatMessagePublisherAdapter } from './infrastructure/adapters/realtime-direct-chat-message-publisher.adapter';
 import { SendDirectChatMessageUseCase } from './application/use-cases/send-direct-chat-message.use-case';
 import { ListDirectChatMessagesQuery } from './application/queries/list-direct-chat-messages.query';
 
@@ -63,33 +57,19 @@ import { ListDirectChatMessagesQuery } from './application/queries/list-direct-c
       inject: [CHAT_MEDIA_STORAGE],
     },
     { provide: DIRECT_CHAT_STORE, useClass: TypeOrmDirectChatStore },
-    {
-      provide: DIRECT_CHAT_MESSAGE_PUBLISHER,
-      useClass: RealtimeDirectChatMessagePublisherAdapter,
-    },
     { provide: MEETUP_CHAT_STORE, useClass: TypeOrmMeetupChatStore },
     { provide: MEETUP_CHAT_ACCESS, useClass: MeetupChatAccessAdapter },
-    {
-      provide: CHAT_MESSAGE_PUBLISHER,
-      useFactory: (
-        publisher: RealtimePublisherPort,
-        access: MeetupChatAccessPort,
-      ) => new RealtimeChatMessagePublisherAdapter(publisher, access),
-      inject: [REALTIME_PUBLISHER, MEETUP_CHAT_ACCESS],
-    },
     {
       provide: SendMeetupChatMessageUseCase,
       useFactory: (
         store: MeetupChatStore,
         access: MeetupChatAccessPort,
-        publisher: ChatMessagePublisherPort,
         attachments: ChatAttachmentService,
       ) =>
-        new SendMeetupChatMessageUseCase(store, access, publisher, attachments),
+        new SendMeetupChatMessageUseCase(store, access, attachments),
       inject: [
         MEETUP_CHAT_STORE,
         MEETUP_CHAT_ACCESS,
-        CHAT_MESSAGE_PUBLISHER,
         ChatAttachmentService,
       ],
     },
@@ -107,19 +87,16 @@ import { ListDirectChatMessagesQuery } from './application/queries/list-direct-c
       useFactory: (
         store: DirectChatStore,
         friendships: FriendshipReader,
-        publisher: DirectChatMessagePublisherPort,
         attachments: ChatAttachmentService,
       ) =>
         new SendDirectChatMessageUseCase(
           store,
           friendships,
-          publisher,
           attachments,
         ),
       inject: [
         DIRECT_CHAT_STORE,
         FriendshipReader,
-        DIRECT_CHAT_MESSAGE_PUBLISHER,
         ChatAttachmentService,
       ],
     },

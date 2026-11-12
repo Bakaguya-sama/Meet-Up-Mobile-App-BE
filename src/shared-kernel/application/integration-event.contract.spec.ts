@@ -49,4 +49,21 @@ describe('integration event contract', () => {
       'EVENT_ALREADY_PROCESSED',
     );
   });
+
+  it('accepts a versioned direct-chat delivery event', () => {
+    expect(
+      isIntegrationEvent({
+        eventId,
+        eventName: 'DirectChatMessageCreated.v1',
+        occurredAt: '2026-10-12T00:00:00.000Z',
+        conversationId: '3cac3fec-7fb1-4ef4-8a4e-77f0177e510d',
+        messageId: '483379b5-6fbf-46b2-bab9-d67fbe1c5cbf',
+        senderUserId: '483379b5-6fbf-46b2-bab9-d67fbe1c5cbf',
+        recipientUserId: 'a6d1f34d-09e9-49b5-bf30-3cb989dbd95c',
+        textContent: 'hello',
+        attachments: [],
+        sentAt: '2026-10-12T00:00:00.000Z',
+      }),
+    ).toBe(true);
+  });
 });

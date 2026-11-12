@@ -180,7 +180,6 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
           useValue: new SendMeetupChatMessageUseCase(
             chatStore,
             meetupAccess,
-            chatPublisher,
           ),
         },
         {

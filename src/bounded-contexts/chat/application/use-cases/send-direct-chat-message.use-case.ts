@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { FriendshipReader } from '../../../friends/application/public/friendship-reader';
 import { ChatError } from '../../domain/errors/chat.error';
-import type { DirectChatMessagePublisherPort } from '../ports/direct-chat-message-publisher.port';
 import type {
   DirectChatMessage,
   DirectChatStore,
@@ -13,7 +12,6 @@ export class SendDirectChatMessageUseCase {
   constructor(
     private readonly store: DirectChatStore,
     private readonly friendships: FriendshipReader,
-    private readonly publisher: DirectChatMessagePublisherPort,
     private readonly attachments: ChatAttachmentService,
   ) {}
 
@@ -59,13 +57,14 @@ export class SendDirectChatMessageUseCase {
     };
     let persisted: DirectChatMessage;
     try {
-      persisted = await this.store.append(message);
+      persisted = await this.store.append(message, {
+        ...message,
+        attachments: attachmentViews,
+      });
     } catch (error) {
       await this.attachments.delete(uploaded);
       throw error;
     }
-    const view = { ...persisted, attachments: attachmentViews };
-    await this.publisher.publish(view);
-    return view;
+    return { ...persisted, attachments: attachmentViews };
   }
 }

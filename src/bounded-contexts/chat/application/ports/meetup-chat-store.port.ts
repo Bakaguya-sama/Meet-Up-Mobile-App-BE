@@ -21,7 +21,11 @@ export interface MeetupChatMessageView extends Omit<
 
 export const MEETUP_CHAT_STORE = Symbol('MEETUP_CHAT_STORE');
 export interface MeetupChatStore {
-  append(input: MeetupChatMessage): Promise<void>;
+  append(
+    input: MeetupChatMessage,
+    delivery: MeetupChatMessageView,
+    recipientIds: string[],
+  ): Promise<void>;
   list(input: {
     meetupId: string;
     before?: Date;

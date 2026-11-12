@@ -10,6 +10,8 @@ export const INTEGRATION_EVENT_NAMES = [
   'VoteUpdated.v1',
   'MeetupFinalized.v1',
   'MeetupInviteLinkAccepted.v1',
+  'MeetupChatMessageCreated.v1',
+  'DirectChatMessageCreated.v1',
 ] as const;
 
 export type IntegrationEventName = (typeof INTEGRATION_EVENT_NAMES)[number];
@@ -79,6 +81,35 @@ export type MeetupInviteLinkAcceptedV1 =
     inviteLinkId: string;
   };
 
+type ChatAttachmentDelivery = {
+  fileName: string;
+  mimeType: string;
+  bytes: number;
+  downloadUrl: string;
+  expiresAt: string;
+};
+
+export type MeetupChatMessageCreatedV1 =
+  EventMetadata<'MeetupChatMessageCreated.v1'> & {
+    meetupId: string;
+    messageId: string;
+    senderUserId: string;
+    textContent: string;
+    attachments: ChatAttachmentDelivery[];
+    sentAt: string;
+  };
+
+export type DirectChatMessageCreatedV1 =
+  EventMetadata<'DirectChatMessageCreated.v1'> & {
+    conversationId: string;
+    messageId: string;
+    senderUserId: string;
+    recipientUserId: string;
+    textContent: string;
+    attachments: ChatAttachmentDelivery[];
+    sentAt: string;
+  };
+
 export type IntegrationEvent =
   | MeetupCreatedV1
   | MeetupLifecycleV1
@@ -88,7 +119,9 @@ export type IntegrationEvent =
   | RecommendationReadyV1
   | VoteUpdatedV1
   | MeetupFinalizedV1
-  | MeetupInviteLinkAcceptedV1;
+  | MeetupInviteLinkAcceptedV1
+  | MeetupChatMessageCreatedV1
+  | DirectChatMessageCreatedV1;
 
 export const EVENT_ERROR_CODES = {
   UNAUTHORIZED: 'UNAUTHORIZED',
@@ -163,9 +196,39 @@ export function isIntegrationEvent(value: unknown): value is IntegrationEvent {
         Number.isFinite(value.voteCount)
       );
     case 'MeetupFinalized.v1':
-      return hasStrings(value, 'meetupId', 'runId', 'placeId', 'canonicalCandidateKey', 'scheduledAt');
+      return hasStrings(
+        value,
+        'meetupId',
+        'runId',
+        'placeId',
+        'canonicalCandidateKey',
+        'scheduledAt',
+      );
     case 'MeetupInviteLinkAccepted.v1':
       return hasStrings(value, 'meetupId', 'participantId', 'inviteLinkId');
+    case 'MeetupChatMessageCreated.v1':
+      return (
+        hasStrings(
+          value,
+          'meetupId',
+          'messageId',
+          'senderUserId',
+          'textContent',
+          'sentAt',
+        ) && Array.isArray(value.attachments)
+      );
+    case 'DirectChatMessageCreated.v1':
+      return (
+        hasStrings(
+          value,
+          'conversationId',
+          'messageId',
+          'senderUserId',
+          'recipientUserId',
+          'textContent',
+          'sentAt',
+        ) && Array.isArray(value.attachments)
+      );
   }
 
   return false;

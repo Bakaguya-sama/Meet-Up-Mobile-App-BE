@@ -23,6 +23,7 @@ export interface DirectChatMessageView extends Omit<
 export interface DirectChatStore {
   append(
     message: Omit<DirectChatMessage, 'conversationId'>,
+    delivery: Omit<DirectChatMessageView, 'conversationId'>,
   ): Promise<DirectChatMessage>;
   list(input: {
     actorId: string;
@@ -31,6 +32,8 @@ export interface DirectChatStore {
     beforeId?: string;
     limit: number;
   }): Promise<DirectChatMessage[]>;
+  /** History remains readable after an unfriend/block, but only for an existing pair. */
+  hasConversation(actorId: string, peerId: string): Promise<boolean>;
 }
 
 export const DIRECT_CHAT_STORE = Symbol('DIRECT_CHAT_STORE');

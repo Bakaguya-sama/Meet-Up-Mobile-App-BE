@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, QueryFailedError } from 'typeorm';
+import { TypeOrmTransactionalOutbox } from '../../../../../infrastructure/outbox/persistence/typeorm-outbox.port';
 import { ChatError } from '../../../domain/errors/chat.error';
 import type {
   MeetupChatMessage,
   MeetupChatStore,
+  MeetupChatMessageView,
 } from '../../../application/ports/meetup-chat-store.port';
 import { MeetupChatMessageEntity } from './entities/meetup-chat-message.typeorm-entity';
 
@@ -11,11 +13,29 @@ import { MeetupChatMessageEntity } from './entities/meetup-chat-message.typeorm-
 export class TypeOrmMeetupChatStore implements MeetupChatStore {
   constructor(private readonly dataSource: DataSource) {}
 
-  async append(message: MeetupChatMessage): Promise<void> {
+  async append(
+    message: MeetupChatMessage,
+    delivery: MeetupChatMessageView,
+    recipientIds: string[],
+  ): Promise<void> {
     try {
-      await this.dataSource
-        .getRepository(MeetupChatMessageEntity)
-        .insert(message);
+      await this.dataSource.transaction(async (manager) => {
+        await manager.getRepository(MeetupChatMessageEntity).insert(message);
+        await new TypeOrmTransactionalOutbox(manager).add(
+          {
+            eventId: message.id,
+            eventName: 'MeetupChatMessageCreated.v1',
+            occurredAt: message.sentAt.toISOString(),
+            meetupId: message.meetupId,
+            messageId: message.id,
+            senderUserId: message.senderUserId,
+            textContent: message.textContent,
+            attachments: delivery.attachments,
+            sentAt: message.sentAt.toISOString(),
+          },
+          { destination: 'realtime', recipientIds },
+        );
+      });
     } catch (error) {
       if (
         error instanceof QueryFailedError &&

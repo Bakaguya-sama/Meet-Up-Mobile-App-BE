@@ -27,6 +27,24 @@ export class OutboxDispatcher {
   ): Promise<void> {
     if (destination === 'realtime') {
       if (
+        ['MeetupChatMessageCreated.v1', 'DirectChatMessageCreated.v1'].includes(
+          event.eventName,
+        )
+      ) {
+        for (const recipientId of new Set(recipientIds)) {
+          await this.realtime.publish({
+            room: realtimeRooms.user(recipientId),
+            eventName:
+              event.eventName === 'MeetupChatMessageCreated.v1'
+                ? 'meetup:chat-message'
+                : 'direct:chat-message',
+            eventId: event.eventId,
+            payload: event,
+          });
+        }
+        return;
+      }
+      if (
         [
           'MeetupCreated.v1',
           'MeetupUpdated.v1',
@@ -117,6 +135,9 @@ function pushContent(event: IntegrationEvent) {
 }
 
 function roomForEvent(event: IntegrationEvent): string {
+  if (event.eventName === 'DirectChatMessageCreated.v1') {
+    return realtimeRooms.user(event.senderUserId);
+  }
   if (event.eventName === 'LocationUpdated.v1') {
     return event.meetupId
       ? realtimeRooms.meetup(event.meetupId)

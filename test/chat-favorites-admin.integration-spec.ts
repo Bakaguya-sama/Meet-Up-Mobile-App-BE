@@ -196,7 +196,6 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
     send = new SendMeetupChatMessageUseCase(
       chatStore,
       membership,
-      chatPublisher,
     );
     list = new ListMeetupChatMessagesQuery(chatStore, membership);
     favorites = new TypeOrmFavoritePlaceStore(db);

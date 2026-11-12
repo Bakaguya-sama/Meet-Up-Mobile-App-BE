@@ -25,6 +25,9 @@ import { SetMeetupMemberPreferenceUseCase } from '../src/bounded-contexts/meetup
 import { GetMeetupMemberPreferenceUseCase } from '../src/bounded-contexts/meetups/application/use-cases/get-meetup-member-preference.use-case';
 import { GetMeetupPreferencesSummaryQuery } from '../src/bounded-contexts/meetups/application/queries/get-meetup-preferences-summary.query';
 import { ListMeetupsQuery } from '../src/bounded-contexts/meetups/application/queries/list-meetups.query';
+import { CastMeetupVoteUseCase } from '../src/bounded-contexts/meetups/application/use-cases/cast-meetup-vote.use-case';
+import { FinalizeMeetupUseCase } from '../src/bounded-contexts/meetups/application/use-cases/finalize-meetup.use-case';
+import { ListMeetupHistoryQuery } from '../src/bounded-contexts/meetups/application/queries/list-meetup-history.query';
 import { MeetupMembershipReader } from '../src/bounded-contexts/meetups/application/public/meetup-membership-reader';
 import { MeetupLocationAdapter } from '../src/bounded-contexts/locations/infrastructure/adapters/meetup-location.adapter';
 import { isIntegrationEvent } from '../src/shared-kernel/application/integration-event.contract';
@@ -98,6 +101,18 @@ describe('Meetup HTTP contract', () => {
           provide: useCase,
           useValue: new useCase(store),
         })),
+        {
+          provide: CastMeetupVoteUseCase,
+          useValue: { execute: jest.fn() },
+        },
+        {
+          provide: FinalizeMeetupUseCase,
+          useValue: { execute: jest.fn() },
+        },
+        {
+          provide: ListMeetupHistoryQuery,
+          useValue: { execute: jest.fn() },
+        },
       ],
     })
       .overrideGuard(AccessTokenGuard)

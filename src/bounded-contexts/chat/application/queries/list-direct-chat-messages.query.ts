@@ -25,7 +25,10 @@ export class ListDirectChatMessagesQuery {
     }
     const actorId = input.actorId.toLowerCase();
     const peerId = input.peerId.toLowerCase();
-    if (!(await this.friendships.areAccepted(actorId, peerId))) {
+    const accepted = await this.friendships.areAccepted(actorId, peerId);
+    // A friendship gates creation/sending.  It does not retroactively erase
+    // a private conversation when the relationship later changes.
+    if (!accepted && !(await this.store.hasConversation(actorId, peerId))) {
       throw new ChatError(
         'DIRECT_CHAT_FORBIDDEN',
         'Direct chat is available only between accepted friends',

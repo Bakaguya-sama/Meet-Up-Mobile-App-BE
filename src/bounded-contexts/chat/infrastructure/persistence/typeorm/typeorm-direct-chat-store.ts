@@ -8,6 +8,7 @@ import type {
 import { DirectChatConversationEntity } from './entities/direct-chat-conversation.typeorm-entity';
 import { DirectChatMessageEntity } from './entities/direct-chat-message.typeorm-entity';
 import { randomUUID } from 'node:crypto';
+import { TypeOrmTransactionalOutbox } from '../../../../../infrastructure/outbox/persistence/typeorm-outbox.port';
 
 @Injectable()
 export class TypeOrmDirectChatStore implements DirectChatStore {
@@ -15,6 +16,10 @@ export class TypeOrmDirectChatStore implements DirectChatStore {
 
   async append(
     message: Omit<DirectChatMessage, 'conversationId'>,
+    delivery: Omit<
+      import('../../../application/ports/direct-chat-store.port').DirectChatMessageView,
+      'conversationId'
+    >,
   ): Promise<DirectChatMessage> {
     const [userAId, userBId] = [
       message.senderUserId,
@@ -37,6 +42,24 @@ export class TypeOrmDirectChatStore implements DirectChatStore {
           conversationId: conversation.id,
         };
         await manager.getRepository(DirectChatMessageEntity).insert(persisted);
+        await new TypeOrmTransactionalOutbox(manager).add(
+          {
+            eventId: message.id,
+            eventName: 'DirectChatMessageCreated.v1',
+            occurredAt: message.sentAt.toISOString(),
+            conversationId: conversation.id,
+            messageId: message.id,
+            senderUserId: message.senderUserId,
+            recipientUserId: message.recipientUserId,
+            textContent: message.textContent,
+            attachments: delivery.attachments,
+            sentAt: message.sentAt.toISOString(),
+          },
+          {
+            destination: 'realtime',
+            recipientIds: [message.senderUserId, message.recipientUserId],
+          },
+        );
         return persisted;
       });
     } catch (error) {
@@ -85,6 +108,16 @@ export class TypeOrmDirectChatStore implements DirectChatStore {
       recipientUserId:
         message.senderUserId === input.actorId ? input.peerId : input.actorId,
     }));
+  }
+
+  async hasConversation(actorId: string, peerId: string): Promise<boolean> {
+    const [userAId, userBId] = [
+      actorId.toLowerCase(),
+      peerId.toLowerCase(),
+    ].sort();
+    return this.dataSource.getRepository(DirectChatConversationEntity).exists({
+      where: { userAId, userBId },
+    });
   }
 }
 
