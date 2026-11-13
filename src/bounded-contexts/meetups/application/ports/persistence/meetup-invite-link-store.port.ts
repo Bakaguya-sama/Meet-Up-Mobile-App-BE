@@ -26,16 +26,19 @@ export interface MeetupInviteLinkStorePort {
     revokePrevious: boolean;
     now: Date;
   }): Promise<MeetupInviteLinkRecord>;
-  findPreview(tokenHash: string, now: Date): Promise<MeetupInviteLinkPreview | null>;
+  findPreview(
+    tokenHash: string,
+    now: Date,
+  ): Promise<MeetupInviteLinkPreview | null>;
   revoke(input: {
     meetupId: string;
     linkId: string;
     actorId: string;
     now: Date;
   }): Promise<void>;
-  accept(input: {
-    tokenHash: string;
-    actorId: string;
-    now: Date;
-  }): Promise<{ meetupId: string; participantId: string; acceptedNow: boolean }>;
+  accept(input: { tokenHash: string; actorId: string; now: Date }): Promise<{
+    meetupId: string;
+    participantId: string;
+    acceptedNow: boolean;
+  }>;
 }

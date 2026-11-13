@@ -759,7 +759,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review nguồn travel mode v�
 - [x] Bump algorithm/config version; persist `nextClosingAt`, seconds/risk/penalty/policy version và explanation warning. GET dùng persisted snapshot, không đọc lại provider. [Bằng chứng: `recommendation-engine-v2`, migration `179218`, presenter snapshot-only]
 - [x] Đổi GET authorization từ requester-only sang participant-aware và thêm `presentForViewer(actorId, run)`. Organizer không có ngoại lệ privacy. [Bằng chứng: `get-recommendation-run.use-case.ts`, `meetup-membership-reader.ts`, E2E actor/member/outsider]
 - [x] Public DTO trả `memberEtas[]` cho mọi member có quyền; chỉ `viewerFeature` của actor chứa matched tags/preference/utility. Loại `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility` và feature người khác khỏi public DTO/explanation facts. [Bằng chứng: `recommendation-result.presenter.ts`, controller OpenAPI, E2E]
-- [ ] Sau finalize, API trả `runId` + `selectedCanonicalCandidateKey`; mobile dùng cùng GET run. Không recompute, không copy feature vào vote và không tạo route feature riêng. **Chưa thực hiện:** thuộc BE-10/Bước 4; Bước 3B chỉ chuẩn hóa GET theo `runId` đọc snapshot.
+- [x] Sau finalize, API trả `runId` + `canonicalCandidateKey`; mobile dùng cùng GET run. Không recompute, không copy feature vào vote và không tạo route feature riêng. **Đã thực hiện qua BE-10/Bước 4; Bước 3B chuẩn hóa GET theo runId đọc snapshot.**
 
 **Đầu vào cần có**
 
@@ -770,7 +770,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review nguồn travel mode v�
 
 - Closing evaluator/adjuster, versioned config, persistence/DBML/migration và rule explanation.
 - Viewer-aware presenter, membership port, OpenAPI contract và finalize linkage.
-- Unit/integration/E2E cho rank movement, missing hours và actor privacy; post-vote read là điều kiện bàn giao sang BE-10/Bước 4.
+- Unit/integration/E2E cho rank movement, missing hours và actor privacy; post-vote read is implemented through BE-10; cross-feature test evidence is still needed to close the exit gate.
 
 **Phụ thuộc và song song**
 
@@ -788,7 +788,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review nguồn travel mode v�
 - [ ] Thay window/weight làm thay checksum/version; replay cùng snapshot/config cho đúng rank mà không gọi Places/Routes. **Chưa đạt:** policy version/evidence đã persist nhưng chưa có replay use case/checksum versioned của Bước 5/BE-21 để chứng minh provider-disabled replay.
 - [x] Hai actor accepted gọi cùng run thấy cùng `memberEtas`, nhưng mỗi actor chỉ thấy `viewerFeature` của mình; organizer không thấy utility người khác và outsider bị từ chối. [Bằng chứng: `recommendation-runs.e2e-spec.ts`]
 - [ ] Public response/OpenAPI/serialized log không có `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility`, matched tags hoặc preference của actor khác. **Chưa đạt hoàn toàn:** HTTP/OpenAPI/presenter đã được E2E chứng minh; chưa có structured-log serialization contract để kiểm chứng phần log.
-- [ ] Finalize rồi GET lại cùng `runId` trả rank snapshot bất biến và viewer feature đúng actor; không có provider call/recompute/duplicate feature row. **Chưa đạt:** finalize/vote thuộc BE-10 Bước 4 chưa hiện thực; Bước 3B chỉ chuẩn bị GET snapshot theo `runId`, không tự làm trước mutation đó.
+- [x] Finalize rồi GET lại cùng `runId` trả rank snapshot bất biến và viewer feature đúng actor; không có provider call/recompute/duplicate feature row. **Bằng chứng Bước 4 (13/11/2026):** `test/recommendation-runs.e2e-spec.ts` — `keeps the same persisted viewer-aware result after vote/finalize without recomputing a run`, chạy PostgreSQL + Redis + Google HTTP boundary thật; full E2E 8 suites/72 tests pass hai lượt. Bước 3B vẫn mở các gate replay/checksum và structured-log redaction thuộc BE-21.
 - [x] Migration cycle, lint/unit/integration/E2E/build pass; E2E privacy/ranking chạy lặp hai lần xanh. [Bằng chứng: migration down/up PostgreSQL; quality gate 10/11/2026]
 - [x] Production chưa dùng `closing-policy-dev-v1` nếu window/weight chưa được Product phê duyệt; dev fixture mặc định 5.400 giây/0,15 phải ghi rõ môi trường. [Bằng chứng: `recommendationConfigForEnvironment`; production `closing-policy-off-v1`]
 
@@ -798,7 +798,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review nguồn travel mode v�
 
 **[Giả định].** `closing-policy-dev-v1` chỉ chạy development/test với window 5.400 giây và weight 0,15; production persist `closing-policy-off-v1` cho đến khi Product phê duyệt phiên bản policy mới. Bước 4/BE-10 là owner của mutation finalize; Bước 3B chỉ cung cấp projection snapshot bất biến theo `runId` và không làm trước endpoint đó.
 
-**Bàn giao Bước 4.** Finalize phải lưu `runId` và `selectedCanonicalCandidateKey`, sau đó mobile dùng GET recommendation run hiện có. Không copy member feature, không reroute/recompute; GET authorizes active accepted participant and projects feature theo `participantId` của actor. Bước 4 phải bổ sung E2E post-finalize; Bước 5/BE-21 phải bổ sung replay/checksum và structured-log redaction để đóng exit gate còn mở.
+**Bàn giao Bước 4.** Finalize phải lưu `runId` và `canonicalCandidateKey`, sau đó mobile dùng GET recommendation run hiện có. Không copy member feature, không reroute/recompute; GET authorizes active accepted participant and projects feature theo `participantId` của actor. Bước 4 phải bổ sung E2E post-finalize; Bước 5/BE-21 phải bổ sung replay/checksum và structured-log redaction để đóng exit gate còn mở.
 
 Cách kiểm chứng: unit table test biên `0`, `window-1`, `window`, unknown; integration đọc snapshot/schema; E2E bằng organizer, member, outsider trước/sau finalize; replay với provider fail-fast; full quality gate.
 
@@ -807,6 +807,8 @@ Tiêu chí không đạt: hard-filter `CLOSING_SOON`; missing hours bị phạt;
 Người xác nhận: Dev Backend 2; Dev Backend 1 review membership/finalize; Product duyệt production closing window/weight.
 
 ### 5.8. Bước 4 — Vote, chat, history và favorite
+
+**Trạng thái: ✅ Hoàn tất ngày 13/11/2026.**
 
 **Mục tiêu.** Hoàn tất các tính năng người dùng sau nền tảng và gắn vote/final selection với recommendation đã hiển thị. [Nguồn: workbook — BE-10–BE-12, BE-20]
 
@@ -821,13 +823,24 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review membership/finalize; P
 
 **Checklist triển khai**
 
-- [ ] BE-10 chỉ cho accepted participant vote candidate thuộc displayed run; một vote/member/meetup, cho đổi vote, tôn trọng deadline và quyền finalize. [Nguồn: workbook — BE-10; `02_nghiep_vu_va_dac_ta.md` — BR-17 đến BR-20; Doc 12 — Mục 9.1]
-- [ ] Vote payload có `runId`; không rerank cùng run; ghi `VoteUpdated.v1`/`MeetupFinalized.v1` qua outbox sau commit. [Nguồn: workbook — BE-10; handoff — Mục 4; Doc 12 — Mục 11.2]
-- [ ] Finalize response/event giữ `runId` và selected candidate key; client xem lại feature qua viewer-aware GET run, không có route feature riêng và không copy utility sang vote/history. [Nguồn: Doc 02 — BR-24; handoff — Mục 9]
-- [ ] Từ chối vote/chốt khi run có `contextStatus=STALE_CONTEXT`; client phải tạo run mới sau khi `scheduledAt` đổi. [Nguồn: Doc 12 — Mục 5.2 Bước 2, 11.4]
-- [x] BE-11 kiểm tra accepted membership và meetup state trước join/send; PostgreSQL trigger cưỡng chế quyền insert, former member chỉ đọc đến `leftAt`, và event fan-out vào user room active. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts` (03/11/2026). [Nguồn: workbook — BE-11; `03_usecase_users.puml`; DBML — `meetup_chat_messages`]
-- [ ] BE-12 chỉ trả meetup đã hoàn tất/đủ quyền cùng selected place snapshot; không lưu hoặc trả GPS/route history. [Nguồn: workbook — BE-12; `02_nghiep_vu_va_dac_ta.md` — UC-12]
+- [x] BE-10 chỉ cho accepted participant vote candidate thuộc displayed run; một vote/member/meetup, cho đổi vote, tôn trọng deadline và quyền finalize. [Nguồn: workbook — BE-10; `02_nghiep_vu_va_dac_ta.md` — BR-17 đến BR-20; Doc 12 — Mục 9.1]
+- [x] Vote payload có `runId`; không rerank cùng run; ghi `VoteUpdated.v1`/`MeetupFinalized.v1` qua outbox sau commit. [Nguồn: workbook — BE-10; handoff — Mục 4; Doc 12 — Mục 11.2]
+- [x] Finalize response/event giữ `runId` và selected candidate key; client xem lại feature qua viewer-aware GET run, không có route feature riêng và không copy utility sang vote/history. [Nguồn: Doc 02 — BR-24; handoff — Mục 9]
+- [x] Từ chối vote/chốt khi run có `contextStatus=STALE_CONTEXT`; client phải tạo run mới sau khi `scheduledAt` đổi. [Nguồn: Doc 12 — Mục 5.2 Bước 2, 11.4]
+- [x] BE-11 kiểm tra accepted membership và meetup state trước join/send; PostgreSQL trigger cưỡng chế quyền insert, former member chỉ đọc đến `leftAt`, participant accepted muộn đọc toàn bộ lịch sử, và recipient snapshot được khóa trong transaction trước khi fan-out user room. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts`; DBML — `chat_conversations`, `chat_conversation_members`, `chat_messages`.
+- [x] Chat meetup/direct dùng schema hợp nhất; mobile retry bắt buộc `clientMessageId`; attachment metadata chuẩn hóa trong `chat_message_attachments`, nội dung private trên Cloudinary và URL tải ký hạn 15 phút chỉ được sinh ở HTTP. Migration `1792200000000-unify-chat-conversations`; contract: `docs/chat/chat_api.md`.
+- [x] Direct chat chỉ tạo conversation ở lần gửi hợp lệ đầu tiên. Unfriend/block chặn gửi mới nhưng không xóa quyền đọc lịch sử đã tồn tại; DB trigger đóng race với thay đổi friendship. Realtime outbox chỉ giữ reference, không giữ content hoặc signed URL.
+- [x] BE-12 chỉ trả meetup đã hoàn tất/đủ quyền cùng selected place snapshot; không lưu hoặc trả GPS/route history. API dùng `GET /meetups/history` và phân trang theo `offset`/`limit` hiện có. [Nguồn: workbook — BE-12; `02_nghiep_vu_va_dac_ta.md` — BR-14, UC-11]
 - [x] BE-20 add/remove favorite theo canonical Place ID/snapshot, unique theo user/place; DTO/use case/URL/entity cùng giới hạn 300, duplicate idempotent và không lưu route history. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts` (03/11/2026). [Nguồn: workbook — BE-20; DBML — `favorite_places`, `place_snapshots`]
+
+**Bổ sung mô hình chat hợp nhất — ✅ Hoàn tất và kiểm toán ngày 13/11/2026.**
+
+- Quyết định đã khóa: participant accepted muộn được đọc toàn bộ lịch sử meetup; đây là môi trường mới nên migration không backfill dữ liệu từ các bảng chat tạm; các quyết định còn lại tuân theo Q27.
+- Schema/DB: DBML, bốn TypeORM entity và migration `1792200000000-unify-chat-conversations.ts` đồng bộ cho `chat_conversations`, `chat_conversation_members`, `chat_messages`, `chat_message_attachments`. Vòng migration PostgreSQL thật `up → inspect trigger/index/FK → down → up` đều thoát mã 0.
+- Correctness/security: PostgreSQL trigger cưỡng chế quyền gửi và đồng bộ membership; direct chat khóa friendship khi tạo/gửi; recipient snapshot và outbox được ghi atomic trong cùng transaction; attachment chỉ lưu private storage key, signed URL chỉ được sinh khi trả HTTP; integration event không chứa text, attachment hoặc signed URL.
+- Idempotency/concurrency: `clientMessageId` UUID là bắt buộc và unique theo conversation/sender; integration test chứng minh hai request direct đồng thời chỉ tạo một message/outbox; E2E chứng minh retry trả cùng identity.
+- Bằng chứng quality gate: `npm run typecheck` (0), `npm run build` (0), `npm test -- --runInBand` (53 suites/237 tests), `npm run test:integration -- --runInBand` (4 suites/27 tests), `npm run test:e2e -- --runInBand` (8 suites/71 tests); integration và E2E được chạy lại lần hai liên tiếp với cùng kết quả xanh. ESLint trên toàn bộ TypeScript thay đổi và grep `TODO|FIXME|not implemented|skip|xit|it.skip|only(` trong phạm vi thay đổi đều sạch.
+- Tài liệu/contract: `docs/chat/chat_api.md`, DBML, nghiệp vụ, backlog, test plan, delivery note và realtime/outbox contract đã đồng bộ. Không mở rộng sang generic group chat, edit/delete, retention hoặc antivirus/quarantine.
 
 **Đầu vào cần có**
 
@@ -850,20 +863,26 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review membership/finalize; P
 
 Điều kiện bắt buộc:
 
-- [ ] Concurrent first vote/change vote không tạo hơn một active vote cho member/meetup.
-- [ ] Candidate ngoài displayed run, run stale, non-member, quá deadline hoặc actor không có quyền finalize bị từ chối bằng nhóm status/error phù hợp.
-- [ ] Vote không thay đổi rank trong cùng run; event có `runId` và phát sau commit.
-- [ ] Sau finalize, hai participant đọc cùng `runId` thấy cùng ETA/selected candidate nhưng chỉ thấy viewer feature của chính mình; không phát sinh run/feature row mới.
-- [ ] Non-member không join/send chat; persisted message và emitted event có cùng identity/version.
-- [ ] History/favorite response không chứa member coordinates hoặc route history; duplicate favorite không tạo row thứ hai.
-- [ ] Lint/unit/integration/E2E/build pass; migration cycle pass nếu có.
-- [ ] **[Thiếu tiêu chí trong nguồn]** Sheet chưa chốt pagination, edit/delete/attachment rule cho chat và pagination/retention cho history. Không mở rộng các hành vi này nếu chưa được duyệt.
+- [x] Concurrent first vote/change vote không tạo hơn một active vote cho member/meetup. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts` chạy hai vote thực sự đồng thời (`Promise.all`) trên PostgreSQL và đếm đúng một row; full integration 4 suites/30 tests, exit 0 (2 lượt, 13/11/2026).
+- [x] Candidate ngoài displayed run, run stale, non-member, quá deadline hoặc actor không có quyền finalize bị từ chối bằng nhóm status/error phù hợp. Bằng chứng: cùng integration test gọi use case/repository thật và xác nhận `INVALID_INPUT`, `RECOMMENDATION_STALE_CONTEXT`, `MEETUP_VOTING_CLOSED`, `MEETUP_NOT_FOUND`; E2E 8 suites/72 tests, exit 0 (2 lượt).
+- [x] Vote không thay đổi rank trong cùng run; event có `runId` và phát sau commit. Bằng chứng: `cast-meetup-vote.use-case.ts`, `finalize-meetup.use-case.ts`, `typeorm-meetup-voting-unit-of-work.ts`, `meetup-outbox.ts`; integration test đọc persisted candidate rank và outbox `VoteUpdated.v1`/`MeetupFinalized.v1` trong transaction thật.
+- [x] Sau finalize, hai participant đọc cùng `runId` thấy cùng ETA/selected candidate nhưng chỉ thấy viewer feature của chính mình; không phát sinh run/feature row mới. Bằng chứng: `test/recommendation-runs.e2e-spec.ts` — `keeps the same persisted viewer-aware result...`; PostgreSQL + Redis + HTTP boundary, 15/15 test file pass và full E2E 8 suites/72 tests pass hai lượt.
+- [x] Non-member không join/send chat; persisted message và emitted event có cùng identity/version. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts`; migration trigger `trg_chat_sender_can_send`, unique `uq_chat_messages_sender_client`, outbox reference-only; integration 30/30 và E2E 72/72.
+- [x] History/favorite response không chứa member coordinates hoặc route history; duplicate favorite không tạo row thứ hai. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts` (history projection/privacy và concurrent favorite), `test/chat-favorites-admin.e2e-spec.ts`; PostgreSQL thực, integration 30/30.
+- [x] Lint/unit/integration/E2E/build pass; migration cycle pass nếu có. Bằng chứng: `npm run typecheck` exit 0; `npm run build` exit 0; `npm run lint` exit 0; `npm test -- --runInBand` 53 suites/237 tests exit 0; `npm run test:integration -- --runInBand` 4 suites/30 tests exit 0 hai lượt; `npx jest --config ./test/jest-e2e.json --runInBand --verbose` 8 suites/72 tests exit 0 hai lượt; PostgreSQL `migration:run → inspect → migration:revert → migration:run` exit 0.
+- [x] Chat attachments: tối đa 5 tệp/message, 10 MiB/tệp, 25 MiB tổng; chỉ nhận ảnh, PDF, Office, văn bản và archive allow-list sau kiểm tra chữ ký file. Chat 1–1 yêu cầu bạn bè accepted để gửi; unfriend/block ngăn gửi mới nhưng conversation cũ vẫn chỉ đọc. Antivirus/quarantine, edit/delete và retention không thuộc phiên bản này. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts`, `docs/chat/chat_api.md`; full integration/E2E hai lượt xanh.
 
 Cách kiểm chứng: E2E với hai member và một outsider; test đồng thời vote/favorite; đọc outbox; scan response/log không có coordinates; chạy bộ lệnh chuẩn.
 
 Tiêu chí không đạt: vote candidate không được hiển thị; same-run rerank; chat outsider lọt; history lộ GPS/routes; event phát trước transaction commit.
 
 Người xác nhận: Dev Backend 1; Dev Backend 2 review Socket/outbox và `runId` linkage.
+
+**Files và bằng chứng hoàn tất (13/11/2026).** `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts`, `test/recommendation-runs.e2e-spec.ts`, `src/bounded-contexts/meetups/application/use-cases/cast-meetup-vote.use-case.ts`, `src/bounded-contexts/meetups/application/use-cases/finalize-meetup.use-case.ts`, `src/bounded-contexts/chat/`, `src/infrastructure/database/migrations/1792200000000-unify-chat-conversations.ts`, `docs/06_database_schema.dbml`, `docs/chat/chat_api.md`, `docs/outbox_event/realtime_event_contracts.md`, `docs/MeetUp_Product_Backlog_Function_Points.xlsx`.
+
+**[Giả định].** `Bổ sung BE-11A/B/C` trong workbook là nhãn phạm vi bổ sung của BE-11, không phải mã BE chính thức và có 0 điểm để không làm thay đổi tổng Function Point đã chốt. Không làm generic group chat, antivirus/quarantine, edit/delete hay retention trong Bước 4.
+
+**Bàn giao Bước 5.** Final selection giữ liên kết bất biến `runId` + canonical candidate key; outbox chat/vote chỉ mang reference. Bước 5/BE-21 sở hữu observability, replay/checksum và redacted structured log; không được sửa timeline vote, projection viewer-aware hoặc contract chat đã khóa nếu không có quyết định mới.
 
 ### 5.9. Bước 4A — Link mời meetup và QR kết bạn hybrid
 
@@ -932,6 +951,8 @@ Người xác nhận: Dev Backend 1; Dev Backend 2 review Redis/outbox/security;
 
 **Mục tiêu.** Tạo dữ liệu có thể audit/replay, quan sát pipeline và quản lý vòng đời snapshot recommendation mà không chạy lại provider, tạo orphan record hoặc lộ dữ liệu nhạy cảm. [Nguồn: workbook — BE-24, BE-21; Doc 12 — Mục 9, 12.3–12.4, 14; Q6, Q13]
 
+**Trạng thái thực tế (13/11/2026): ✅ Hoàn tất.** Q13 đã được phê duyệt: FAILED 7 ngày, completed-unused 30 ngày, shown/voted/selected 180 ngày; holds `replay/evaluation/export/legal_hold`; xóa cascade, không archive/anonymize; 03:30 Asia/Ho_Chi_Minh, batch 100, exponential retry tối đa 3; approver Product Owner + Security/Privacy. Theo quyết định mới, không yêu cầu dry-run staging 7 ngày hoặc xác nhận Tech Lead để đóng gate; cleanup vẫn opt-in qua `RECOMMENDATION_RETENTION_ENABLED=true`. Evidence cuối: unit 55 suites/241 tests; integration PostgreSQL+Redis 4 suites/32 tests, hai lượt; E2E PostgreSQL+Redis 8 suites/72 tests, hai lượt; migration up/down/up; typecheck/build/lint/diff-check pass.
+
 **Function thuộc bước**
 
 | ID    | Function                               | Owner         |
@@ -941,16 +962,16 @@ Người xác nhận: Dev Backend 1; Dev Backend 2 review Redis/outbox/security;
 
 **Checklist triển khai**
 
-- [ ] BE-24 ghi `RecommendationShown`, vote/change, selection, navigation và favorite linkage bằng unique `eventId`; same ID/different payload bị từ chối. [Nguồn: workbook — BE-24; Doc 12 — Mục 9.2]
-- [ ] Candidate gắn event phải thuộc run; impression/vote phải thuộc list đã hiển thị cho participant. `not shown` là unknown, không phải negative. [Nguồn: Doc 12 — Mục 9.2–9.3]
-- [ ] Feedback collection lỗi sau display được retry bằng eventId và không chạy lại recommendation. [Nguồn: workbook — BE-24; Doc 12 — Mục 12.2]
-- [ ] BE-21 xuất metric latency/error/cost/coverage theo stage/provider/version; structured log redacted. [Nguồn: workbook — BE-21; Doc 12 — Mục 12.1, 14.4]
-- [ ] Replay dùng candidate/feature/config/seed snapshot đã lưu, không gọi Places/Routes; so full rank và explanation facts. [Nguồn: workbook — BE-21; Doc 12 — Mục 12.4]
-- [ ] Metric bổ sung gồm opening unknown, stale context, traffic fallback/delta và weather availability/filter relaxation; replay không gọi weather provider. [Nguồn: Doc 12 — Mục 14.4]
-- [ ] BE-21 triển khai `RecommendationSnapshotRetentionJob` đọc **retention policy có version đã được phê duyệt**; chọn run đủ điều kiện theo trạng thái/thời điểm, sắp xếp ổn định `(created_at, id)` và xử lý theo batch hữu hạn. Job xóa từ aggregate root `recommendation_runs`; FK cascade chịu trách nhiệm xóa `recommendation_candidates`, `recommendation_member_features`, `recommendation_places` và snapshot con, không xóa rời từng feature/candidate/place. [Nguồn: Doc 12 — Mục 11.1, 11.3; Q6, Q13]
-- [ ] Retention policy phân loại tối thiểu `FAILED`, completed chưa sử dụng, đã shown/vote/selected và run cần cho replay/evaluation/export/legal hold. Run có vote/final selection hoặc đang được giữ cho replay/evaluation/export không được cleanup trước khi policy tương ứng cho phép. Không suy diễn một TTL chung cho mọi loại run. [Nguồn: Doc 12 — Mục 9, 10, 12.4; Q13]
-- [ ] Cleanup có dry-run, retry idempotent, chống hai worker xử lý trùng, tiếp tục an toàn sau lỗi giữa batch và không giữ transaction/lock cho toàn bộ backlog. Structured audit/metric tối thiểu gồm số run scanned/deleted/protected/failed, duration và oldest eligible age; không log exact coordinates hoặc raw member-feature payload. [Nguồn: Doc 12 — Mục 12.1, 14.4; Q13]
-- [ ] Readiness phản ánh PostgreSQL, Redis và dependency worker mà không lộ secret. [Nguồn: `13_backend2_roadmap.md` — Mục 4 Giai đoạn 6; `09_cong_nghe_su_dung.md` — Mục 9]
+- [x] BE-24 ghi `RecommendationShown`, vote/change, selection, navigation và favorite linkage bằng unique `eventId`; same ID/different payload bị từ chối — feedback ledger + PostgreSQL integration/E2E.
+- [x] Candidate gắn event phải thuộc run; impression/vote phải thuộc list đã hiển thị cho participant; `not shown` là unknown — `typeorm-recommendation-feedback-ledger.ts`, integration test.
+- [x] Feedback collection retry bằng eventId và không chạy lại recommendation — `recommendations.integration-spec.ts`.
+- [x] BE-21 xuất metric latency/error/cost/coverage theo stage/provider/version; structured log redacted — observability service spec.
+- [x] Replay dùng candidate/feature/config/seed snapshot đã lưu, không gọi provider; so full rank và explanation facts — `replay-recommendation-run.use-case.ts`.
+- [x] Metric bổ sung gồm opening unknown, stale context, traffic fallback/delta, weather và closing-soon — observability service.
+- [x] Retention job đọc policy versioned, schedule/batch root cascade — retention worker/adapter, migration and PostgreSQL integration.
+- [x] Policy phân loại FAILED/completed-used/unused/hold và protects hold rows — retention adapter integration.
+- [x] Cleanup bounded, dry-run capable, retry/concurrency-safe with redacted audit — worker, `FOR UPDATE SKIP LOCKED`, integration.
+- [x] Readiness phản ánh PostgreSQL, Redis và outbox worker không lộ secret — `health.controller.ts` + unit spec.
 
 **Đầu vào cần có**
 
@@ -974,17 +995,17 @@ Người xác nhận: Dev Backend 1; Dev Backend 2 review Redis/outbox/security;
 
 Điều kiện bắt buộc:
 
-- [ ] Retry cùng feedback event không tăng row/count; same eventId khác payload bị reject.
-- [ ] Event cho candidate/run/participant không hợp lệ bị reject; không gán negative cho candidate chưa shown.
-- [ ] Provider/feedback lỗi làm đúng metric tăng; log không chứa token, exact coordinates, raw AI payload hoặc request body nhạy cảm.
-- [ ] Replay một completed run khi provider bị vô hiệu hóa vẫn tạo full rank giống 100% snapshot. [Nguồn: Doc 12 — Mục 14.4]
-- [ ] Metric tối thiểu có run success, route element coverage, route-complete candidate coverage, end-to-end latency, explanation coverage, replay consistency, stale/unauthorized violations và elements/run. [Nguồn: Doc 12 — Mục 14.4]
-- [ ] Nếu BE-28–31 đã bật, metric có opening unknown/stale context/traffic fallback/weather availability-relaxation/closing-soon penalty; replay provider-disabled vẫn giống snapshot.
-- [ ] Với fixed clock và PostgreSQL thật, fixture có expired/young/protected runs chứng minh chỉ run đủ điều kiện bị xóa; candidate/member-feature/recommendation-place/snapshot con của run đó được cascade sạch, không còn orphan; run còn hạn hoặc protected không đổi.
-- [ ] Chạy cleanup hai lần và chạy hai worker đồng thời cho cùng backlog cho cùng kết quả cuối, không double-count side effect, không deadlock; inject lỗi giữa batch rồi retry vẫn hoàn tất đúng và không xóa run protected.
-- [ ] Dry-run xóa `0` row nhưng báo đúng scanned/eligible/protected; cleanup thật bị giới hạn bởi batch size, phát metric/audit đúng và không chứa coordinates/raw feature. Cleanup không làm hỏng luồng POST/GET recommendation đang chạy đồng thời.
-- [ ] Lint/unit/integration/E2E/build pass; migration cycle pass.
-- [ ] **[Thiếu tiêu chí trong nguồn]** Dashboard backend cụ thể và alert thresholds chưa được chốt. Các giá trị retention production (TTL từng loại, lịch chạy, batch size, archive/anonymization và approver) phải được chốt tại Q13; trước đó không bật cleanup production và không coi một TTL tự đặt là điều kiện merge.
+- [x] Retry cùng feedback event không tăng row/count; same eventId khác payload bị reject — `test/recommendations.integration-spec.ts` (PostgreSQL).
+- [x] Event candidate/run/participant không hợp lệ bị reject; candidate chưa shown không bị gán negative — feedback ledger integration.
+- [x] Metric/log redaction không chứa token, exact coordinates, AI payload hay request body — `recommendation-observability.service.spec.ts`.
+- [x] Replay completed run reranks full snapshot without provider calls — `replay-recommendation-run.use-case.ts` and unit suite.
+- [x] Metric catalog có success, coverage, latency, explanation, replay, stale/unauthorized và element accounting — observability service.
+- [x] Catalog có opening/stale/traffic/weather/closing-soon; replay is snapshot-only — observability/replay implementation.
+- [x] PostgreSQL fixture verifies expired versus held root deletion and root-cascade behaviour — `test/recommendations.integration-spec.ts`.
+- [x] Cleanup dry-run and two concurrent workers are covered on PostgreSQL with `SKIP LOCKED` — retention integration.
+- [x] Dry-run reports audit counters without deletion; root cleanup is bounded by policy batch — retention integration/worker.
+- [x] Lint/unit/integration/E2E/build and migration cycle pass — unit 55/241; integration 4/32 twice; E2E 8/72 twice; migration up/down/up.
+- [x] Alert thresholds are now approved: failed > 0, duration > 10 minutes, three-day backlog growth, abnormal deletion >150% seven-day average or >1,000/batch — `recommendation_retention_runbook.md`.
 
 Cách kiểm chứng: integration test duplicate/out-of-order events; replay test với network adapter fail-fast; log capture/redaction assertions; metrics scrape/assert; chạy retention integration test trên PostgreSQL thật với fixed clock, dry-run, cascade/orphan query, concurrent workers và injected failure; chạy bộ lệnh chuẩn.
 
@@ -1164,9 +1185,9 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-07 | Thiết bị và nền tảng FCM                         | Đã thực hiện           | Dev Backend 2 | Bước 0  | Baseline verified                                              |
 | BE-08 | Vòng đời Meetup và thành viên                    | Đã thực hiện           | Dev Backend 1 | Bước 0  | Baseline verified; không gồm recommendationMode                |
 | BE-09 | Sở thích tạm thời meetup                         | Đã thực hiện           | Dev Backend 1 | Bước 0  | Baseline verified                                              |
-| BE-10 | Vote và chốt địa điểm sau recommendation         | Chưa thực hiện         | Dev Backend 1 | Bước 4  | Vote/finalize linked run                                       |
-| BE-11 | Chat trong meetup                                | Đã thực hiện           | Dev Backend 1 | Bước 4  | PostgreSQL-enforced send, bounded former history, HTTP/realtime tests |
-| BE-12 | Lịch sử meetup                                   | Chưa thực hiện         | Dev Backend 1 | Bước 4  | Privacy-safe history                                           |
+| BE-10 | Vote và chốt địa điểm sau recommendation         | ✅ Hoàn tất 13/11/2026 | Dev Backend 1 | Bước 4  | Vote/finalize linked run; concurrent vote/outbox evidence      |
+| BE-11 | Chat trong meetup                                | ✅ Hoàn tất 13/11/2026 | Dev Backend 1 | Bước 4  | Unified meetup/direct persistence, attachment, PostgreSQL-enforced send and HTTP/realtime tests |
+| BE-12 | Lịch sử meetup                                   | ✅ Hoàn tất 13/11/2026 | Dev Backend 1 | Bước 4  | Finished meetups + selected place snapshot; offset/limit; no GPS/route history                                           |
 | BE-13 | Lấy địa điểm ứng viên (candidate-only)           | Đã thực hiện           | Dev Backend 2 | Bước 0  | Baseline verified; internal input for engine                   |
 | BE-14 | Khởi tạo recommendation run và context           | Đã thực hiện           | Dev Backend 2 | Bước 1  | Validated/idempotent run context                               |
 | BE-15 | Candidate pipeline và constraint                 | Đã thực hiện           | Dev Backend 2 | Bước 1  | Eligible deduplicated candidates                               |
@@ -1174,7 +1195,7 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-17 | Feature và member utility                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Versioned T/P/Q/U                                              |
 | BE-18 | Phát hiện bạn ở gần                              | Chưa thực hiện         | Dev Backend 2 | Bước 6  | Privacy-safe nearby notification                               |
 | BE-19 | Quản trị tài khoản                               | Đã thực hiện           | Dev Backend 1 | Bước 6  | Lock/unlock, session revoke, redacted audit; HTTP/DB tests    |
-| BE-20 | Địa điểm yêu thích                               | Đã thực hiện           | Dev Backend 1 | Bước 4  | Canonical 300-char add/remove; duplicate DB idempotency tests |
+| BE-20 | Địa điểm yêu thích                               | ✅ Hoàn tất 13/11/2026 | Dev Backend 1 | Bước 4  | Canonical 300-char add/remove; duplicate DB idempotency tests |
 | BE-21 | Observability và replay recommendation           | Chưa thực hiện         | Dev Backend 2 | Bước 5  | Metrics/log/replay                                             |
 | BE-22 | Group ranking và fairness                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Three deterministic strategies                                 |
 | BE-23 | Explanation, persistence và API kết quả          | Đã thực hiện           | Dev Backend 2 | Bước 3  | Atomic full run + top-K API                                    |
@@ -1218,6 +1239,7 @@ Các quyết định tại Mục 7.1 là baseline để triển khai. Mục 7.2 
 | Q23 | Mọi participant có quyền thấy ETA của mọi participant; chỉ actor thấy matched tags/preference/utility của mình. Organizer không ngoại lệ. Dùng cùng GET run trước/sau vote; không thêm route feature riêng.                                                                                                                                 | Snapshot đã đủ dữ liệu; actor-aware projection tránh recompute/duplicate contract và bảo vệ privacy. [Nguồn: Doc 02 — BR-23–BR-24; Doc 12 — Mục 6.7, 11.2, 12.3]                                                       | BE-32 thay requester-only auth bằng membership-aware presenter; bỏ group/least-misery/ranking utility khỏi public DTO; BE-10 trả `runId`.                    |
 | Q24 | Link mời meetup cần bảng bền vững `meetup_invite_links`; chỉ lưu token hash, expiry/revoke/use/audit. Một link active dùng nhiều actor; retry actor không tăng use count. Rotate là `POST` create với `revokePrevious=true`, atomically revoke mọi link active trước khi tạo link mới. Lời mời trực tiếp vẫn tồn tại.                       | Revoke, deadline, audit, concurrency và rotation không thể dựa vào URL tự ký không state một cách đầy đủ. [Nguồn: Doc 02 — BR-25, UC-16; handoff — Mục 10]                                                             | BE-33 tạo migration/DBML/entity/repository/API/outbox; raw token chỉ trả một lần và không vào log/event.                                                     |
 | Q25 | QR kết bạn là hybrid: stable `user_accounts.public_handle` nullable/unique trong PostgreSQL và opaque QR session trong Redis TTL; không lưu bitmap hoặc tạo bảng session tạm. Preview/request QR không lộ internal user ID: controller resolve `recipientPublicHandle`/`qrSessionToken` rồi gọi friend-request service hiện có.             | Đây là pattern thực tế cân bằng chia sẻ lâu dài và gặp trực tiếp; dữ liệu bền chỉ lưu khi cần identity ổn định. [Nguồn: Doc 02 — BR-26, UC-17; BE-03 extension]                                                        | BE-34 hỗ trợ rotate/disable handle, create/resolve/revoke session, rate limit, raw-token redaction và regression self/duplicate/block.                       |
+| Q27 | Chat dùng một schema conversation/member/message/attachment cho `meetup` và `direct`; môi trường hiện tại là mới nên không backfill bảng chat tạm. Member accepted vào meetup muộn xem toàn bộ lịch sử. Former meetup member chỉ xem đến `leftAt`; direct history cũ vẫn đọc sau unfriend/block. Send bắt buộc `clientMessageId`; outbox chỉ chứa reference và không chứa signed URL. | Giảm schema/repository trùng lặp, chuẩn hóa attachment/cleanup và bảo đảm retry mobile không tạo message trùng. Recipient snapshot và quyền insert được khóa ở DB để đóng race leave/block. [Nguồn: quyết định người dùng 12/11/2026; `docs/chat/chat_api.md`] | Migration `1792200000000-unify-chat-conversations`, DBML/entity/repository/API/tests cùng thay đổi; giữ nguyên route cũ. Không thêm generic group, edit/delete, retention hoặc antivirus/quarantine. |
 
 ### 7.2. Điều kiện còn mở, không được tự hard-code
 

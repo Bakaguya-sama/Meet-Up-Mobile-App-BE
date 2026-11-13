@@ -22,10 +22,8 @@ export class GetRecommendationRunUseCase {
         'Recommendation run not found',
       );
     }
-    const viewerParticipantId = await this.memberships.findAcceptedParticipantId(
-      meetupId,
-      actorId,
-    );
+    const viewerParticipantId =
+      await this.memberships.findAcceptedParticipantId(meetupId, actorId);
     if (!viewerParticipantId) {
       throw new RecommendationError(
         'RECOMMENDATION_RUN_FORBIDDEN',

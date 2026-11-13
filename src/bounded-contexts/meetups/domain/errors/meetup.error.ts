@@ -9,7 +9,10 @@ export type MeetupErrorCode =
   | 'MEETUP_INVITATION_EXPIRED'
   | 'MEETUP_MEMBER_CONFLICT'
   | 'MEETUP_INSUFFICIENT_PARTICIPANTS'
-  | 'MEETUP_INVITEE_UNAVAILABLE';
+  | 'MEETUP_INVITEE_UNAVAILABLE'
+  | 'MEETUP_VOTING_CLOSED'
+  | 'MEETUP_VOTING_OPEN'
+  | 'RECOMMENDATION_STALE_CONTEXT';
 
 export class MeetupError extends DomainError {
   constructor(code: MeetupErrorCode, message: string) {

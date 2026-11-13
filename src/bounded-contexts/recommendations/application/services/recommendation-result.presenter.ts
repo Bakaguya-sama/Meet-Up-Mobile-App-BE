@@ -1,4 +1,7 @@
-import type { RecommendationPublicView, RecommendationRunResult } from '../../domain/recommendation-run';
+import type {
+  RecommendationPublicView,
+  RecommendationRunResult,
+} from '../../domain/recommendation-run';
 import type { RecommendationContextStatus } from '../../domain/temporal-context';
 
 export function presentForViewer(
@@ -93,7 +96,9 @@ function privateFeature(
     : null;
 }
 
-function publicExplanation(explanation: RecommendationPublicView['results'][number]['explanation']) {
+function publicExplanation(
+  explanation: RecommendationPublicView['results'][number]['explanation'],
+) {
   const privateFacts = new Set([
     'groupUtility',
     'candidateLeastMiseryUtility',

@@ -17,21 +17,30 @@ const openCandidate = (closeHour: number) => ({
 });
 
 describe('ClosingSoonEvaluator', () => {
-  const evaluator = new ClosingSoonEvaluator(RECOMMENDATION_CONFIG_DEV_V1.closingPolicy);
+  const evaluator = new ClosingSoonEvaluator(
+    RECOMMENDATION_CONFIG_DEV_V1.closingPolicy,
+  );
 
   it('keeps an open candidate and applies a proportional risk only inside the window', () => {
     const result = evaluator.evaluate(openCandidate(11), scheduledAt);
-    expect(result).toMatchObject({ status: 'CLOSING_SOON', secondsUntilClose: 3600 });
+    expect(result).toMatchObject({
+      status: 'CLOSING_SOON',
+      secondsUntilClose: 3600,
+    });
     expect(result.closingPenalty).toBeGreaterThan(0);
     expect(result.closingPenalty).toBeLessThanOrEqual(0.15);
   });
 
   it('does not penalize closing outside the window or unknown opening evidence', () => {
     expect(evaluator.evaluate(openCandidate(13), scheduledAt)).toMatchObject({
-      status: 'NOT_SOON', closingPenalty: 0,
+      status: 'NOT_SOON',
+      closingPenalty: 0,
     });
-    expect(evaluator.evaluate({ scheduledOpeningStatus: 'UNKNOWN' }, scheduledAt)).toMatchObject({
-      status: 'UNKNOWN', closingPenalty: 0,
+    expect(
+      evaluator.evaluate({ scheduledOpeningStatus: 'UNKNOWN' }, scheduledAt),
+    ).toMatchObject({
+      status: 'UNKNOWN',
+      closingPenalty: 0,
     });
   });
 

@@ -57,7 +57,6 @@ export class GroupRankerService {
       this.config.utilityTieEpsilon,
     );
     const metrics = [...grouped.entries()].map(([key, values]) => {
-      const utilities = values.map((value) => value.memberUtility);
       const rankingUtilities = values.map(
         (value) => value.rankingUtility ?? value.memberUtility,
       );
@@ -95,16 +94,19 @@ export class GroupRankerService {
     if (strategy === 'min-sum') {
       ordered = [...metrics].sort(
         (a, b) =>
-          a.avgEtaSeconds / this.config.tauSeconds + a.closingPenalty -
+          a.avgEtaSeconds / this.config.tauSeconds +
+            a.closingPenalty -
             (b.avgEtaSeconds / this.config.tauSeconds + b.closingPenalty) ||
           a.canonicalCandidateKey.localeCompare(b.canonicalCandidateKey),
       );
     } else if (strategy === 'min-max') {
       ordered = [...metrics].sort(
         (a, b) =>
-          a.maxEtaSeconds / this.config.tauSeconds + a.closingPenalty -
+          a.maxEtaSeconds / this.config.tauSeconds +
+            a.closingPenalty -
             (b.maxEtaSeconds / this.config.tauSeconds + b.closingPenalty) ||
-          a.avgEtaSeconds / this.config.tauSeconds + a.closingPenalty -
+          a.avgEtaSeconds / this.config.tauSeconds +
+            a.closingPenalty -
             (b.avgEtaSeconds / this.config.tauSeconds + b.closingPenalty) ||
           a.canonicalCandidateKey.localeCompare(b.canonicalCandidateKey),
       );

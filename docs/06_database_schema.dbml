@@ -170,6 +170,7 @@
     search_radius_m integer [not null]
     status meetup_status [not null, default: 'draft']
     chosen_recommendation_place_id uuid
+    chosen_run_id uuid
     chosen_by_id uuid
     chosen_at timestamptz
     cancelled_at timestamptz
@@ -218,6 +219,7 @@
 
     Indexes {
       (meetup_id, user_id) [unique]
+      (meetup_id, id) [unique]
       (user_id, status)
     }
   }
@@ -270,6 +272,7 @@
 
     Indexes {
       (meetup_id, request_id) [unique, name: 'uq_recommendation_runs_request']
+      (meetup_id, id) [unique, name: 'uq_recommendation_runs_meetup_id_id']
       (meetup_id, created_at) [name: 'idx_recommendation_runs_meetup_created']
     }
 
@@ -384,6 +387,7 @@
     Indexes {
       (run_id, rank) [unique, name: 'uq_recommendation_places_run_rank']
       (run_id, candidate_id) [unique, name: 'uq_recommendation_places_candidate']
+      (id, run_id) [unique, name: 'uq_recommendation_places_id_run']
     }
 
     Note: 'Step 3 aggregate result snapshot. One row per fully ranked candidate; API projects only rank <= effective_k.'
@@ -404,6 +408,7 @@
   Table votes {
     id uuid [pk]
     meetup_id uuid [not null]
+    run_id uuid [not null]
     recommendation_place_id uuid [not null]
     meetup_participant_id uuid [not null]
     created_at timestamptz [not null]
@@ -431,32 +436,77 @@
     Note: 'Contains only a small candidate snapshot. Never stores route history or exact user coordinates.'
   }
 
-  Enum chat_message_kind {
-    text
-    media
-    mixed
-    system
-  }
-
-  Enum chat_media_type {
-    image
-    video
-    audio
-    file
-  }
-
-  Table meetup_chat_messages {
+  Table chat_conversations {
     id uuid [pk]
-    meetup_id uuid [not null]
+    type varchar(20) [not null, note: 'direct or meetup']
+    meetup_id uuid
+    direct_user_a_id uuid
+    direct_user_b_id uuid
+    last_message_id uuid
+    last_message_at timestamptz
+    created_at timestamptz [not null]
+
+    Indexes {
+      meetup_id [unique, name: 'uq_chat_conversations_meetup']
+      (direct_user_a_id, direct_user_b_id) [unique, name: 'uq_chat_conversations_direct_pair']
+      (last_message_at, id)
+    }
+
+    Note: 'Unified direct/meetup conversation. A direct pair is canonical user A < user B and is created lazily on the first valid send. A meetup conversation is created atomically with the meetup. Shape and partial uniqueness are enforced by PostgreSQL.'
+  }
+
+  Table chat_conversation_members {
+    conversation_id uuid [not null]
+    user_id uuid [not null]
+    joined_at timestamptz [not null]
+    left_at timestamptz
+    history_visible_until timestamptz
+    last_read_message_id uuid
+    last_read_at timestamptz
+
+    Indexes {
+      (conversation_id, user_id) [pk]
+      (user_id, left_at, conversation_id)
+    }
+
+    Note: 'Direct members remain for retained read-only history after unfriend/block. Meetup membership is synchronized from meetup_participants; newly accepted members can read the complete earlier history, while former members stop at history_visible_until = left_at.'
+  }
+
+  Table chat_messages {
+    id uuid [pk]
+    conversation_id uuid [not null]
     sender_user_id uuid [not null]
-    text_content varchar(2000) [not null]
+    client_message_id uuid [not null]
+    text_content varchar(2000) [not null, default: '']
     sent_at timestamptz [not null]
 
     Indexes {
-      (meetup_id, sent_at, id)
+      (conversation_id, sender_user_id, client_message_id) [unique]
+      (conversation_id, sent_at, id)
     }
 
-    Note: 'BE-11: PostgreSQL trigger only allows insert when sender is an accepted member and meetup is active. A former left/removed member may read only messages sent at or before left_at; no new message/event is delivered to them.'
+    Note: 'Immutable message shared by direct and meetup chat. client_message_id makes mobile retries idempotent. A deferred constraint requires text or at least one normalized attachment; a database trigger is the final send-authorization guard.'
+  }
+
+  Table chat_message_attachments {
+    id uuid [pk]
+    message_id uuid [not null]
+    storage_provider varchar(30) [not null]
+    storage_key varchar(500) [not null]
+    resource_type varchar(20) [not null]
+    format varchar(30) [not null]
+    original_file_name varchar(180) [not null]
+    mime_type varchar(150) [not null]
+    bytes bigint [not null]
+    sort_order smallint [not null]
+    created_at timestamptz [not null]
+
+    Indexes {
+      (message_id, sort_order) [unique]
+      (storage_provider, storage_key) [unique]
+    }
+
+    Note: 'Private Cloudinary metadata only. Never store file bytes, public URLs, short-lived signed URLs or antivirus/quarantine state. Storage keys are deterministic per conversation/clientMessageId/file index/content fingerprint.'
   }
 
   Table device_tokens {
@@ -512,23 +562,6 @@
     }
   }
 
-  Table chat_message_attachments {
-    id uuid [pk]
-    chat_message_id uuid [not null]
-    media_type chat_media_type [not null]
-    storage_key varchar(1000) [not null]
-    original_file_name varchar(255)
-    mime_type varchar(100) [not null]
-    byte_size bigint [not null]
-    width_px integer
-    height_px integer
-    duration_seconds integer
-    upload_status varchar(30) [not null, default: 'pending']
-    created_at timestamptz [not null]
-
-    Note: 'Future media support. The binary file stays in object storage, not PostgreSQL.'
-  }
-
   Table outbox_events {
     id uuid [pk]
     event_name varchar(100) [not null]
@@ -547,6 +580,55 @@
     }
 
     Note: 'Written in the same transaction as a domain change. A worker publishes it to Socket.IO, FCM or other consumers.'
+  }
+
+  Table recommendation_impressions {
+    event_id uuid [pk]
+    run_id uuid [not null]
+    meetup_participant_id uuid [not null]
+    canonical_candidate_key varchar(300) [not null]
+    rank smallint [not null]
+    payload_hash char(64) [not null]
+    shown_at timestamptz [not null]
+    created_at timestamptz [not null]
+
+    Indexes {
+      (run_id, meetup_participant_id, canonical_candidate_key) [unique]
+      (run_id, meetup_participant_id)
+    }
+
+    Note: 'BE-24 immutable display receipt. event_id is idempotent; payload hash rejects same ID with different content. No coordinates or member feature payload.'
+  }
+
+  Table recommendation_feedback_events {
+    event_id uuid [pk]
+    run_id uuid [not null]
+    meetup_participant_id uuid
+    event_type varchar(30) [not null]
+    canonical_candidate_key varchar(300)
+    from_canonical_candidate_key varchar(300)
+    payload_hash char(64) [not null]
+    occurred_at timestamptz [not null]
+    metadata jsonb [not null, default: '{}']
+    created_at timestamptz [not null]
+
+    Indexes {
+      (run_id, meetup_participant_id, occurred_at)
+      (run_id, event_type, occurred_at)
+    }
+
+    Note: 'BE-24 post-display feedback ledger. Candidate not shown to the actor remains unknown, not a negative label.'
+  }
+
+  Table recommendation_run_holds {
+    run_id uuid [not null]
+    reason varchar(20) [not null, note: 'replay | evaluation | export | legal_hold']
+    created_at timestamptz [not null]
+
+    Indexes {
+      (run_id, reason) [pk]
+      (reason, run_id) [name: 'idx_recommendation_run_holds_reason']
+    }
   }
 
   Table ai_explanation_cache {
@@ -609,9 +691,7 @@
   Ref: user_accounts.id < oauth_identities.user_account_id
   Ref: user_accounts.id < user_sessions.user_account_id
   Ref: user_accounts.id < favorite_places.user_id
-  Ref: user_accounts.id < meetup_chat_messages.sender_user_id
   Ref: user_accounts.id < audit_logs.actor_id
-  Ref: meetup_sessions.id < meetup_chat_messages.meetup_id
   Ref: user_sessions.id < user_sessions.parent_session_id
   Ref: user_sessions.id < user_sessions.replaced_by_session_id
   Ref: user_accounts.id < friendships.user_a_id
@@ -641,15 +721,30 @@
   Ref: recommendation_candidates.id < recommendation_places.candidate_id [delete: cascade]
   Ref: recommendation_places.id < recommendation_place_etas.recommendation_place_id
   Ref: meetup_participants.id < recommendation_place_etas.meetup_participant_id
-  Ref: recommendation_places.id < meetup_sessions.chosen_recommendation_place_id
-  Ref: meetup_sessions.id < votes.meetup_id
-  Ref: recommendation_places.id < votes.recommendation_place_id
-Ref: meetup_participants.id < votes.meetup_participant_id
+  Ref: meetup_sessions.(id, chosen_run_id) < recommendation_runs.(meetup_id, id)
+  Ref: votes.(meetup_id, run_id) > recommendation_runs.(meetup_id, id)
+  Ref: votes.(recommendation_place_id, run_id) > recommendation_places.(id, run_id)
+    Ref: recommendation_runs.id < recommendation_impressions.run_id [delete: cascade]
+    Ref: meetup_participants.id < recommendation_impressions.meetup_participant_id
+    Ref: recommendation_impressions.(run_id, canonical_candidate_key) > recommendation_candidates.(run_id, canonical_candidate_key)
+    Ref: recommendation_runs.id < recommendation_feedback_events.run_id [delete: cascade]
+    Ref: meetup_participants.id < recommendation_feedback_events.meetup_participant_id
+    Ref: recommendation_feedback_events.(run_id, canonical_candidate_key) > recommendation_candidates.(run_id, canonical_candidate_key)
+    Ref: recommendation_feedback_events.(run_id, from_canonical_candidate_key) > recommendation_candidates.(run_id, canonical_candidate_key)
+    Ref: recommendation_runs.id < recommendation_run_holds.run_id [delete: cascade]
+  Ref: votes.(meetup_id, meetup_participant_id) > meetup_participants.(meetup_id, id)
   Ref: user_accounts.id < favorite_places.user_id
   Ref: place_snapshots.id < favorite_places.place_snapshot_id
-  Ref: meetup_sessions.id < meetup_chat_messages.meetup_id
-Ref: meetup_participants.id < meetup_chat_messages.sender_participant_id
-  Ref: meetup_chat_messages.id < chat_message_attachments.chat_message_id
+  Ref: meetup_sessions.id < chat_conversations.meetup_id
+  Ref: user_accounts.id < chat_conversations.direct_user_a_id
+  Ref: user_accounts.id < chat_conversations.direct_user_b_id
+  Ref: chat_conversations.id < chat_conversation_members.conversation_id
+  Ref: user_accounts.id < chat_conversation_members.user_id
+  Ref: chat_messages.id < chat_conversation_members.last_read_message_id
+  Ref: chat_conversations.id < chat_messages.conversation_id
+  Ref: user_accounts.id < chat_messages.sender_user_id
+  Ref: chat_messages.id < chat_message_attachments.message_id
+  Ref: chat_messages.id < chat_conversations.last_message_id
   Ref: user_accounts.id < device_tokens.user_account_id
   Ref: user_accounts.id < notification_campaigns.created_by_user_id
   Ref: user_accounts.id < notification_deliveries.recipient_user_id

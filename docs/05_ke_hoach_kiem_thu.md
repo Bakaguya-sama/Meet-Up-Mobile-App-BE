@@ -11,7 +11,7 @@
 7. Cả nhóm vote, A chốt, cả ba nhận thông báo và mở dẫn đường.
 8. A hủy hoặc kết thúc meetup. Kiểm tra B không còn nhận vị trí theo meetup và Redis key hết hạn/xóa.
 9. Bật lọc đang mở cửa, lưu một nơi yêu thích, mở lịch sử meetup và dẫn đường.
-10. Gửi tin nhắn trong chat meetup. Dùng tài khoản không phải thành viên để xác nhận không đọc/gửi được tin.
+10. Gửi tin nhắn trong chat meetup/direct với `clientMessageId`, retry cùng ID để xác nhận chỉ có một message/outbox; dùng outsider để xác nhận không đọc/gửi được. Xác nhận member meetup vào muộn đọc toàn bộ lịch sử, former member chỉ đọc đến `leftAt`, và unfriend/block chỉ chặn direct send mới chứ không xóa lịch sử cũ.
 11. Bấm “Vì sao gợi ý?”. Kiểm tra lời giải thích nhắc ETA, loại địa điểm hoặc giờ mở nhưng không chứa tọa độ hay địa chỉ vị trí của thành viên.
 12. Bật phát hiện bạn ở gần ở hai máy thử nghiệm. Kiểm tra chỉ khi cả hai cùng opt-in mới có một thông báo gợi ý; không có thông báo lặp trong 2 giờ.
 13. Tạo meetup 21 người bằng dữ liệu thử nghiệm để kiểm tra Route Matrix chạy theo batch; tạo meetup trên 50 người để kiểm tra UI ghi rõ kết quả theo cụm.
@@ -30,7 +30,7 @@
 | Mạng | Mất mạng lúc gửi vị trí | UI báo đang chờ; khi nối lại chỉ gửi latest location hợp lệ |
 | Thông báo | Bấm notification “Place selected” | Mở đúng trang chi tiết meetup đã chốt |
 | Bộ lọc | Places thiếu giờ mở | UI ghi “chưa có dữ liệu”, không tự suy đoán địa điểm đang mở |
-| Chat | Tài khoản không thuộc meetup gọi API chat | Backend từ chối; thành viên hợp lệ nhận tin realtime |
+| Chat | Retry, outsider, join muộn, leave/block đồng thời và attachment URL | Một message cho mỗi `clientMessageId`; quyền đọc đúng boundary; outbox chỉ có reference và signed URL chỉ xuất hiện trong HTTP response |
 | AI | Kiểm tra payload gửi dịch vụ AI | Chỉ có số người, ETA, bộ lọc và điểm; không có latitude/longitude, tên thật, lịch sử GPS |
 | AI fallback | Dịch vụ AI lỗi hoặc timeout | App hiển thị lý do từ thuật toán, luồng vote vẫn dùng được |
 | Bạn ở gần | Chỉ một người bật tính năng | Không có gợi ý hoặc tiết lộ vị trí của người còn lại |

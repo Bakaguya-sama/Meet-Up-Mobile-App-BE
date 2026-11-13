@@ -30,11 +30,20 @@ export const configuration = () => ({
     routingPreference:
       process.env.ROUTES_ROUTING_PREFERENCE ?? 'TRAFFIC_UNAWARE',
   },
+  recommendationRetention: {
+    enabled: process.env.RECOMMENDATION_RETENTION_ENABLED === 'true',
+  },
   firebase: {
     enabled: process.env.FIREBASE_ENABLED === 'true',
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     privateKey: process.env.FIREBASE_PRIVATE_KEY,
+  },
+  cloudinary: {
+    enabled: process.env.CLOUDINARY_ENABLED === 'true',
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
   },
   deviceTokens: {
     encryptionKey: process.env.DEVICE_TOKEN_ENCRYPTION_KEY,

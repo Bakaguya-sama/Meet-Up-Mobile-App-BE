@@ -17,14 +17,19 @@
 | Lỗi xác thực         | `UNAUTHORIZED`                                      |
 | Lỗi quyền            | `FORBIDDEN`                                         |
 | Meetup               | `MEETUP_NOT_FOUND`, `MEETUP_INACTIVE`               |
+| Payload              | `INVALID_EVENT_PAYLOAD`, `EVENT_SCHEMA_INVALID`     |
+| Idempotency/delivery | `EVENT_ALREADY_PROCESSED`, `OUTBOX_DELIVERY_FAILED` |
 
 ### BE-11 chat delivery
 
-- `meetup:chat-message` là realtime notification của một message đã được persist; payload gồm `id`, `meetupId`, `senderUserId`, `textContent`, `sentAt` (ISO-8601). `eventId = message.id`; mobile phải de-duplicate theo `id` và dùng HTTP history làm nguồn phục hồi khi socket mất.
-- Server **không** phát chat vào `meetup:{meetupId}`. Sau khi insert thành công, publisher đọc lại accepted members của meetup còn active và fan-out cùng payload vào từng `user:{userId}`. Vì vậy socket từng join meetup room trước đó không làm former member nhận tin mới.
+- `meetup:chat-message` là realtime delivery của `MeetupChatMessageCreated.v1` sau khi message đã commit. Payload bền chỉ gồm `conversationId`, `messageId`, `meetupId`, `senderUserId` cùng metadata event; không chứa text, attachment metadata hoặc signed URL. `eventId = message.id`; mobile de-duplicate theo `messageId` rồi đọc HTTP history để lấy nội dung và URL ký mới.
+- Server **không** phát chat vào `meetup:{meetupId}`. Repository chọn và khóa accepted conversation members trong cùng transaction insert message/outbox, sau đó worker fan-out reference vào từng `user:{userId}`. Vì vậy leave/remove đồng thời và socket cũ không làm former member nhận message mới.
 - PostgreSQL trigger từ chối insert khi sender không còn `accepted` hoặc meetup không active. Member `left`/`removed` được HTTP history giới hạn `sentAt <= leftAt`, không được gửi hoặc nhận event mới. Failure của fan-out chỉ log warning; message đã persist vẫn đọc được qua HTTP.
-| Payload              | `INVALID_EVENT_PAYLOAD`, `EVENT_SCHEMA_INVALID`     |
-| Idempotency/delivery | `EVENT_ALREADY_PROCESSED`, `OUTBOX_DELIVERY_FAILED` |
+
+### Direct chat
+
+- `direct:chat-message` là realtime delivery của `DirectChatMessageCreated.v1` trong outbox sau khi message đã commit, phát đến `user:{senderUserId}` và `user:{recipientUserId}`. Payload reference gồm `messageId`, `conversationId`, `senderUserId`, `recipientUserId`; `eventId = message.id`. Mobile lấy content/attachment URL qua HTTP.
+- HTTP send và PostgreSQL trigger đều yêu cầu friendship `accepted`. Sau unfriend/block, không gửi mới nhưng hai participant của conversation đã tồn tại vẫn đọc lịch sử qua `GET /api/v1/chats/direct/:peerId/messages`; không có event mới để fan-out.
 
 Room chỉ là routing. Gateway ở BE-06 vẫn phải xác thực JWT khi handshake và kiểm tra membership/trạng thái meetup trước khi join hoặc phát event.
 
@@ -36,9 +41,11 @@ Room chỉ là routing. Gateway ở BE-06 vẫn phải xác thực JWT khi hands
 | `PreferenceUpdated.v1`   | `meetupId`, `participantId`                                                      |
 | `LocationUpdated.v1`     | `ownerId`, `meetupId?`, `location.visibility` (`exact`, `approximate`, `hidden`) |
 | `RecommendationReady.v1` | `meetupId`, `runId`, `placeIds`, `strategy` (`exact`, `batched`)                 |
-| `VoteUpdated.v1`         | `meetupId`, `placeId`, `voteCount`                                               |
-| `MeetupFinalized.v1`     | `meetupId`, `placeId`, `scheduledAt`                                             |
+| `VoteUpdated.v1`         | `meetupId`, `runId`, `placeId`, `voteCount`                                      |
+| `MeetupFinalized.v1`     | `meetupId`, `runId`, `placeId`, `canonicalCandidateKey`, `scheduledAt`          |
 | `MeetupInviteLinkAccepted.v1` | `meetupId`, `participantId`, `inviteLinkId`                                 |
+| `MeetupChatMessageCreated.v1` | `conversationId`, `messageId`, `meetupId`, `senderUserId`                   |
+| `DirectChatMessageCreated.v1` | `conversationId`, `messageId`, `senderUserId`, `recipientUserId`            |
 
 `LocationUpdated.v1` chỉ truyền trạng thái location đã được project cho người xem; event contract không có trường tọa độ.
 

@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { FriendsModule } from '../friends/friends.module';
+import { RecommendationVotingModule } from '../recommendations/recommendation-voting.module';
+import { RecommendationHistoryModule } from '../recommendations/recommendation-history.module';
+import { RecommendationHistoryReader } from '../recommendations/application/public/recommendation-history-reader';
+import { RecommendationVotingReader } from '../recommendations/application/public/recommendation-voting-reader';
 import { MEETUP_STORE } from './application/ports/persistence/meetup-store.port';
 import type { MeetupStorePort } from './application/ports/persistence/meetup-store.port';
 import { INVITEE_ELIGIBILITY } from './application/ports/invitee-eligibility.port';
@@ -39,6 +43,16 @@ import { MeetupEntity } from './infrastructure/persistence/typeorm/entities/meet
 import { ParticipantEntity } from './infrastructure/persistence/typeorm/entities/participant.typeorm-entity';
 import { ParticipantPreferenceEntity } from './infrastructure/persistence/typeorm/entities/participant-preference.typeorm-entity';
 import { MeetupInviteLinkEntity } from './infrastructure/persistence/typeorm/entities/meetup-invite-link.typeorm-entity';
+import { MeetupVoteEntity } from './infrastructure/persistence/typeorm/entities/meetup-vote.typeorm-entity';
+import {
+  MEETUP_VOTING_UNIT_OF_WORK,
+  type MeetupVotingUnitOfWork,
+} from './application/ports/meetup-voting-unit-of-work.port';
+import { TypeOrmMeetupVotingUnitOfWork } from './infrastructure/persistence/typeorm/typeorm-meetup-voting-unit-of-work';
+import { CastMeetupVoteUseCase } from './application/use-cases/cast-meetup-vote.use-case';
+import { FinalizeMeetupUseCase } from './application/use-cases/finalize-meetup.use-case';
+import { VoteWinnerDomainService } from './domain/services/vote-winner.domain-service';
+import { ListMeetupHistoryQuery } from './application/queries/list-meetup-history.query';
 import { TypeOrmMeetupRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-repository';
 import { TypeOrmMeetupInviteLinkRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-invite-link.repository';
 import { MeetupsController } from './presentation/http/meetups.controller';
@@ -52,11 +66,14 @@ import {
   imports: [
     AuthModule,
     FriendsModule,
+    RecommendationVotingModule,
+    RecommendationHistoryModule,
     TypeOrmModule.forFeature([
       MeetupEntity,
       ParticipantEntity,
       ParticipantPreferenceEntity,
       MeetupInviteLinkEntity,
+      MeetupVoteEntity,
     ]),
   ],
   controllers: [
@@ -67,6 +84,40 @@ import {
   ],
   providers: [
     { provide: MEETUP_STORE, useClass: TypeOrmMeetupRepository },
+    {
+      provide: MEETUP_VOTING_UNIT_OF_WORK,
+      useClass: TypeOrmMeetupVotingUnitOfWork,
+    },
+    VoteWinnerDomainService,
+    {
+      provide: CastMeetupVoteUseCase,
+      useFactory: (
+        uow: MeetupVotingUnitOfWork,
+        recommendations: RecommendationVotingReader,
+      ) => new CastMeetupVoteUseCase(uow, recommendations),
+      inject: [MEETUP_VOTING_UNIT_OF_WORK, RecommendationVotingReader],
+    },
+    {
+      provide: FinalizeMeetupUseCase,
+      useFactory: (
+        uow: MeetupVotingUnitOfWork,
+        recommendations: RecommendationVotingReader,
+        winner: VoteWinnerDomainService,
+      ) => new FinalizeMeetupUseCase(uow, recommendations, winner),
+      inject: [
+        MEETUP_VOTING_UNIT_OF_WORK,
+        RecommendationVotingReader,
+        VoteWinnerDomainService,
+      ],
+    },
+    {
+      provide: ListMeetupHistoryQuery,
+      useFactory: (
+        store: MeetupStorePort,
+        places: RecommendationHistoryReader,
+      ) => new ListMeetupHistoryQuery(store, places),
+      inject: [MEETUP_STORE, RecommendationHistoryReader],
+    },
     {
       provide: MEETUP_INVITE_LINK_STORE,
       useClass: TypeOrmMeetupInviteLinkRepository,

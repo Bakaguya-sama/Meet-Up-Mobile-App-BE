@@ -603,8 +603,8 @@ Dùng cho side effect hoặc đồng bộ cuối cùng:
 | `MeetupMemberChanged.v1` | Meetups | Realtime, Notifications | `meetupId`, `userId`, `status`, `occurredAt` |
 | `PreferenceUpdated.v1` | Meetups | Recommendations | `meetupId`, `participantId`, `occurredAt` |
 | `RecommendationReady.v1` | Recommendations | Meetups, Realtime | `meetupId`, `runId`, `placeIds`, `strategy`, `occurredAt` |
-| `VoteUpdated.v1` | Meetups | Realtime | `meetupId`, `placeId`, `voteCount`, `occurredAt` |
-| `MeetupFinalized.v1` | Meetups | Notifications, Realtime, Chat | `meetupId`, `placeId`, `scheduledAt`, `occurredAt` |
+| `VoteUpdated.v1` | Meetups | Realtime | `meetupId`, `runId`, `placeId`, `voteCount`, `occurredAt` |
+| `MeetupFinalized.v1` | Meetups | Notifications, Realtime, Chat | `meetupId`, `runId`, `placeId`, `canonicalCandidateKey`, `scheduledAt`, `occurredAt` |
 | `MeetupCancelled.v1` | Meetups | Locations, Notifications, Realtime | `meetupId`, `occurredAt` |
 
 Event contract phải có version. Consumer cần idempotent bằng `eventId`. Không đưa access token, refresh token, tọa độ chính xác, tên thật không cần thiết hoặc payload AI nhạy cảm vào event/log.

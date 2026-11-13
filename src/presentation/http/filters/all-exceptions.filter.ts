@@ -38,7 +38,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
         INVALID_LOCATION_SAMPLE: HttpStatus.BAD_REQUEST,
         MEETUP_NOT_FOUND: HttpStatus.NOT_FOUND,
         MEETUP_FORBIDDEN: HttpStatus.FORBIDDEN,
+        MEETUP_VOTING_CLOSED: HttpStatus.CONFLICT,
+        MEETUP_VOTING_OPEN: HttpStatus.CONFLICT,
         CHAT_FORBIDDEN: HttpStatus.FORBIDDEN,
+        DIRECT_CHAT_FORBIDDEN: HttpStatus.FORBIDDEN,
         MEETUP_INVITEE_UNAVAILABLE: HttpStatus.BAD_REQUEST,
         MEETUP_INVITE_LINK_NOT_FOUND: HttpStatus.NOT_FOUND,
         MEETUP_INVITE_LINK_FORBIDDEN: HttpStatus.FORBIDDEN,
@@ -66,6 +69,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         RECOMMENDATION_CANDIDATE_NOT_FOUND: HttpStatus.NOT_FOUND,
         RECOMMENDATION_RUN_FORBIDDEN: HttpStatus.FORBIDDEN,
         RECOMMENDATION_STALE_CONTEXT: HttpStatus.CONFLICT,
+        RECOMMENDATION_EVENT_ID_REUSED: HttpStatus.CONFLICT,
+        RECOMMENDATION_NOT_SHOWN: HttpStatus.CONFLICT,
       };
       const status = statuses[exception.code] ?? HttpStatus.CONFLICT;
       response.status(status).json({

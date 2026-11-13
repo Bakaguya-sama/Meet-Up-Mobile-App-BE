@@ -76,7 +76,7 @@ Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ET
 | BR-05 | Vị trí trong meetup yêu cầu thành viên `accepted`, meetup còn hoạt động và chế độ/thời hạn chia sẻ của chủ vị trí cho phép người xem. `selected_friends` vẫn giới hạn người xem trong meetup. Khi rời/hủy/kết thúc meetup, backend ngừng phát vị trí vào room đó. |
 | BR-06 | Meetup cần ít nhất 2 thành viên chấp nhận và ít nhất 2 vị trí còn hiệu lực mới cho phép tìm địa điểm theo nhóm. |
 | BR-07 | Người tạo chỉ được sửa thông tin, bộ lọc và quản lý lời mời/thành viên trước cả hạn mời và khi chưa chốt. Từ đúng thời điểm hạn mời, không sửa các nội dung đó, không mời thêm hoặc phản hồi lời mời; organizer vẫn có thể hủy. Trước khi chốt, thành viên đã chấp nhận vẫn có thể rời và thành viên invited/accepted vẫn có thể sửa preference của chính mình. Sau khi chốt, organizer không sửa meetup và có thể hủy hoặc kết thúc theo điều kiện của meetup. Khi được mời lại vào cùng meetup, thành viên giữ preference tạm thời đã lưu trước đó. |
-| BR-08 | Mỗi thành viên có tối đa một vote cho một meetup; vote mới thay vote cũ trước hạn vote. |
+| BR-08 | Mỗi thành viên có tối đa một vote cho một meetup; vote mới thay vote cũ trước hạn vote. Organizer có thể đặt `voteDeadlineAt` khi tạo/cập nhật meetup; nếu bỏ trống thì không có hạn tự động và organizer chốt thủ công. |
 | BR-09 | Người tạo quyết định cuối cùng. Nếu chọn theo đa số, hòa phiếu ưu tiên nơi có `Max ETA` thấp hơn, sau đó điểm tổng cao hơn. |
 | BR-10 | Không lưu lịch sử GPS trong PostgreSQL ở MVP. Chỉ lưu latest location tạm thời trong Redis. |
 | BR-11 | Dữ liệu vị trí có accuracy trên 100 m được gắn cảnh báo và không dùng để khẳng định người dùng đã đến nơi. |
@@ -119,74 +119,74 @@ Các trọng số đặt trong cấu hình backend để nhóm có thể thử n
 
 ### UC-01 Đăng ký và đăng nhập
 
-**Tác nhân:** Người dùng.  
-**Điều kiện trước:** Chưa có phiên đăng nhập hợp lệ.  
-**Luồng chính:** Người dùng chọn Email hoặc Google, nhập/ủy quyền thông tin, hệ thống xác thực và tạo phiên JWT.  
-**Ngoại lệ:** Email đã tồn tại, thông tin không hợp lệ, Google OAuth bị hủy hoặc mạng lỗi.  
+**Tác nhân:** Người dùng.
+**Điều kiện trước:** Chưa có phiên đăng nhập hợp lệ.
+**Luồng chính:** Người dùng chọn Email hoặc Google, nhập/ủy quyền thông tin, hệ thống xác thực và tạo phiên JWT.
+**Ngoại lệ:** Email đã tồn tại, thông tin không hợp lệ, Google OAuth bị hủy hoặc mạng lỗi.
 **Kết quả:** Vào màn hình chính; chỉ token an toàn được lưu trên thiết bị.
 
 ### UC-02 Quản lý bạn bè
 
-**Tác nhân:** Người dùng.  
-**Điều kiện trước:** Đã đăng nhập.  
-**Luồng chính:** Tìm theo tên/email, gửi lời mời; người nhận chấp nhận/từ chối; danh sách bạn bè cập nhật và có thông báo.  
-**Quy tắc:** Không thể tự kết bạn, không tạo lời mời trùng hoặc mời tài khoản đã bị khóa.  
+**Tác nhân:** Người dùng.
+**Điều kiện trước:** Đã đăng nhập.
+**Luồng chính:** Tìm theo tên/email, gửi lời mời; người nhận chấp nhận/từ chối; danh sách bạn bè cập nhật và có thông báo.
+**Quy tắc:** Không thể tự kết bạn, không tạo lời mời trùng hoặc mời tài khoản đã bị khóa.
 **Kết quả:** Có friendship được chấp nhận hoặc lời mời được đóng.
 
 ### UC-03 Thiết lập và chia sẻ vị trí
 
-**Tác nhân:** Người dùng.  
-**Điều kiện trước:** Đã đăng nhập; có quyền hệ điều hành nếu muốn bật chia sẻ.  
+**Tác nhân:** Người dùng.
+**Điều kiện trước:** Đã đăng nhập; có quyền hệ điều hành nếu muốn bật chia sẻ.
 **Luồng chính:** Chọn một trong bốn chế độ chia sẻ, thời hạn tùy chọn và độ chính xác; app lấy GPS theo tần suất phù hợp; backend kiểm tra quyền từng yêu cầu, lưu TTL và phát tới đúng bạn bè/room meetup. Chi tiết API và ranh giới tích hợp tại `11_location_privacy_api.md`.
-**Ngoại lệ:** Từ chối quyền GPS, GPS tắt, accuracy kém, mạng mất, hết thời hạn.  
+**Ngoại lệ:** Từ chối quyền GPS, GPS tắt, accuracy kém, mạng mất, hết thời hạn.
 **Kết quả:** Người được phép thấy ghim vị trí và thời điểm cập nhật; người không được phép không thấy dữ liệu.
 
 ### UC-04 Xem bản đồ bạn bè
 
-**Tác nhân:** Người dùng.  
-**Điều kiện trước:** Đã có ít nhất một bạn được phép chia sẻ.  
-**Luồng chính:** Mở bản đồ, hệ thống trả latest location được phép; app hiển thị ghim, độ chính xác và “cập nhật x phút trước”; nhận cập nhật socket.  
-**Ngoại lệ:** Vị trí cũ/hết TTL thì đổi nhãn, không giả vờ realtime.  
+**Tác nhân:** Người dùng.
+**Điều kiện trước:** Đã có ít nhất một bạn được phép chia sẻ.
+**Luồng chính:** Mở bản đồ, hệ thống trả latest location được phép; app hiển thị ghim, độ chính xác và “cập nhật x phút trước”; nhận cập nhật socket.
+**Ngoại lệ:** Vị trí cũ/hết TTL thì đổi nhãn, không giả vờ realtime.
 **Kết quả:** Người dùng biết ai đang chia sẻ vị trí hợp lệ.
 
 ### UC-05 Tạo meetup và mời thành viên
 
-**Tác nhân:** Người tạo meetup.  
-**Điều kiện trước:** Đã đăng nhập và có ít nhất một bạn bè.  
-**Luồng chính:** Nhập thông tin meetup, chọn bạn, xác nhận tạo; backend tạo trạng thái Đang mời và FCM gửi lời mời.  
-**Ngoại lệ:** Thời gian bắt đầu ở quá khứ, không có thành viên hoặc bán kính không hợp lệ. Không có giới hạn cứng số người được mời.  
+**Tác nhân:** Người tạo meetup.
+**Điều kiện trước:** Đã đăng nhập và có ít nhất một bạn bè.
+**Luồng chính:** Nhập thông tin meetup, chọn bạn, xác nhận tạo; backend tạo trạng thái Đang mời và FCM gửi lời mời.
+**Ngoại lệ:** Thời gian bắt đầu ở quá khứ, không có thành viên hoặc bán kính không hợp lệ. Không có giới hạn cứng số người được mời.
 **Kết quả:** Meetup có danh sách mời và hạn phản hồi.
 
 ### UC-06 Phản hồi lời mời meetup
 
-**Tác nhân:** Thành viên meetup.  
-**Điều kiện trước:** Có lời mời đang hiệu lực.  
-**Luồng chính:** Mở lời mời, xem thông tin, chọn Chấp nhận hoặc Từ chối; nếu chấp nhận, chọn/sửa sở thích tạm thời. Nếu cờ chia sẻ vị trí trong hồ sơ đang bật, vị trí hợp lệ tự được dùng cho meetup.  
-**Ngoại lệ:** Meetup đã hủy/đã chốt hoặc lời mời hết hạn.  
+**Tác nhân:** Thành viên meetup.
+**Điều kiện trước:** Có lời mời đang hiệu lực.
+**Luồng chính:** Mở lời mời, xem thông tin, chọn Chấp nhận hoặc Từ chối; nếu chấp nhận, chọn/sửa sở thích tạm thời. Nếu cờ chia sẻ vị trí trong hồ sơ đang bật, vị trí hợp lệ tự được dùng cho meetup.
+**Ngoại lệ:** Meetup đã hủy/đã chốt hoặc lời mời hết hạn.
 **Kết quả:** Trạng thái thành viên được cập nhật realtime cho người tạo.
 
 ### UC-07 Gợi ý địa điểm cho nhóm
 
-**Tác nhân:** Người tạo meetup; Google Maps Platform.  
-**Điều kiện trước:** Có tối thiểu 2 thành viên và 2 vị trí còn hiệu lực; meetup chưa chốt.  
+**Tác nhân:** Người tạo meetup; Google Maps Platform.
+**Điều kiện trước:** Có tối thiểu 2 thành viên và 2 vị trí còn hiệu lực; meetup chưa chốt.
 **Luồng chính:** Người tạo bấm tìm; backend đọc sở thích meetup, tính search-center medoid, lấy nơi ứng viên, chia Route Matrix theo batch khi cần, chấm điểm theo thuật toán có version và trả top 5. Candidate mở nhưng sắp đóng chịu soft penalty và có warning; candidate đóng tại `scheduledAt` bị loại.
-**Ngoại lệ:** Thiếu vị trí, API giới hạn/lỗi, không tìm thấy nơi phù hợp.  
+**Ngoại lệ:** Thiếu vị trí, API giới hạn/lỗi, không tìm thấy nơi phù hợp.
 **Kết quả:** Danh sách có tên, ảnh nếu có, rating, giờ mở cửa, Avg ETA, Max ETA, ETA từng người và lý do xếp hạng. Response cho một viewer chỉ chứa preference/utility của chính viewer đó.
 
 ### UC-08 Vote và chốt địa điểm
 
-**Tác nhân:** Thành viên meetup, Người tạo meetup.  
-**Điều kiện trước:** Có danh sách đề xuất và meetup ở Đang chọn.  
-**Luồng chính:** Thành viên chọn một nơi; hệ thống phát số vote mới; hết hạn hoặc khi đủ phản hồi, người tạo chốt.  
-**Ngoại lệ:** Vote sau hạn, vote nơi không nằm trong danh sách hiện tại, người tạo không có quyền với meetup khác.  
+**Tác nhân:** Thành viên meetup, Người tạo meetup.
+**Điều kiện trước:** Có danh sách đề xuất và meetup ở Đang chọn.
+**Luồng chính:** Thành viên chọn một nơi; hệ thống phát số vote mới; hết hạn hoặc khi đủ phản hồi, người tạo chốt.
+**Ngoại lệ:** Vote sau hạn, vote nơi không nằm trong danh sách hiện tại, người tạo không có quyền với meetup khác.
 **Kết quả:** Địa điểm và thời gian được chốt, mọi thành viên nhận FCM.
 
 Sau khi có kết quả, API vote/finalize trả `runId` và candidate được chọn. Mobile dùng cùng `GET /api/v1/meetups/:meetupId/recommendation-runs/:runId` để xem lại ETA và feature của chính mình; không có route “feature sau vote” riêng và không recompute run.
 
 ### UC-09 Thiết lập sở thích meetup
 
-**Tác nhân:** Người tạo meetup, Thành viên meetup.  
-**Điều kiện trước:** Meetup chưa chốt.  
+**Tác nhân:** Người tạo meetup, Thành viên meetup.
+**Điều kiện trước:** Meetup chưa chốt.
 **Luồng chính:** Mỗi thành viên chọn tag hoạt động/bối cảnh với mức `high`, `normal` hoặc `avoid`. Profile có thể gợi ý form; chỉ tag được xác nhận mới lưu là lựa chọn meetup. Lưu thay thế danh sách tag đã chọn; danh sách rỗng xóa lựa chọn meetup.
 
 **Ngoại lệ:** Không có lựa chọn meetup thì dùng `profile_fallback`; các tag không thuộc nguồn đang dùng không được tính.
@@ -195,47 +195,55 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 
 ### UC-10 Dẫn đường và kết thúc meetup
 
-**Tác nhân:** Thành viên meetup; Google Maps Platform.  
-**Điều kiện trước:** Meetup đã chốt.  
-**Luồng chính:** Người dùng bấm Dẫn đường để mở Google Maps; khi meetup kết thúc/hủy, backend ngừng phát vị trí vào room meetup và xóa cache phù hợp.  
+**Tác nhân:** Thành viên meetup; Google Maps Platform.
+**Điều kiện trước:** Meetup đã chốt.
+**Luồng chính:** Người dùng bấm Dẫn đường để mở Google Maps; khi meetup kết thúc/hủy, backend ngừng phát vị trí vào room meetup và xóa cache phù hợp.
 **Kết quả:** Meetup được lưu lịch sử, không còn phát vị trí theo meetup.
 
 ### UC-11 Lọc, yêu thích, lịch sử và dẫn đường
 
-**Tác nhân:** Người dùng; Google Maps Platform.  
-**Điều kiện trước:** Đã đăng nhập; với dẫn đường, meetup đã chốt.  
-**Luồng chính:** Người dùng bật/tắt bộ lọc đang mở cửa; lưu/bỏ lưu địa điểm; xem lịch sử meetup; bấm Dẫn đường để mở Google Maps.  
-**Ngoại lệ:** Places không có giờ mở thì hiển thị “chưa có dữ liệu”; địa điểm đã đóng không bị ẩn nếu người dùng không bật lọc.  
+**Tác nhân:** Người dùng; Google Maps Platform.
+**Điều kiện trước:** Đã đăng nhập; với dẫn đường, meetup đã chốt.
+**Luồng chính:** Người dùng bật/tắt bộ lọc đang mở cửa; lưu/bỏ lưu địa điểm; xem lịch sử meetup; bấm Dẫn đường để mở Google Maps.
+**Ngoại lệ:** Places không có giờ mở thì hiển thị “chưa có dữ liệu”; địa điểm đã đóng không bị ẩn nếu người dùng không bật lọc.
 **Kết quả:** Người dùng kiểm soát bộ lọc và dùng lại thông tin hữu ích mà không lưu lịch sử GPS. Hệ thống không có Budget filter vì `priceLevel` không phải giá thực tế.
 
 ### UC-12 Chat nhóm trong meetup
 
-**Tác nhân:** Thành viên meetup.  
-**Điều kiện trước:** Là accepted member của meetup còn active để gửi/nhận tin; former member `left`/`removed` chỉ có quyền đọc đến `leftAt`.  
-**Luồng chính:** Mở phòng chat, gửi tin nhắn văn bản, nhận tin mới gần thời gian thực. Server lưu message trước, sau đó lấy lại danh sách accepted member active và fan-out event vào `user:{userId}`; không broadcast tin chat qua meetup room có thể còn socket cũ.  
-**Ngoại lệ:** Không phải member, declined, meetup inactive hoặc former member gửi tin thì bị từ chối; former member không thấy message sau `leftAt`; mạng mất thì HTTP vẫn đọc lại message đã lưu và UI báo trạng thái gửi.  
+**Tác nhân:** Thành viên meetup.
+**Điều kiện trước:** Là accepted member của meetup còn active để gửi/nhận tin; former member `left`/`removed` chỉ có quyền đọc đến `leftAt`.
+**Luồng chính:** Mở phòng chat, gửi tin nhắn văn bản hoặc tối đa 5 tệp (ảnh, PDF, Office, văn bản và tệp nén trong allow-list; tối đa 10 MiB/tệp, 25 MiB/tin), nhận tin mới gần thời gian thực. Mobile sinh `clientMessageId` và giữ nguyên khi retry để server không tạo tin trùng. Tệp được xác minh extension/MIME/chữ ký, lưu riêng tư trên Cloudinary; API chỉ trả URL tải có hạn 15 phút. Antivirus/quarantine không thuộc v1. Server lưu message và outbox reference trong cùng transaction; worker fan-out sau commit vào `user:{userId}`, không broadcast qua meetup room có thể còn socket cũ. Participant được accepted sau có quyền đọc toàn bộ lịch sử trước lúc tham gia.
+**Ngoại lệ:** Không phải member, declined, meetup inactive hoặc former member gửi tin thì bị từ chối; former member không thấy message sau `leftAt`; mạng mất thì HTTP vẫn đọc lại message đã lưu và UI báo trạng thái gửi.
 **Kết quả:** Các thành viên trao đổi được về kế hoạch trong đúng meetup.
+
+### UC-12A Chat riêng giữa bạn bè
+
+**Tác nhân:** Hai tài khoản đã chấp nhận kết bạn.
+**Điều kiện trước:** Friendship vẫn ở trạng thái `accepted`; mỗi message có văn bản hoặc tệp hợp lệ.
+**Luồng chính:** Gửi/đọc lịch sử tại `GET/POST /api/v1/chats/direct/:peerId/messages`; mobile gửi `clientMessageId` ổn định qua mọi lần retry; message được lưu theo conversation chuẩn hóa cặp user và phát realtime reference `direct:chat-message` vào hai user room. Có thể gửi kèm tệp theo cùng giới hạn UC-12.
+**Ngoại lệ:** Người lạ hoặc lời mời pending không thể gửi/đọc. Sau unfriend hoặc block, hai bên không thể gửi thêm hoặc tạo conversation mới nhưng vẫn chỉ đọc được lịch sử conversation đã tồn tại; PostgreSQL kiểm tra friendship khi insert để đóng race với thao tác unfriend/block.
+**Kết quả:** Chỉ hai người bạn đã chấp nhận trao đổi được tin nhắn riêng.
 
 ### UC-13 AI giải thích đề xuất
 
-**Tác nhân:** Người dùng; Dịch vụ AI.  
-**Điều kiện trước:** Đã có danh sách địa điểm đã chấm điểm.  
-**Luồng chính:** Người dùng bấm “Vì sao gợi ý?”; backend tạo dữ liệu tổng hợp đã bỏ tọa độ, gọi dịch vụ AI và trả 1–3 câu giải thích dễ hiểu.  
-**Ngoại lệ:** Dịch vụ AI lỗi hoặc quá thời gian chờ thì hiển thị lý do có sẵn từ thuật toán, ví dụ “Max ETA thấp hơn các nơi khác”.  
+**Tác nhân:** Người dùng; Dịch vụ AI.
+**Điều kiện trước:** Đã có danh sách địa điểm đã chấm điểm.
+**Luồng chính:** Người dùng bấm “Vì sao gợi ý?”; backend tạo dữ liệu tổng hợp đã bỏ tọa độ, gọi dịch vụ AI và trả 1–3 câu giải thích dễ hiểu.
+**Ngoại lệ:** Dịch vụ AI lỗi hoặc quá thời gian chờ thì hiển thị lý do có sẵn từ thuật toán, ví dụ “Max ETA thấp hơn các nơi khác”.
 **Kết quả:** Người dùng hiểu gợi ý mà dữ liệu nhạy cảm không rời khỏi hệ thống.
 
 ### UC-14 Phát hiện bạn ở gần
 
-**Tác nhân:** Người dùng.  
-**Điều kiện trước:** Hai người là bạn bè, cùng bật tính năng, có quyền chia sẻ phù hợp và vị trí còn hiệu lực.  
-**Luồng chính:** Backend kiểm tra khoảng cách gần đúng theo ngưỡng người dùng chọn, áp dụng giới hạn 2 giờ và gửi thông báo “Bạn và một người bạn đang ở gần nhau. Tạo meetup?”.  
-**Ngoại lệ:** Một bên tắt quyền, vị trí cũ hoặc đã gửi gợi ý gần đây thì không gửi thông báo.  
+**Tác nhân:** Người dùng.
+**Điều kiện trước:** Hai người là bạn bè, cùng bật tính năng, có quyền chia sẻ phù hợp và vị trí còn hiệu lực.
+**Luồng chính:** Backend kiểm tra khoảng cách gần đúng theo ngưỡng người dùng chọn, áp dụng giới hạn 2 giờ và gửi thông báo “Bạn và một người bạn đang ở gần nhau. Tạo meetup?”.
+**Ngoại lệ:** Một bên tắt quyền, vị trí cũ hoặc đã gửi gợi ý gần đây thì không gửi thông báo.
 **Kết quả:** Có lời gợi ý theo ngữ cảnh mà không tiết lộ vị trí chính xác.
 
 ### UC-15 Quản trị tối giản
 
-**Tác nhân:** Quản trị viên.  
-**Luồng chính:** Xem báo cáo, khóa/mở khóa tài khoản, xem số liệu người dùng/meetup và trạng thái dịch vụ.  
+**Tác nhân:** Quản trị viên.
+**Luồng chính:** Xem báo cáo, khóa/mở khóa tài khoản, xem số liệu người dùng/meetup và trạng thái dịch vụ.
 **Kết quả:** Có công cụ xử lý vi phạm mà không làm phức tạp phần mobile.
 
 ### UC-16 Chia sẻ liên kết mời meetup

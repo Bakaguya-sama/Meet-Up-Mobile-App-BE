@@ -5,11 +5,12 @@ Branch `hao/feat`, based on the latest `main` at implementation start.
 ## BE-11 Meetup chat
 
 - `GET /meetups/{meetupId}/chat/messages?limit=50&before={ISO8601}&beforeId={messageUuid}` reads messages in chronological order. `limit` is clamped to 1–100. `before` and `beforeId` must be supplied together; use the oldest returned message as the next cursor. The compound cursor preserves messages with equal timestamps.
-- `POST /meetups/{meetupId}/chat/messages` accepts `{ "text": "..." }`, with 1–2,000 trimmed characters.
+- `POST /meetups/{meetupId}/chat/messages` requires a mobile-generated UUID `clientMessageId`, plus optional text/files. Reusing the same ID for retry returns the first durable message.
 - `POST` requires an authenticated, accepted participant and an active meetup (`inviting`, `choosing`, or `selected`). PostgreSQL repeats this authorization in a `BEFORE INSERT` trigger, so a concurrent leave/remove cannot insert a message after the application pre-check.
 - `GET` permits an active accepted participant. A `left`/`removed` former participant may read only messages with `sentAt <= leftAt`; an outsider, declined participant, or inactive meetup is denied. A former participant can neither send nor receive any later message.
-- Sent messages are persisted before `meetup:chat-message` is fan-out to the current accepted members' `user:{userId}` Socket.IO rooms. It is deliberately not broadcast to the meetup room, because a stale socket membership must not leak a later message. The payload is `{ id, meetupId, senderUserId, textContent, sentAt }`, and `eventId` is the same message ID. If realtime delivery fails, the stored message remains readable over HTTP and a warning is logged.
-- Chat is text-only; editing, deletion, attachments, and retention are outside the currently specified behavior.
+- Message and outbox reference are atomic. `meetup:chat-message` is fan-out to a transactionally selected accepted-member snapshot, not the meetup room. Its payload contains routing IDs only; mobile recovers content and fresh attachment URLs through HTTP.
+- Meetup/direct chat share `chat_conversations`, `chat_conversation_members`, `chat_messages` and normalized `chat_message_attachments`. A newly accepted meetup member sees all earlier history. Editing, deletion and retention remain outside scope.
+- Attachments use an allow-list/signature check and authenticated Cloudinary assets. Antivirus/quarantine is not part of this version.
 - Chat lives in the `chat` bounded context. It checks access through Meetups' public membership API and does not depend on Meetups persistence.
 
 ## BE-20 Favorite places
@@ -39,4 +40,10 @@ Review the target account ID out-of-band before running this statement. Do not e
 
 ## Delivery limits
 
-The existing implementation plan does not define chat retention, edit/delete, or attachment behavior, so those are not introduced. The former-member history policy is now explicit: retain only history through `leftAt`, never allow a new send/delivery. Integration and HTTP gate evidence is recorded in the plan after PostgreSQL test infrastructure is available; no deploy claim is made without that evidence.
+Chat retention and edit/delete remain outside scope. Former meetup members retain history only through `leftAt`; direct participants retain existing read-only history after unfriend/block. The current database is a fresh environment, so migration `1792200000000-unify-chat-conversations` replaces provisional chat tables without a data backfill.
+
+## Bước 4 closure evidence — 13/11/2026
+
+- `test/chat-favorites-admin.integration-spec.ts` runs against PostgreSQL thật and covers concurrent direct retry/favorite, meetup membership boundary, attachment cleanup and reference-only outbox.
+- `test/chat-favorites-admin.e2e-spec.ts` exercises HTTP chat/favorite behavior. The integrated suite passed 4 suites/30 tests twice; the E2E suite passed 8 suites/72 tests twice.
+- The migration cycle `up → inspect tables/triggers/constraints → down → up` passed on isolated PostgreSQL/PostGIS. Checked objects include the unified four chat tables, `trg_chat_sender_can_send`, `trg_sync_meetup_chat_member`, and `uq_chat_messages_sender_client`.

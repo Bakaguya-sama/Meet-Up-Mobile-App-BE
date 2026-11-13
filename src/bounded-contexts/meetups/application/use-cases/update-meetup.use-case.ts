@@ -7,13 +7,17 @@ import type { MeetupStorePort } from '../ports/persistence/meetup-store.port';
 export class UpdateMeetupUseCase {
   constructor(private readonly store: MeetupStorePort) {}
   async execute(actorId: string, meetupId: string, input: UpdateMeetupRequest) {
-    const { scheduledAt, invitationDeadlineAt, ...rest } = input;
+    const { scheduledAt, invitationDeadlineAt, voteDeadlineAt, ...rest } =
+      input;
     const patch: Partial<MeetupDetails> = Object.fromEntries(
       Object.entries(rest).filter(([, value]) => value !== undefined),
     );
     if (scheduledAt !== undefined) patch.scheduledAt = new Date(scheduledAt);
     if (invitationDeadlineAt !== undefined)
       patch.invitationDeadlineAt = new Date(invitationDeadlineAt);
+    if (voteDeadlineAt !== undefined)
+      patch.voteDeadlineAt =
+        voteDeadlineAt === null ? null : new Date(voteDeadlineAt);
     if (!Object.keys(patch).length)
       throw new MeetupError(
         'INVALID_INPUT',

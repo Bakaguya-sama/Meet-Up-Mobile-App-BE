@@ -45,6 +45,7 @@ export interface MeetupDetails {
   description: string | null;
   scheduledAt: Date;
   invitationDeadlineAt: Date;
+  voteDeadlineAt?: Date | null;
   searchRadiusM: number;
   placeType: string;
   recommendationMode: RecommendationMode;
@@ -54,6 +55,11 @@ export interface MeetupState extends MeetupDetails {
   id: string;
   organizerId: string;
   status: MeetupStatus;
+  voteDeadlineAt: Date | null;
+  chosenRecommendationPlaceId: string | null;
+  chosenRunId: string | null;
+  chosenById: string | null;
+  chosenAt: Date | null;
   cancelledAt: Date | null;
   finishedAt: Date | null;
   createdAt: Date;
@@ -67,6 +73,7 @@ export type MeetupEvent = {
     | 'MeetupUpdated'
     | 'MeetupCancelled'
     | 'MeetupFinished'
+    | 'MeetupFinalized'
     | 'MeetupMemberChanged'
     | 'PreferenceUpdated';
   meetupId: string;
@@ -75,6 +82,9 @@ export type MeetupEvent = {
   userId?: string;
   membershipStatus?: ParticipantStatus;
   participantId?: string;
+  runId?: string;
+  placeId?: string;
+  canonicalCandidateKey?: string;
 };
 
 /** BR-02/07/19, UC-05/06. All participant mutations belong to this aggregate. */
@@ -93,6 +103,12 @@ export class Meetup {
     now: Date,
   ): Meetup {
     const details = validateDetails(input, now);
+    if (details.voteDeadlineAt && details.voteDeadlineAt <= now) {
+      throw new MeetupError(
+        'INVALID_INPUT',
+        'Vote deadline must be a valid future time',
+      );
+    }
     validateInvitees(
       input.organizerId,
       input.invitees.map((p) => p.userId),
@@ -102,6 +118,11 @@ export class Meetup {
       id: input.id,
       organizerId: input.organizerId,
       status: 'inviting',
+      voteDeadlineAt: details.voteDeadlineAt ?? null,
+      chosenRecommendationPlaceId: null,
+      chosenRunId: null,
+      chosenById: null,
+      chosenAt: null,
       cancelledAt: null,
       finishedAt: null,
       createdAt: new Date(now),
@@ -189,6 +210,16 @@ export class Meetup {
     this.assertOrganizer(actorId);
     this.assertEditable();
     this.assertInvitationOpen(now);
+    if (
+      patch.voteDeadlineAt &&
+      (!Number.isFinite(patch.voteDeadlineAt.getTime()) ||
+        patch.voteDeadlineAt <= now)
+    ) {
+      throw new MeetupError(
+        'INVALID_INPUT',
+        'Vote deadline must be a valid future time',
+      );
+    }
     const details = validateDetails({ ...this.state, ...patch }, now);
     Object.assign(this.state, details);
     this.record('MeetupUpdated', now);
@@ -378,6 +409,89 @@ export class Meetup {
     this.record('MeetupFinished', now);
   }
 
+  assertCanVote(actorId: string, runScheduledAt: Date, now: Date): string {
+    this.assertVisible(actorId);
+    const participant = this.state.participants.find(
+      (item) => item.userId === actorId && item.status === 'accepted',
+    );
+    if (!participant) {
+      throw new MeetupError(
+        'MEETUP_FORBIDDEN',
+        'Only accepted meetup members can vote',
+      );
+    }
+    if (!['inviting', 'choosing'].includes(this.state.status)) {
+      throw new MeetupError(
+        'MEETUP_NOT_EDITABLE',
+        'Voting is only available before the meetup is finalized',
+      );
+    }
+    this.assertRecommendationContext(runScheduledAt);
+    if (this.state.voteDeadlineAt && now >= this.state.voteDeadlineAt) {
+      throw new MeetupError('MEETUP_VOTING_CLOSED', 'Voting deadline passed');
+    }
+    return participant.id;
+  }
+
+  finalize(
+    actorId: string,
+    input: {
+      runId: string;
+      recommendationPlaceId: string;
+      canonicalCandidateKey: string;
+      scheduledAtSnapshot: Date;
+    },
+    voterParticipantIds: string[],
+    now: Date,
+  ): void {
+    this.assertOrganizer(actorId);
+    if (!['inviting', 'choosing'].includes(this.state.status)) {
+      throw new MeetupError(
+        'MEETUP_INVALID_TRANSITION',
+        'Only an active meetup can be finalized',
+      );
+    }
+    this.assertRecommendationContext(input.scheduledAtSnapshot);
+    const allAcceptedMembersVoted = this.state.participants
+      .filter((participant) => participant.status === 'accepted')
+      .every((participant) => voterParticipantIds.includes(participant.id));
+    if (
+      this.state.voteDeadlineAt &&
+      now < this.state.voteDeadlineAt &&
+      !allAcceptedMembersVoted
+    ) {
+      throw new MeetupError(
+        'MEETUP_VOTING_OPEN',
+        'The organizer can finalize after the deadline or after every accepted member votes',
+      );
+    }
+    this.state.status = 'selected';
+    this.state.chosenRecommendationPlaceId = input.recommendationPlaceId;
+    this.state.chosenRunId = input.runId;
+    this.state.chosenById = actorId;
+    this.state.chosenAt = new Date(now);
+    this.record(
+      'MeetupFinalized',
+      now,
+      this.state.participants
+        .filter((participant) => participant.status === 'accepted')
+        .map((participant) => participant.userId),
+    );
+    const event = this.events[this.events.length - 1];
+    event.runId = input.runId;
+    event.placeId = input.recommendationPlaceId;
+    event.canonicalCandidateKey = input.canonicalCandidateKey;
+  }
+
+  private assertRecommendationContext(runScheduledAt: Date): void {
+    if (runScheduledAt.getTime() !== this.state.scheduledAt.getTime()) {
+      throw new MeetupError(
+        'RECOMMENDATION_STALE_CONTEXT',
+        'The meetup schedule changed; create a new recommendation run',
+      );
+    }
+  }
+
   setParticipantPreferences(
     actorId: string,
     items: Array<{ activityTagId: number; level: PreferenceLevel }>,
@@ -485,6 +599,17 @@ function validateDetails(input: MeetupDetails, now: Date): MeetupDetails {
       'Future invitation deadline must be at or before the future scheduled time',
     );
   if (
+    input.voteDeadlineAt !== undefined &&
+    input.voteDeadlineAt !== null &&
+    (!Number.isFinite(input.voteDeadlineAt.getTime()) ||
+      input.voteDeadlineAt > input.scheduledAt)
+  ) {
+    throw new MeetupError(
+      'INVALID_INPUT',
+      'Vote deadline must be at or before the meetup schedule',
+    );
+  }
+  if (
     !Number.isInteger(input.searchRadiusM) ||
     input.searchRadiusM < 100 ||
     input.searchRadiusM > 50000
@@ -505,6 +630,9 @@ function validateDetails(input: MeetupDetails, now: Date): MeetupDetails {
     description: input.description?.trim() ?? null,
     scheduledAt: new Date(input.scheduledAt),
     invitationDeadlineAt: new Date(input.invitationDeadlineAt),
+    voteDeadlineAt: input.voteDeadlineAt
+      ? new Date(input.voteDeadlineAt)
+      : null,
     searchRadiusM: input.searchRadiusM,
     placeType: input.placeType,
     recommendationMode: input.recommendationMode,

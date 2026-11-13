@@ -7,6 +7,11 @@ import { ParticipantPreferenceEntity } from '../src/bounded-contexts/meetups/inf
 import { CreateFriendshipsTable1760000003000 } from '../src/infrastructure/database/migrations/1760000003000-create-friendships-table';
 import { CreateOutboxEventsTable1760000006000 } from '../src/infrastructure/database/migrations/1760000006000-create-outbox-events-table';
 import { CreateMeetupsTables1792070000000 } from '../src/infrastructure/database/migrations/1792070000000-create-meetups-tables';
+import { CreateRecommendationRunBaseline1792080000000 } from '../src/infrastructure/database/migrations/1792080000000-create-recommendation-run-baseline';
+import { AddRecommendationRankingSnapshots1792090000000 } from '../src/infrastructure/database/migrations/1792090000000-add-recommendation-ranking-snapshots';
+import { AddRecommendationTemporalContext1792100000000 } from '../src/infrastructure/database/migrations/1792100000000-add-recommendation-temporal-context';
+import { CreateRecommendationResults1792110000000 } from '../src/infrastructure/database/migrations/1792110000000-create-recommendation-results';
+import { AddMeetupVoting1792150000000 } from '../src/infrastructure/database/migrations/1792150000000-add-meetup-voting';
 import { MeetupEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/meetup.typeorm-entity';
 import { ParticipantEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/participant.typeorm-entity';
 import { TypeOrmMeetupRepository } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/typeorm-meetup-repository';
@@ -62,6 +67,11 @@ integration('Meetup PostgreSQL transactions and migrations', () => {
         CreateOutboxEventsTable1760000006000,
         CreateMeetupsTables1792070000000,
         CreateMeetupParticipantPreferencesTable1792070001000,
+        CreateRecommendationRunBaseline1792080000000,
+        AddRecommendationRankingSnapshots1792090000000,
+        AddRecommendationTemporalContext1792100000000,
+        CreateRecommendationResults1792110000000,
+        AddMeetupVoting1792150000000,
       ],
     }).initialize();
     await db.runMigrations();

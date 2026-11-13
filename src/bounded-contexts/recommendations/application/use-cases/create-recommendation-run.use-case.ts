@@ -38,6 +38,7 @@ import {
 } from '../services/weather-policy';
 import type { WeatherContextPort } from '../ports/weather-context.port';
 import { MeetupMembershipReader } from '../../../meetups/application/public/meetup-membership-reader';
+import { RecommendationObservabilityService } from '../services/recommendation-observability.service';
 
 export class CreateRecommendationRunUseCase {
   constructor(
@@ -58,6 +59,7 @@ export class CreateRecommendationRunUseCase {
     private readonly weatherPolicy: WeatherPolicy = 'OFF',
     private readonly weather?: WeatherContextPort,
     private readonly memberships?: MeetupMembershipReader,
+    private readonly observability?: RecommendationObservabilityService,
   ) {}
 
   async execute(
@@ -214,7 +216,12 @@ export class CreateRecommendationRunUseCase {
         new Map(
           eligible.flatMap((candidate) =>
             candidate.closingEvidence
-              ? [[candidate.canonicalCandidateKey, candidate.closingEvidence] as const]
+              ? [
+                  [
+                    candidate.canonicalCandidateKey,
+                    candidate.closingEvidence,
+                  ] as const,
+                ]
               : [],
           ),
         ),
@@ -398,6 +405,7 @@ export class CreateRecommendationRunUseCase {
         },
         completedAt,
       );
+      this.observability?.recordCompleted(completed);
       return this.present(completed, actorId, request.meetupId);
     } catch (error) {
       const code =
@@ -405,6 +413,7 @@ export class CreateRecommendationRunUseCase {
           ? error.code
           : 'PLACE_SEARCH_UNAVAILABLE';
       await this.store.fail(run.id, code, this.now());
+      this.observability?.recordFailure(code);
       if (error instanceof RecommendationError) throw error;
       throw new RecommendationError(
         'PLACE_SEARCH_UNAVAILABLE',

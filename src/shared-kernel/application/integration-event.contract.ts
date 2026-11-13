@@ -10,6 +10,8 @@ export const INTEGRATION_EVENT_NAMES = [
   'VoteUpdated.v1',
   'MeetupFinalized.v1',
   'MeetupInviteLinkAccepted.v1',
+  'MeetupChatMessageCreated.v1',
+  'DirectChatMessageCreated.v1',
 ] as const;
 
 export type IntegrationEventName = (typeof INTEGRATION_EVENT_NAMES)[number];
@@ -59,13 +61,16 @@ export type RecommendationReadyV1 = EventMetadata<'RecommendationReady.v1'> & {
 
 export type VoteUpdatedV1 = EventMetadata<'VoteUpdated.v1'> & {
   meetupId: string;
+  runId: string;
   placeId: string;
   voteCount: number;
 };
 
 export type MeetupFinalizedV1 = EventMetadata<'MeetupFinalized.v1'> & {
   meetupId: string;
+  runId: string;
   placeId: string;
+  canonicalCandidateKey: string;
   scheduledAt: string;
 };
 
@@ -74,6 +79,22 @@ export type MeetupInviteLinkAcceptedV1 =
     meetupId: string;
     participantId: string;
     inviteLinkId: string;
+  };
+
+export type MeetupChatMessageCreatedV1 =
+  EventMetadata<'MeetupChatMessageCreated.v1'> & {
+    conversationId: string;
+    meetupId: string;
+    messageId: string;
+    senderUserId: string;
+  };
+
+export type DirectChatMessageCreatedV1 =
+  EventMetadata<'DirectChatMessageCreated.v1'> & {
+    conversationId: string;
+    messageId: string;
+    senderUserId: string;
+    recipientUserId: string;
   };
 
 export type IntegrationEvent =
@@ -85,7 +106,9 @@ export type IntegrationEvent =
   | RecommendationReadyV1
   | VoteUpdatedV1
   | MeetupFinalizedV1
-  | MeetupInviteLinkAcceptedV1;
+  | MeetupInviteLinkAcceptedV1
+  | MeetupChatMessageCreatedV1
+  | DirectChatMessageCreatedV1;
 
 export const EVENT_ERROR_CODES = {
   UNAUTHORIZED: 'UNAUTHORIZED',
@@ -109,6 +132,9 @@ const FORBIDDEN_SENSITIVE_KEYS = new Set([
   'lat',
   'lng',
   'token',
+  'downloadurl',
+  'textcontent',
+  'attachments',
 ]);
 
 export function isIntegrationEvent(value: unknown): value is IntegrationEvent {
@@ -155,14 +181,37 @@ export function isIntegrationEvent(value: unknown): value is IntegrationEvent {
       );
     case 'VoteUpdated.v1':
       return (
-        hasStrings(value, 'meetupId', 'placeId') &&
+        hasStrings(value, 'meetupId', 'runId', 'placeId') &&
         typeof value.voteCount === 'number' &&
         Number.isFinite(value.voteCount)
       );
     case 'MeetupFinalized.v1':
-      return hasStrings(value, 'meetupId', 'placeId', 'scheduledAt');
+      return hasStrings(
+        value,
+        'meetupId',
+        'runId',
+        'placeId',
+        'canonicalCandidateKey',
+        'scheduledAt',
+      );
     case 'MeetupInviteLinkAccepted.v1':
       return hasStrings(value, 'meetupId', 'participantId', 'inviteLinkId');
+    case 'MeetupChatMessageCreated.v1':
+      return hasStrings(
+        value,
+        'conversationId',
+        'meetupId',
+        'messageId',
+        'senderUserId',
+      );
+    case 'DirectChatMessageCreated.v1':
+      return hasStrings(
+        value,
+        'conversationId',
+        'messageId',
+        'senderUserId',
+        'recipientUserId',
+      );
   }
 
   return false;

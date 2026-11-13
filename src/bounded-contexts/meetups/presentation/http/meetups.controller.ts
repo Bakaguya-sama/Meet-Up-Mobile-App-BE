@@ -36,6 +36,8 @@ import {
   InviteParticipantsRequest,
   MeetupPageRequest,
   SetMeetupPreferencesRequest,
+  CastMeetupVoteRequest,
+  FinalizeMeetupRequest,
   UpdateMeetupRequest,
 } from '../../application/dto/meetup-request.dto';
 import { GetMeetupDetailQuery } from '../../application/queries/get-meetup-detail.query';
@@ -56,11 +58,17 @@ import {
   inviteParticipantsSchema,
   meetupDetailSchema,
   meetupMemberPreferenceSchema,
+  meetupHistoryPageSchema,
   meetupPageSchema,
   meetupPreferencesSummarySchema,
   setMeetupPreferencesBodySchema,
   updateMeetupSchema,
+  castMeetupVoteSchema,
+  finalizeMeetupSchema,
 } from './meetups.openapi';
+import { CastMeetupVoteUseCase } from '../../application/use-cases/cast-meetup-vote.use-case';
+import { FinalizeMeetupUseCase } from '../../application/use-cases/finalize-meetup.use-case';
+import { ListMeetupHistoryQuery } from '../../application/queries/list-meetup-history.query';
 
 @ApiTags('Meetups')
 @ApiBearerAuth()
@@ -94,6 +102,9 @@ export class MeetupsController {
     private readonly setMeetupPreference: SetMeetupMemberPreferenceUseCase,
     private readonly getMeetupPreference: GetMeetupMemberPreferenceUseCase,
     private readonly getPreferencesSummary: GetMeetupPreferencesSummaryQuery,
+    private readonly castVote: CastMeetupVoteUseCase,
+    private readonly finalizeMeetup: FinalizeMeetupUseCase,
+    private readonly listMeetupHistory: ListMeetupHistoryQuery,
   ) {}
 
   @Post()
@@ -129,6 +140,29 @@ export class MeetupsController {
   @ApiOkResponse({ schema: meetupPageSchema })
   list(@CurrentUser('id') actorId: string, @Query() query: MeetupPageRequest) {
     return this.listMeetups.execute(actorId, query.offset, query.limit);
+  }
+
+  @Get('history')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'List finished meetups where you were an accepted participant',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    schema: { type: 'integer', default: 0, minimum: 0, maximum: 100000 },
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    schema: { type: 'integer', default: 20, minimum: 1, maximum: 100 },
+  })
+  @ApiOkResponse({ schema: meetupHistoryPageSchema })
+  history(
+    @CurrentUser('id') actorId: string,
+    @Query() query: MeetupPageRequest,
+  ) {
+    return this.listMeetupHistory.execute(actorId, query.offset, query.limit);
   }
 
   @Get(':meetupId')
@@ -287,5 +321,51 @@ export class MeetupsController {
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
   ) {
     return this.getPreferencesSummary.execute(actorId, meetupId);
+  }
+
+  @Put(':meetupId/recommendation-runs/:runId/vote')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Cast or replace your vote for a displayed candidate',
+  })
+  @ApiBody({ schema: castMeetupVoteSchema })
+  @ApiOkResponse({ description: 'Vote recorded or unchanged' })
+  castRecommendationVote(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+    @Body() body: CastMeetupVoteRequest,
+  ) {
+    return this.castVote.execute(
+      actorId,
+      meetupId,
+      runId,
+      body.recommendationPlaceId,
+    );
+  }
+
+  @Post(':meetupId/recommendation-runs/:runId/finalize')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary:
+      'Organizer finalizes a displayed candidate; omitted candidate uses vote winner',
+  })
+  @ApiBody({ schema: finalizeMeetupSchema })
+  @ApiOkResponse({
+    description: 'Meetup finalized with runId and selected candidate',
+  })
+  finalize(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+    @Body() body: FinalizeMeetupRequest,
+  ) {
+    return this.finalizeMeetup.execute(
+      actorId,
+      meetupId,
+      runId,
+      body.recommendationPlaceId,
+    );
   }
 }

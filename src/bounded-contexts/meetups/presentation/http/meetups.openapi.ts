@@ -20,6 +20,23 @@ export const inviteParticipantsSchema: SchemaObject = {
     },
   },
 };
+export const castMeetupVoteSchema: SchemaObject = {
+  type: 'object',
+  required: ['recommendationPlaceId'],
+  additionalProperties: false,
+  properties: { recommendationPlaceId: uuid },
+};
+export const finalizeMeetupSchema: SchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    recommendationPlaceId: {
+      ...uuid,
+      description:
+        'Optional explicit organizer choice; omitted selects the vote winner.',
+    },
+  },
+};
 export const updateMeetupSchema: SchemaObject = {
   type: 'object',
   additionalProperties: false,
@@ -35,6 +52,11 @@ export const updateMeetupSchema: SchemaObject = {
       ...date,
       description:
         'Future time at or before scheduledAt; explicit UTC offset required.',
+    },
+    voteDeadlineAt: {
+      ...nullableDate,
+      description:
+        'Optional organizer-set voting deadline; null means manual finalization only.',
     },
     searchRadiusM: { type: 'integer', minimum: 100, maximum: 50000 },
     placeType: {
@@ -80,6 +102,11 @@ export const meetupSummarySchema: SchemaObject = {
     updatedAt: date,
     cancelledAt: nullableDate,
     finishedAt: nullableDate,
+    voteDeadlineAt: nullableDate,
+    chosenRecommendationPlaceId: { ...uuid, nullable: true },
+    chosenRunId: { ...uuid, nullable: true },
+    chosenById: { ...uuid, nullable: true },
+    chosenAt: nullableDate,
   },
 };
 export const meetupDetailSchema: SchemaObject = {
@@ -113,6 +140,53 @@ export const meetupPageSchema: SchemaObject = {
     total: { type: 'integer' },
     offset: { type: 'integer' },
     limit: { type: 'integer' },
+  },
+};
+
+export const meetupHistoryPageSchema: SchemaObject = {
+  type: 'object',
+  required: ['items', 'total', 'offset', 'limit'],
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: [
+          'meetupId',
+          'title',
+          'scheduledAt',
+          'finishedAt',
+          'selectedPlace',
+        ],
+        properties: {
+          meetupId: uuid,
+          title: { type: 'string' },
+          description: { type: 'string', nullable: true },
+          scheduledAt: date,
+          finishedAt: date,
+          selectedPlace: {
+            type: 'object',
+            required: [
+              'recommendationPlaceId',
+              'canonicalCandidateKey',
+              'provider',
+              'providerPlaceId',
+              'name',
+            ],
+            properties: {
+              recommendationPlaceId: uuid,
+              canonicalCandidateKey: { type: 'string' },
+              provider: { type: 'string' },
+              providerPlaceId: { type: 'string' },
+              name: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    total: { type: 'integer', minimum: 0 },
+    offset: { type: 'integer', minimum: 0 },
+    limit: { type: 'integer', minimum: 1, maximum: 100 },
   },
 };
 

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import type {
   FavoritePlace,
@@ -24,8 +24,7 @@ export class TypeOrmFavoritePlaceStore implements FavoritePlaceStore {
         .orderBy('candidate.createdAt', 'DESC')
         .getOne();
       if (!candidate) return null;
-
-      await manager
+      const insert = await manager
         .createQueryBuilder()
         .insert()
         .into(FavoritePlaceEntity)
@@ -40,7 +39,46 @@ export class TypeOrmFavoritePlaceStore implements FavoritePlaceStore {
         })
         .onConflict('(user_id, canonical_candidate_key) DO NOTHING')
         .execute();
-
+      // A first favorite is a durable feedback signal.  Keep it in this same
+      // transaction so a failed feedback write rolls back the favorite too.
+      if (insert.identifiers.length > 0) {
+        const participants = await manager.query<Array<{ id: string }>>(
+          `SELECT participant.id
+             FROM meetup_participants participant
+             INNER JOIN recommendation_runs run ON run.meetup_id = participant.meetup_id
+            WHERE run.id = $1 AND participant.user_id = $2
+              AND participant.status = 'accepted'`,
+          [candidate.runId, userId.toLowerCase()],
+        );
+        if (participants[0]) {
+          const eventId = randomUUID();
+          const occurredAt = new Date();
+          const payload = {
+            eventId,
+            runId: candidate.runId,
+            meetupParticipantId: participants[0].id,
+            eventType: 'FAVORITE_ADDED',
+            canonicalCandidateKey: candidate.canonicalCandidateKey,
+            occurredAt: occurredAt.toISOString(),
+          };
+          await manager.query(
+            `INSERT INTO recommendation_feedback_events
+              (event_id, run_id, meetup_participant_id, event_type,
+               canonical_candidate_key, payload_hash, occurred_at, metadata, created_at)
+             VALUES ($1, $2, $3, 'FAVORITE_ADDED', $4, $5, $6, '{}'::jsonb, NOW())`,
+            [
+              eventId,
+              candidate.runId,
+              participants[0].id,
+              candidate.canonicalCandidateKey,
+              createHash('sha256')
+                .update(JSON.stringify(payload))
+                .digest('hex'),
+              occurredAt,
+            ],
+          );
+        }
+      }
       const saved = await manager.getRepository(FavoritePlaceEntity).findOneBy({
         userId,
         canonicalCandidateKey: candidate.canonicalCandidateKey,
@@ -50,10 +88,9 @@ export class TypeOrmFavoritePlaceStore implements FavoritePlaceStore {
   }
 
   async list(userId: string): Promise<FavoritePlace[]> {
-    const rows = await this.dataSource.getRepository(FavoritePlaceEntity).find({
-      where: { userId },
-      order: { createdAt: 'DESC', id: 'DESC' },
-    });
+    const rows = await this.dataSource
+      .getRepository(FavoritePlaceEntity)
+      .find({ where: { userId }, order: { createdAt: 'DESC', id: 'DESC' } });
     return rows.map((row) => this.toFavorite(row));
   }
 

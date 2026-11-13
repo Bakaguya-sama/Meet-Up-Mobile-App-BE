@@ -10,7 +10,9 @@ const environmentSchema = Joi.object({
   PUBLIC_APP_BASE_URL: Joi.when('NODE_ENV', {
     is: 'test',
     then: Joi.string().allow('').optional(),
-    otherwise: Joi.string().uri({ scheme: ['https'] }).required(),
+    otherwise: Joi.string()
+      .uri({ scheme: ['https'] })
+      .required(),
   }),
   JWT_ACCESS_SECRET: Joi.string()
     .min(32)
@@ -87,6 +89,10 @@ const environmentSchema = Joi.object({
   ROUTES_ROUTING_PREFERENCE: Joi.string()
     .valid('TRAFFIC_UNAWARE', 'TRAFFIC_AWARE')
     .default('TRAFFIC_UNAWARE'),
+  RECOMMENDATION_RETENTION_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
   FIREBASE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   FIREBASE_PROJECT_ID: Joi.when('FIREBASE_ENABLED', {
     is: true,
@@ -99,6 +105,25 @@ const environmentSchema = Joi.object({
     otherwise: Joi.string().allow('').optional(),
   }),
   FIREBASE_PRIVATE_KEY: Joi.when('FIREBASE_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  CLOUDINARY_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
+  CLOUDINARY_CLOUD_NAME: Joi.when('CLOUDINARY_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  CLOUDINARY_API_KEY: Joi.when('CLOUDINARY_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  CLOUDINARY_API_SECRET: Joi.when('CLOUDINARY_ENABLED', {
     is: true,
     then: Joi.string().min(1).required(),
     otherwise: Joi.string().allow('').optional(),

@@ -17,6 +17,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `09_cong_nghe_su_dung.md` | Stack kỹ thuật, chiến lược Neon/Redis, Docker Compose, biến môi trường và cách triển khai theo từng môi trường. |
 | `MeetUp_Product_Backlog_Function_Points.xlsx` | Chia việc theo Function Points, backlog và tiến độ. |
 | `friends/friends_api.md` | API kết bạn BE-03, quy tắc concurrency, migration, QR hybrid và kiểm thử. |
+| `chat/chat_api.md` | Contract chat meetup/direct hợp nhất, idempotency, attachment, quyền lịch sử và realtime recovery. |
 | `11_location_privacy_api.md` | Cài đặt quyền riêng tư vị trí, kiểm quyền mỗi yêu cầu và contract cho realtime. |
 | `outbox_event/notifications_api.md` | Đăng ký thiết bị FCM, mã hóa token, outbox retry và contract deep-link notification. |
 | `outbox_event/realtime_event_contracts.md` | Contract integration event có version, Socket room, outbox, retry/idempotency và notification payload. |
@@ -25,6 +26,8 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `12_meetup_group_recommendation_engine.md` | Thiết kế kỹ thuật recommendation pipeline, fairness ranking, feedback logging và lộ trình offline learning/LTR. |
 | `13_implementation_plan.md` | Thứ tự triển khai, dependency, exit gate và quyết định đã khóa cho toàn bộ function backend. |
 | `18_be11_be19_be20_delivery.md` | API, ranh giới context và lưu ý triển khai cho BE-11, BE-19, BE-20. |
+| `19_be10_voting_delivery.md` | Contract vote/finalize theo displayed run, transactional outbox và bằng chứng Bước 4. |
+| `20_be12_meetup_history.md` | API lịch sử meetup, quyền xem và snapshot địa điểm đã chốt theo BE-12. |
 
 ## Cách dùng nhanh
 
@@ -44,3 +47,6 @@ Các quyết định mở rộng đã khóa gồm: địa điểm còn mở như
 Sở thích profile chỉ là giá trị mặc định. Khi tạo hoặc nhận meetup, mỗi người chọn sở thích tạm thời cho meetup; lựa chọn này là dữ liệu chính để xếp hạng.
 
 Budget filter và PricePenalty không nằm trong phạm vi vì `priceLevel` của Google Places là mức phân loại tham khảo, không đủ đáng tin để quyết định hoặc hạ hạng địa điểm. Giọng nói và gợi ý theo thời tiết vẫn là phần mở rộng. AI chỉ nhận dữ liệu tổng hợp của nhóm và kết quả xếp hạng; không gửi tọa độ chính xác hoặc lịch sử GPS cho dịch vụ AI.
+# Chat media configuration
+
+Set `CLOUDINARY_ENABLED=true` and provide `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to enable image/file uploads. Keep the API secret only in the backend environment. With the flag unset or false, text chat remains available and file uploads return a service-unavailable response. The backend stores assets as authenticated Cloudinary resources and returns signed download links that expire after 15 minutes. If the Cloudinary product environment blocks PDF/archive delivery, allow those delivery formats in the Cloudinary security settings.

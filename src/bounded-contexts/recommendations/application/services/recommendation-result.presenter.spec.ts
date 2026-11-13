@@ -23,9 +23,9 @@ describe('presentForViewer', () => {
     run.candidates[0].filterStatus = 'FILTERED';
     run.candidates[0].filterReason = 'NO_ROUTE';
 
-    expect(() => presentForViewer('participant', run, 'CURRENT_CONTEXT')).toThrow(
-      'Persisted recommendation result is inconsistent',
-    );
+    expect(() =>
+      presentForViewer('participant', run, 'CURRENT_CONTEXT'),
+    ).toThrow('Persisted recommendation result is inconsistent');
   });
 });
 

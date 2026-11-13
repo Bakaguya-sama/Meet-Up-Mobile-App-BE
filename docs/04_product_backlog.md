@@ -26,7 +26,7 @@
 | PB-16 | Lọc địa điểm đang mở cửa | Planned | 3 | Chỉ lọc khi Places có dữ liệu giờ mở | PB-12 |
 | PB-17 | Dẫn đường và lịch sử meetup | Planned | 5 | Mở Google Maps; xem meetup đã kết thúc | PB-14 |
 | PB-18 | Lưu địa điểm yêu thích | Planned | 3 | Thêm/xóa, không trùng | PB-12 |
-| PB-19 | Group chat trong meetup | Planned | 8 | Chỉ thành viên được đọc/gửi tin realtime | PB-09 |
+| PB-19 | Chat meetup và direct hợp nhất | Planned | 8 | Quyền đọc/gửi đúng membership/friendship; retry idempotent; realtime reference không lộ attachment URL | PB-09 |
 | PB-20 | AI giải thích đề xuất | Planned | 8 | Không gửi tọa độ/hồ sơ không cần thiết cho AI | PB-13 |
 | PB-21 | Phát hiện bạn bè đang ở gần | Planned | 8 | Cả hai opt-in, không lộ vị trí chính xác, giới hạn 2 giờ | PB-07 |
 | PB-22 | Admin tối giản và báo cáo người dùng | Planned | 5 | Khóa tài khoản, xem số liệu cơ bản | PB-01 |

@@ -25,6 +25,16 @@ export class MeetupEntity implements Omit<MeetupState, 'participants'> {
   @Column('timestamptz', { name: 'scheduled_at' }) scheduledAt: Date;
   @Column('timestamptz', { name: 'invitation_deadline_at' })
   invitationDeadlineAt: Date;
+  @Column('timestamptz', { name: 'vote_deadline_at', nullable: true })
+  voteDeadlineAt: Date | null;
+  @Column('uuid', { name: 'chosen_recommendation_place_id', nullable: true })
+  chosenRecommendationPlaceId: string | null;
+  @Column('uuid', { name: 'chosen_run_id', nullable: true })
+  chosenRunId: string | null;
+  @Column('uuid', { name: 'chosen_by_id', nullable: true })
+  chosenById: string | null;
+  @Column('timestamptz', { name: 'chosen_at', nullable: true })
+  chosenAt: Date | null;
   @Column('integer', { name: 'search_radius_m' }) searchRadiusM: number;
   @Column('varchar', { name: 'place_type', length: 100 }) placeType: string;
   @Column('varchar', {

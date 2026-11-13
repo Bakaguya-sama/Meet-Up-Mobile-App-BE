@@ -55,6 +55,11 @@ export class CreateMeetupRequest extends InviteParticipantsRequest {
   @Matches(/T.*(?:Z|[+-]\d{2}:\d{2})$/)
   invitationDeadlineAt: string;
 
+  @ValidateIf((_, value: unknown) => value !== undefined && value !== null)
+  @IsISO8601({ strict: true })
+  @Matches(/T.*(?:Z|[+-]\d{2}:\d{2})$/)
+  voteDeadlineAt?: string | null;
+
   @IsInt()
   @Min(100)
   @Max(50000)
@@ -86,6 +91,11 @@ export class UpdateMeetupRequest {
   @IsISO8601({ strict: true })
   @Matches(/T.*(?:Z|[+-]\d{2}:\d{2})$/)
   invitationDeadlineAt?: string;
+
+  @ValidateIf((_, value: unknown) => value !== undefined && value !== null)
+  @IsISO8601({ strict: true })
+  @Matches(/T.*(?:Z|[+-]\d{2}:\d{2})$/)
+  voteDeadlineAt?: string | null;
 
   @ValidateIf(optional)
   @IsInt()
@@ -127,4 +137,21 @@ export class SetMeetupPreferencesRequest {
   @ValidateNested({ each: true })
   @Type(() => PreferenceTagInput)
   preferences: PreferenceTagInput[];
+}
+
+export class CastMeetupVoteRequest {
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsUUID('all')
+  recommendationPlaceId: string;
+}
+
+export class FinalizeMeetupRequest {
+  @ValidateIf(optional)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsUUID('all')
+  recommendationPlaceId?: string;
 }
