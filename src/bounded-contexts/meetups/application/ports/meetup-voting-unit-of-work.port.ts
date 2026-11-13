@@ -8,6 +8,16 @@ export type MeetupVotingTransaction = {
   findVote(meetupParticipantId: string): Promise<MeetupVoteState | null>;
   listVotes(runId: string): Promise<MeetupVoteState[]>;
   saveVote(vote: MeetupVoteState): Promise<void>;
+  /** Persists audit feedback in the same database transaction as vote/finalize. */
+  recordRecommendationFeedback(input: {
+    eventId: string;
+    runId: string;
+    meetupParticipantId: string | null;
+    eventType: 'PLACE_VOTED' | 'VOTE_CHANGED' | 'MEETUP_PLACE_SELECTED';
+    canonicalCandidateKey: string;
+    fromCanonicalCandidateKey?: string;
+    occurredAt: Date;
+  }): Promise<void>;
 };
 
 export interface MeetupVotingUnitOfWork {

@@ -59,6 +59,8 @@ import { AddRecommendationStaticDurationMetric1792170000000 } from '../src/infra
 import { AddRecommendationClosingSnapshots1792180000000 } from '../src/infrastructure/database/migrations/1792180000000-add-recommendation-closing-snapshots';
 import { AddDirectChatAndAttachments1792190000000 } from '../src/infrastructure/database/migrations/1792190000000-add-direct-chat-and-attachments';
 import { UnifyChatConversations1792200000000 } from '../src/infrastructure/database/migrations/1792200000000-unify-chat-conversations';
+import { CreateRecommendationFeedbackEvents1792210000000 } from '../src/infrastructure/database/migrations/1792210000000-create-recommendation-feedback-events';
+import { CreateRecommendationRetentionHolds1792220000000 } from '../src/infrastructure/database/migrations/1792220000000-create-recommendation-retention-holds';
 import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persistence/outbox-event.typeorm-entity';
 
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
@@ -134,10 +136,16 @@ describe('BE-10, BE-11, BE-12, BE-19 and BE-20 PostgreSQL integration', () => {
         AddRecommendationClosingSnapshots1792180000000,
         AddDirectChatAndAttachments1792190000000,
         UnifyChatConversations1792200000000,
+        CreateRecommendationFeedbackEvents1792210000000,
+        CreateRecommendationRetentionHolds1792220000000,
       ],
     }).initialize();
     await db.runMigrations();
     await expectUnifiedSchema(true);
+    // Undo the complete Step-5 tail as well, so this preserves the original
+    // migration-cycle assertion for the unified-chat migration.
+    await db.undoLastMigration();
+    await db.undoLastMigration();
     await db.undoLastMigration();
     await expectUnifiedSchema(false);
     await db.runMigrations();
@@ -628,6 +636,19 @@ describe('BE-10, BE-11, BE-12, BE-19 and BE-20 PostgreSQL integration', () => {
       placeId: finalized.recommendationPlaceId,
       canonicalCandidateKey: finalized.canonicalCandidateKey,
     });
+    await expect(
+      db.query<Array<{ event_type: string }>>(
+        `SELECT event_type FROM recommendation_feedback_events
+          WHERE run_id = $1 ORDER BY created_at ASC`,
+        [scenario.runId],
+      ),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        { event_type: 'PLACE_VOTED' },
+        { event_type: 'VOTE_CHANGED' },
+        { event_type: 'MEETUP_PLACE_SELECTED' },
+      ]),
+    );
 
     const repository = new TypeOrmRecommendationRunRepository(db);
     const getRun = new GetRecommendationRunUseCase(

@@ -73,6 +73,14 @@ export class CastMeetupVoteUseCase {
         updatedAt: now,
       };
       await tx.saveVote(vote);
+      await tx.recordRecommendationFeedback({
+        eventId: randomUUID(),
+        runId,
+        meetupParticipantId: participantId,
+        eventType: previous ? 'VOTE_CHANGED' : 'PLACE_VOTED',
+        canonicalCandidateKey: candidate.canonicalCandidateKey,
+        occurredAt: now,
+      });
       const votes = await tx.listVotes(runId);
       const recipients = tx.meetup
         .snapshot()

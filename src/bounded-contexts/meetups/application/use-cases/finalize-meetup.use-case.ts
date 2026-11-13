@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { RecommendationVotingReader } from '../../../recommendations/application/public/recommendation-voting-reader';
 import type { MeetupVotingUnitOfWork } from '../ports/meetup-voting-unit-of-work.port';
 import { VoteWinnerDomainService } from '../../domain/services/vote-winner.domain-service';
@@ -70,6 +71,19 @@ export class FinalizeMeetupUseCase {
         votes.map((vote) => vote.meetupParticipantId),
         now,
       );
+      const actorParticipant = tx.meetup
+        .snapshot()
+        .participants.find(
+          (participant) => participant.userId === actorId.toLowerCase(),
+        );
+      await tx.recordRecommendationFeedback({
+        eventId: randomUUID(),
+        runId,
+        meetupParticipantId: actorParticipant?.id ?? null,
+        eventType: 'MEETUP_PLACE_SELECTED',
+        canonicalCandidateKey: chosen.canonicalCandidateKey,
+        occurredAt: now,
+      });
       return {
         meetupId,
         runId,

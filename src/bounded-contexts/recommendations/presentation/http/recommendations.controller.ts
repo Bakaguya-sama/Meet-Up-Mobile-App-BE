@@ -27,6 +27,12 @@ import { FindPlaceCandidatesUseCase } from '../../application/use-cases/find-pla
 import { CreateRecommendationRunRequest } from '../../application/dto/recommendation-run.dto';
 import { CreateRecommendationRunUseCase } from '../../application/use-cases/create-recommendation-run.use-case';
 import { GetRecommendationRunUseCase } from '../../application/use-cases/get-recommendation-run.use-case';
+import { RecordRecommendationFeedbackUseCase } from '../../application/use-cases/record-recommendation-feedback.use-case';
+import {
+  RecordRecommendationFeedbackRequest,
+  RecordRecommendationImpressionRequest,
+} from '../../application/dto/recommendation-feedback.dto';
+import { ReplayRecommendationRunUseCase } from '../../application/use-cases/replay-recommendation-run.use-case';
 
 @ApiTags('Recommendations')
 @ApiBearerAuth()
@@ -42,6 +48,8 @@ export class RecommendationsController {
     private readonly findCandidates: FindPlaceCandidatesUseCase,
     private readonly createRun: CreateRecommendationRunUseCase,
     private readonly getRun: GetRecommendationRunUseCase,
+    private readonly feedback: RecordRecommendationFeedbackUseCase,
+    private readonly replay: ReplayRecommendationRunUseCase,
   ) {}
 
   @Post(':meetupId/recommendations/candidates')
@@ -135,6 +143,51 @@ export class RecommendationsController {
     @Param('runId', new ParseUUIDPipe()) runId: string,
   ) {
     return this.getRun.execute(actorId, meetupId, runId);
+  }
+
+  @Post(':meetupId/recommendation-runs/:runId/impressions')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Record one idempotent displayed recommendation item',
+  })
+  impression(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+    @Body() body: RecordRecommendationImpressionRequest,
+  ) {
+    return this.feedback.impression(actorId, meetupId, runId, body);
+  }
+
+  @Post(':meetupId/recommendation-runs/:runId/feedback-events')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Record an idempotent post-display recommendation event',
+  })
+  feedbackEvent(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+    @Body() body: RecordRecommendationFeedbackRequest,
+  ) {
+    return this.feedback.feedback(actorId, meetupId, runId, body);
+  }
+
+  @Post(':meetupId/recommendation-runs/:runId/replay')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary:
+      'Verify an immutable full recommendation snapshot without providers',
+  })
+  replayRun(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+  ) {
+    return this.replay.execute(actorId, meetupId, runId);
   }
 }
 

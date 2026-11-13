@@ -582,6 +582,55 @@
     Note: 'Written in the same transaction as a domain change. A worker publishes it to Socket.IO, FCM or other consumers.'
   }
 
+  Table recommendation_impressions {
+    event_id uuid [pk]
+    run_id uuid [not null]
+    meetup_participant_id uuid [not null]
+    canonical_candidate_key varchar(300) [not null]
+    rank smallint [not null]
+    payload_hash char(64) [not null]
+    shown_at timestamptz [not null]
+    created_at timestamptz [not null]
+
+    Indexes {
+      (run_id, meetup_participant_id, canonical_candidate_key) [unique]
+      (run_id, meetup_participant_id)
+    }
+
+    Note: 'BE-24 immutable display receipt. event_id is idempotent; payload hash rejects same ID with different content. No coordinates or member feature payload.'
+  }
+
+  Table recommendation_feedback_events {
+    event_id uuid [pk]
+    run_id uuid [not null]
+    meetup_participant_id uuid
+    event_type varchar(30) [not null]
+    canonical_candidate_key varchar(300)
+    from_canonical_candidate_key varchar(300)
+    payload_hash char(64) [not null]
+    occurred_at timestamptz [not null]
+    metadata jsonb [not null, default: '{}']
+    created_at timestamptz [not null]
+
+    Indexes {
+      (run_id, meetup_participant_id, occurred_at)
+      (run_id, event_type, occurred_at)
+    }
+
+    Note: 'BE-24 post-display feedback ledger. Candidate not shown to the actor remains unknown, not a negative label.'
+  }
+
+  Table recommendation_run_holds {
+    run_id uuid [not null]
+    reason varchar(20) [not null, note: 'replay | evaluation | export | legal_hold']
+    created_at timestamptz [not null]
+
+    Indexes {
+      (run_id, reason) [pk]
+      (reason, run_id) [name: 'idx_recommendation_run_holds_reason']
+    }
+  }
+
   Table ai_explanation_cache {
     id uuid [pk]
     recommendation_run_id uuid [not null]
@@ -675,6 +724,14 @@
   Ref: meetup_sessions.(id, chosen_run_id) < recommendation_runs.(meetup_id, id)
   Ref: votes.(meetup_id, run_id) > recommendation_runs.(meetup_id, id)
   Ref: votes.(recommendation_place_id, run_id) > recommendation_places.(id, run_id)
+    Ref: recommendation_runs.id < recommendation_impressions.run_id [delete: cascade]
+    Ref: meetup_participants.id < recommendation_impressions.meetup_participant_id
+    Ref: recommendation_impressions.(run_id, canonical_candidate_key) > recommendation_candidates.(run_id, canonical_candidate_key)
+    Ref: recommendation_runs.id < recommendation_feedback_events.run_id [delete: cascade]
+    Ref: meetup_participants.id < recommendation_feedback_events.meetup_participant_id
+    Ref: recommendation_feedback_events.(run_id, canonical_candidate_key) > recommendation_candidates.(run_id, canonical_candidate_key)
+    Ref: recommendation_feedback_events.(run_id, from_canonical_candidate_key) > recommendation_candidates.(run_id, canonical_candidate_key)
+    Ref: recommendation_runs.id < recommendation_run_holds.run_id [delete: cascade]
   Ref: votes.(meetup_id, meetup_participant_id) > meetup_participants.(meetup_id, id)
   Ref: user_accounts.id < favorite_places.user_id
   Ref: place_snapshots.id < favorite_places.place_snapshot_id

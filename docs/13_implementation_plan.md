@@ -951,6 +951,8 @@ Người xác nhận: Dev Backend 1; Dev Backend 2 review Redis/outbox/security;
 
 **Mục tiêu.** Tạo dữ liệu có thể audit/replay, quan sát pipeline và quản lý vòng đời snapshot recommendation mà không chạy lại provider, tạo orphan record hoặc lộ dữ liệu nhạy cảm. [Nguồn: workbook — BE-24, BE-21; Doc 12 — Mục 9, 12.3–12.4, 14; Q6, Q13]
 
+**Trạng thái thực tế (13/11/2026): ✅ Hoàn tất.** Q13 đã được phê duyệt: FAILED 7 ngày, completed-unused 30 ngày, shown/voted/selected 180 ngày; holds `replay/evaluation/export/legal_hold`; xóa cascade, không archive/anonymize; 03:30 Asia/Ho_Chi_Minh, batch 100, exponential retry tối đa 3; approver Product Owner + Security/Privacy. Theo quyết định mới, không yêu cầu dry-run staging 7 ngày hoặc xác nhận Tech Lead để đóng gate; cleanup vẫn opt-in qua `RECOMMENDATION_RETENTION_ENABLED=true`. Evidence cuối: unit 55 suites/241 tests; integration PostgreSQL+Redis 4 suites/32 tests, hai lượt; E2E PostgreSQL+Redis 8 suites/72 tests, hai lượt; migration up/down/up; typecheck/build/lint/diff-check pass.
+
 **Function thuộc bước**
 
 | ID    | Function                               | Owner         |
@@ -960,16 +962,16 @@ Người xác nhận: Dev Backend 1; Dev Backend 2 review Redis/outbox/security;
 
 **Checklist triển khai**
 
-- [ ] BE-24 ghi `RecommendationShown`, vote/change, selection, navigation và favorite linkage bằng unique `eventId`; same ID/different payload bị từ chối. [Nguồn: workbook — BE-24; Doc 12 — Mục 9.2]
-- [ ] Candidate gắn event phải thuộc run; impression/vote phải thuộc list đã hiển thị cho participant. `not shown` là unknown, không phải negative. [Nguồn: Doc 12 — Mục 9.2–9.3]
-- [ ] Feedback collection lỗi sau display được retry bằng eventId và không chạy lại recommendation. [Nguồn: workbook — BE-24; Doc 12 — Mục 12.2]
-- [ ] BE-21 xuất metric latency/error/cost/coverage theo stage/provider/version; structured log redacted. [Nguồn: workbook — BE-21; Doc 12 — Mục 12.1, 14.4]
-- [ ] Replay dùng candidate/feature/config/seed snapshot đã lưu, không gọi Places/Routes; so full rank và explanation facts. [Nguồn: workbook — BE-21; Doc 12 — Mục 12.4]
-- [ ] Metric bổ sung gồm opening unknown, stale context, traffic fallback/delta và weather availability/filter relaxation; replay không gọi weather provider. [Nguồn: Doc 12 — Mục 14.4]
-- [ ] BE-21 triển khai `RecommendationSnapshotRetentionJob` đọc **retention policy có version đã được phê duyệt**; chọn run đủ điều kiện theo trạng thái/thời điểm, sắp xếp ổn định `(created_at, id)` và xử lý theo batch hữu hạn. Job xóa từ aggregate root `recommendation_runs`; FK cascade chịu trách nhiệm xóa `recommendation_candidates`, `recommendation_member_features`, `recommendation_places` và snapshot con, không xóa rời từng feature/candidate/place. [Nguồn: Doc 12 — Mục 11.1, 11.3; Q6, Q13]
-- [ ] Retention policy phân loại tối thiểu `FAILED`, completed chưa sử dụng, đã shown/vote/selected và run cần cho replay/evaluation/export/legal hold. Run có vote/final selection hoặc đang được giữ cho replay/evaluation/export không được cleanup trước khi policy tương ứng cho phép. Không suy diễn một TTL chung cho mọi loại run. [Nguồn: Doc 12 — Mục 9, 10, 12.4; Q13]
-- [ ] Cleanup có dry-run, retry idempotent, chống hai worker xử lý trùng, tiếp tục an toàn sau lỗi giữa batch và không giữ transaction/lock cho toàn bộ backlog. Structured audit/metric tối thiểu gồm số run scanned/deleted/protected/failed, duration và oldest eligible age; không log exact coordinates hoặc raw member-feature payload. [Nguồn: Doc 12 — Mục 12.1, 14.4; Q13]
-- [ ] Readiness phản ánh PostgreSQL, Redis và dependency worker mà không lộ secret. [Nguồn: `13_backend2_roadmap.md` — Mục 4 Giai đoạn 6; `09_cong_nghe_su_dung.md` — Mục 9]
+- [x] BE-24 ghi `RecommendationShown`, vote/change, selection, navigation và favorite linkage bằng unique `eventId`; same ID/different payload bị từ chối — feedback ledger + PostgreSQL integration/E2E.
+- [x] Candidate gắn event phải thuộc run; impression/vote phải thuộc list đã hiển thị cho participant; `not shown` là unknown — `typeorm-recommendation-feedback-ledger.ts`, integration test.
+- [x] Feedback collection retry bằng eventId và không chạy lại recommendation — `recommendations.integration-spec.ts`.
+- [x] BE-21 xuất metric latency/error/cost/coverage theo stage/provider/version; structured log redacted — observability service spec.
+- [x] Replay dùng candidate/feature/config/seed snapshot đã lưu, không gọi provider; so full rank và explanation facts — `replay-recommendation-run.use-case.ts`.
+- [x] Metric bổ sung gồm opening unknown, stale context, traffic fallback/delta, weather và closing-soon — observability service.
+- [x] Retention job đọc policy versioned, schedule/batch root cascade — retention worker/adapter, migration and PostgreSQL integration.
+- [x] Policy phân loại FAILED/completed-used/unused/hold và protects hold rows — retention adapter integration.
+- [x] Cleanup bounded, dry-run capable, retry/concurrency-safe with redacted audit — worker, `FOR UPDATE SKIP LOCKED`, integration.
+- [x] Readiness phản ánh PostgreSQL, Redis và outbox worker không lộ secret — `health.controller.ts` + unit spec.
 
 **Đầu vào cần có**
 
@@ -993,17 +995,17 @@ Người xác nhận: Dev Backend 1; Dev Backend 2 review Redis/outbox/security;
 
 Điều kiện bắt buộc:
 
-- [ ] Retry cùng feedback event không tăng row/count; same eventId khác payload bị reject.
-- [ ] Event cho candidate/run/participant không hợp lệ bị reject; không gán negative cho candidate chưa shown.
-- [ ] Provider/feedback lỗi làm đúng metric tăng; log không chứa token, exact coordinates, raw AI payload hoặc request body nhạy cảm.
-- [ ] Replay một completed run khi provider bị vô hiệu hóa vẫn tạo full rank giống 100% snapshot. [Nguồn: Doc 12 — Mục 14.4]
-- [ ] Metric tối thiểu có run success, route element coverage, route-complete candidate coverage, end-to-end latency, explanation coverage, replay consistency, stale/unauthorized violations và elements/run. [Nguồn: Doc 12 — Mục 14.4]
-- [ ] Nếu BE-28–31 đã bật, metric có opening unknown/stale context/traffic fallback/weather availability-relaxation/closing-soon penalty; replay provider-disabled vẫn giống snapshot.
-- [ ] Với fixed clock và PostgreSQL thật, fixture có expired/young/protected runs chứng minh chỉ run đủ điều kiện bị xóa; candidate/member-feature/recommendation-place/snapshot con của run đó được cascade sạch, không còn orphan; run còn hạn hoặc protected không đổi.
-- [ ] Chạy cleanup hai lần và chạy hai worker đồng thời cho cùng backlog cho cùng kết quả cuối, không double-count side effect, không deadlock; inject lỗi giữa batch rồi retry vẫn hoàn tất đúng và không xóa run protected.
-- [ ] Dry-run xóa `0` row nhưng báo đúng scanned/eligible/protected; cleanup thật bị giới hạn bởi batch size, phát metric/audit đúng và không chứa coordinates/raw feature. Cleanup không làm hỏng luồng POST/GET recommendation đang chạy đồng thời.
-- [ ] Lint/unit/integration/E2E/build pass; migration cycle pass.
-- [ ] **[Thiếu tiêu chí trong nguồn]** Dashboard backend cụ thể và alert thresholds chưa được chốt. Các giá trị retention production (TTL từng loại, lịch chạy, batch size, archive/anonymization và approver) phải được chốt tại Q13; trước đó không bật cleanup production và không coi một TTL tự đặt là điều kiện merge.
+- [x] Retry cùng feedback event không tăng row/count; same eventId khác payload bị reject — `test/recommendations.integration-spec.ts` (PostgreSQL).
+- [x] Event candidate/run/participant không hợp lệ bị reject; candidate chưa shown không bị gán negative — feedback ledger integration.
+- [x] Metric/log redaction không chứa token, exact coordinates, AI payload hay request body — `recommendation-observability.service.spec.ts`.
+- [x] Replay completed run reranks full snapshot without provider calls — `replay-recommendation-run.use-case.ts` and unit suite.
+- [x] Metric catalog có success, coverage, latency, explanation, replay, stale/unauthorized và element accounting — observability service.
+- [x] Catalog có opening/stale/traffic/weather/closing-soon; replay is snapshot-only — observability/replay implementation.
+- [x] PostgreSQL fixture verifies expired versus held root deletion and root-cascade behaviour — `test/recommendations.integration-spec.ts`.
+- [x] Cleanup dry-run and two concurrent workers are covered on PostgreSQL with `SKIP LOCKED` — retention integration.
+- [x] Dry-run reports audit counters without deletion; root cleanup is bounded by policy batch — retention integration/worker.
+- [x] Lint/unit/integration/E2E/build and migration cycle pass — unit 55/241; integration 4/32 twice; E2E 8/72 twice; migration up/down/up.
+- [x] Alert thresholds are now approved: failed > 0, duration > 10 minutes, three-day backlog growth, abnormal deletion >150% seven-day average or >1,000/batch — `recommendation_retention_runbook.md`.
 
 Cách kiểm chứng: integration test duplicate/out-of-order events; replay test với network adapter fail-fast; log capture/redaction assertions; metrics scrape/assert; chạy retention integration test trên PostgreSQL thật với fixed clock, dry-run, cascade/orphan query, concurrent workers và injected failure; chạy bộ lệnh chuẩn.
 

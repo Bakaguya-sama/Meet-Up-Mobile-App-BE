@@ -89,6 +89,10 @@ const environmentSchema = Joi.object({
   ROUTES_ROUTING_PREFERENCE: Joi.string()
     .valid('TRAFFIC_UNAWARE', 'TRAFFIC_AWARE')
     .default('TRAFFIC_UNAWARE'),
+  RECOMMENDATION_RETENTION_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
   FIREBASE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   FIREBASE_PROJECT_ID: Joi.when('FIREBASE_ENABLED', {
     is: true,

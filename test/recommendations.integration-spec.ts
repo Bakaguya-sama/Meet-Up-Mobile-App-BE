@@ -31,6 +31,14 @@ import { AddRecommendationTrafficWeatherContext1792160000000 } from '../src/infr
 import { AddRecommendationStaticDurationMetric1792170000000 } from '../src/infrastructure/database/migrations/1792170000000-add-recommendation-static-duration-metric';
 import { AddRecommendationClosingSnapshots1792180000000 } from '../src/infrastructure/database/migrations/1792180000000-add-recommendation-closing-snapshots';
 import { AddMeetupVoting1792150000000 } from '../src/infrastructure/database/migrations/1792150000000-add-meetup-voting';
+import { CreateRecommendationFeedbackEvents1792210000000 } from '../src/infrastructure/database/migrations/1792210000000-create-recommendation-feedback-events';
+import { CreateRecommendationRetentionHolds1792220000000 } from '../src/infrastructure/database/migrations/1792220000000-create-recommendation-retention-holds';
+import { RecommendationImpressionEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-impression.typeorm-entity';
+import { RecommendationFeedbackEventEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-feedback-event.typeorm-entity';
+import { RecordRecommendationFeedbackUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/record-recommendation-feedback.use-case';
+import { TypeOrmRecommendationFeedbackLedger } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/typeorm-recommendation-feedback-ledger';
+import { RunRecommendationSnapshotRetentionUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/run-recommendation-snapshot-retention.use-case';
+import { TypeOrmRecommendationSnapshotRetention } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/typeorm-recommendation-snapshot-retention';
 
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -71,6 +79,8 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         RecommendationCandidateEntity,
         RecommendationMemberFeatureEntity,
         RecommendationPlaceEntity,
+        RecommendationImpressionEntity,
+        RecommendationFeedbackEventEntity,
         OutboxEventTypeOrmEntity,
       ],
       migrations: [
@@ -93,6 +103,19 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
     await db.runMigrations();
     await assertTemporalSchema(db, schema);
     await assertResultSchema(db, schema);
+    const feedbackRunner = db.createQueryRunner();
+    await feedbackRunner.connect();
+    try {
+      await feedbackRunner.query(`SET search_path TO "${schema}", public`);
+      await new CreateRecommendationFeedbackEvents1792210000000().up(
+        feedbackRunner,
+      );
+      await new CreateRecommendationRetentionHolds1792220000000().up(
+        feedbackRunner,
+      );
+    } finally {
+      await feedbackRunner.release();
+    }
     const columns = await db.query<Array<{ column_name: string }>>(
       `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name IN ('recommendation_runs', 'recommendation_candidates')`,
       [schema],
@@ -605,6 +628,148 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
     await expect(
       db.query('SELECT id FROM outbox_events WHERE id = $1', [eventId]),
     ).resolves.toEqual([]);
+  });
+
+  it('records idempotent display/feedback receipts without recomputing a recommendation', async () => {
+    const feedbackRun = run();
+    const feedbackCandidateId = randomUUID();
+    const key = 'google-places:feedback';
+    await repository.create(feedbackRun);
+    await repository.complete(
+      feedbackRun.id,
+      {
+        candidates: [
+          {
+            ...candidate(feedbackRun.id, feedbackCandidateId),
+            canonicalCandidateKey: key,
+          },
+        ],
+        memberFeatures: [
+          {
+            ...memberFeature(
+              feedbackRun.id,
+              feedbackCandidateId,
+              participantId,
+            ),
+            canonicalCandidateKey: key,
+            rankingUtility: 0.7,
+            staticDurationSeconds: null,
+          },
+        ],
+        places: [place(feedbackRun.id, feedbackCandidateId, key, 1)],
+        effectiveK: 1,
+        warnings: [],
+        randomSeed: 'feedback-seed',
+        routeBatchCount: 1,
+        routeElementCount: 1,
+        routingPreferenceEffective: 'TRAFFIC_UNAWARE',
+        weatherPolicyEffective: 'OFF',
+        readyEventId: randomUUID(),
+      },
+      new Date(),
+    );
+    const feedback = new RecordRecommendationFeedbackUseCase(
+      new TypeOrmRecommendationFeedbackLedger(db),
+    );
+    const impression = {
+      eventId: randomUUID(),
+      canonicalCandidateKey: key,
+      rank: 1,
+      shownAt: new Date().toISOString(),
+    };
+    await expect(
+      feedback.impression(actorId, meetupId, feedbackRun.id, impression),
+    ).resolves.toMatchObject({ idempotent: false });
+    await expect(
+      feedback.impression(actorId, meetupId, feedbackRun.id, impression),
+    ).resolves.toMatchObject({ idempotent: true });
+    await expect(
+      feedback.impression(actorId, meetupId, feedbackRun.id, {
+        ...impression,
+        rank: 2,
+      }),
+    ).rejects.toMatchObject({ code: 'RECOMMENDATION_EVENT_ID_REUSED' });
+    await expect(
+      feedback.feedback(actorId, meetupId, feedbackRun.id, {
+        eventId: randomUUID(),
+        eventType: 'PLACE_VOTED',
+        canonicalCandidateKey: key,
+        occurredAt: new Date().toISOString(),
+      }),
+    ).resolves.toMatchObject({ idempotent: false });
+    await expect(
+      feedback.feedback(actorId, meetupId, feedbackRun.id, {
+        eventId: randomUUID(),
+        eventType: 'NAVIGATION_OPENED',
+        canonicalCandidateKey: 'google-places:not-shown',
+        occurredAt: new Date().toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: 'RECOMMENDATION_CANDIDATE_NOT_FOUND' });
+    expect(await repository.findById(meetupId, feedbackRun.id)).toMatchObject({
+      status: 'COMPLETED',
+      places: [expect.objectContaining({ canonicalCandidateKey: key })],
+    });
+  });
+
+  it('dry-runs and concurrently cleans only expired unprotected run roots', async () => {
+    const expiredOne = run();
+    const expiredTwo = run();
+    const protectedRun = run();
+    await Promise.all([
+      repository.create(expiredOne),
+      repository.create(expiredTwo),
+      repository.create(protectedRun),
+    ]);
+    await Promise.all([
+      repository.fail(expiredOne.id, 'PLACE_SEARCH_UNAVAILABLE', new Date()),
+      repository.fail(expiredTwo.id, 'PLACE_SEARCH_UNAVAILABLE', new Date()),
+      repository.fail(protectedRun.id, 'PLACE_SEARCH_UNAVAILABLE', new Date()),
+    ]);
+    await db.query(
+      `UPDATE recommendation_runs SET completed_at = '2000-01-01T00:00:00Z'
+       WHERE id = ANY($1::uuid[])`,
+      [[expiredOne.id, expiredTwo.id, protectedRun.id]],
+    );
+    await db.query(
+      `INSERT INTO recommendation_run_holds (run_id, reason)
+       VALUES ($1, 'legal_hold')`,
+      [protectedRun.id],
+    );
+    const retention = new RunRecommendationSnapshotRetentionUseCase(
+      new TypeOrmRecommendationSnapshotRetention(db),
+    );
+    const policy = {
+      version: 'fixture-retention-v1',
+      failedBefore: new Date('2001-01-01T00:00:00Z'),
+      unusedCompletedBefore: new Date('2001-01-01T00:00:00Z'),
+      engagedBefore: new Date('2001-01-01T00:00:00Z'),
+      batchSize: 10,
+      enabled: true,
+    };
+    await expect(retention.execute(policy, true)).resolves.toMatchObject({
+      deleted: 0,
+      eligible: 2,
+      protected: 1,
+      dryRun: true,
+    });
+    const results = await Promise.all([
+      retention.execute(policy, false),
+      retention.execute(policy, false),
+    ]);
+    expect(results.reduce((total, result) => total + result.deleted, 0)).toBe(
+      2,
+    );
+    await expect(
+      repository.findById(meetupId, expiredOne.id),
+    ).resolves.toBeNull();
+    await expect(
+      repository.findById(meetupId, expiredTwo.id),
+    ).resolves.toBeNull();
+    await expect(
+      repository.findById(meetupId, protectedRun.id),
+    ).resolves.toMatchObject({
+      id: protectedRun.id,
+    });
   });
 });
 

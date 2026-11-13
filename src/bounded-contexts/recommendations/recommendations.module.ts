@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LocationsModule } from '../locations/locations.module';
@@ -71,6 +71,23 @@ import { ListFavoritePlacesUseCase } from './application/use-cases/list-favorite
 import { RemoveFavoritePlaceUseCase } from './application/use-cases/remove-favorite-place.use-case';
 import { FavoritePlacesController } from './presentation/http/favorite-places.controller';
 import { MeetupMembershipReader } from '../meetups/application/public/meetup-membership-reader';
+import { RecommendationImpressionEntity } from './infrastructure/persistence/typeorm/entities/recommendation-impression.typeorm-entity';
+import { RecommendationFeedbackEventEntity } from './infrastructure/persistence/typeorm/entities/recommendation-feedback-event.typeorm-entity';
+import { RecordRecommendationFeedbackUseCase } from './application/use-cases/record-recommendation-feedback.use-case';
+import { ReplayRecommendationRunUseCase } from './application/use-cases/replay-recommendation-run.use-case';
+import { RecommendationObservabilityService } from './application/services/recommendation-observability.service';
+import {
+  RECOMMENDATION_FEEDBACK_LEDGER,
+  type RecommendationFeedbackLedger,
+} from './application/ports/recommendation-feedback-ledger.port';
+import { TypeOrmRecommendationFeedbackLedger } from './infrastructure/persistence/typeorm/typeorm-recommendation-feedback-ledger';
+import {
+  RECOMMENDATION_SNAPSHOT_RETENTION,
+  type RecommendationSnapshotRetentionPort,
+} from './application/ports/recommendation-snapshot-retention.port';
+import { TypeOrmRecommendationSnapshotRetention } from './infrastructure/persistence/typeorm/typeorm-recommendation-snapshot-retention';
+import { RunRecommendationSnapshotRetentionUseCase } from './application/use-cases/run-recommendation-snapshot-retention.use-case';
+import { RecommendationSnapshotRetentionJob } from './infrastructure/workers/recommendation-snapshot-retention.job';
 
 @Module({
   imports: [
@@ -83,10 +100,71 @@ import { MeetupMembershipReader } from '../meetups/application/public/meetup-mem
       RecommendationPlaceEntity,
       OutboxEventTypeOrmEntity,
       FavoritePlaceEntity,
+      RecommendationImpressionEntity,
+      RecommendationFeedbackEventEntity,
     ]),
   ],
   controllers: [RecommendationsController, FavoritePlacesController],
   providers: [
+    {
+      provide: RecommendationObservabilityService,
+      useFactory: () => {
+        const logger = new Logger(RecommendationObservabilityService.name);
+        return new RecommendationObservabilityService((line) =>
+          logger.log(line),
+        );
+      },
+    },
+    TypeOrmRecommendationFeedbackLedger,
+    {
+      provide: RECOMMENDATION_FEEDBACK_LEDGER,
+      useExisting: TypeOrmRecommendationFeedbackLedger,
+    },
+    {
+      provide: RecordRecommendationFeedbackUseCase,
+      useFactory: (ledger: RecommendationFeedbackLedger) =>
+        new RecordRecommendationFeedbackUseCase(ledger),
+      inject: [RECOMMENDATION_FEEDBACK_LEDGER],
+    },
+    TypeOrmRecommendationSnapshotRetention,
+    {
+      provide: RECOMMENDATION_SNAPSHOT_RETENTION,
+      useExisting: TypeOrmRecommendationSnapshotRetention,
+    },
+    {
+      provide: RunRecommendationSnapshotRetentionUseCase,
+      useFactory: (retention: RecommendationSnapshotRetentionPort) =>
+        new RunRecommendationSnapshotRetentionUseCase(retention),
+      inject: [RECOMMENDATION_SNAPSHOT_RETENTION],
+    },
+    RecommendationSnapshotRetentionJob,
+    {
+      provide: ReplayRecommendationRunUseCase,
+      useFactory: (
+        store: RecommendationRunStore,
+        memberships: MeetupMembershipReader,
+        ranker: GroupRankerService,
+        explanations: ExplanationBuilder,
+        config: ConfigService,
+        observability: RecommendationObservabilityService,
+      ) =>
+        new ReplayRecommendationRunUseCase(
+          store,
+          memberships,
+          ranker,
+          explanations,
+          recommendationConfigForEnvironment(config.get<string>('app.nodeEnv')),
+          observability,
+        ),
+      inject: [
+        RECOMMENDATION_RUN_STORE,
+        MeetupMembershipReader,
+        GroupRankerService,
+        ExplanationBuilder,
+        ConfigService,
+        RecommendationObservabilityService,
+      ],
+    },
     { provide: FAVORITE_PLACE_STORE, useClass: TypeOrmFavoritePlaceStore },
     {
       provide: AddFavoritePlaceUseCase,
@@ -212,6 +290,7 @@ import { MeetupMembershipReader } from '../meetups/application/public/meetup-mem
         explanations: ExplanationBuilder,
         config: ConfigService,
         memberships: MeetupMembershipReader,
+        observability: RecommendationObservabilityService,
       ) =>
         new CreateRecommendationRunUseCase(
           store,
@@ -232,6 +311,7 @@ import { MeetupMembershipReader } from '../meetups/application/public/meetup-mem
           'OFF',
           undefined,
           memberships,
+          observability,
         ),
       inject: [
         RECOMMENDATION_RUN_STORE,
@@ -246,6 +326,7 @@ import { MeetupMembershipReader } from '../meetups/application/public/meetup-mem
         ExplanationBuilder,
         ConfigService,
         MeetupMembershipReader,
+        RecommendationObservabilityService,
       ],
     },
     {

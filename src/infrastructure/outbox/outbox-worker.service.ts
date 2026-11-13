@@ -23,6 +23,7 @@ export class OutboxWorkerService
   private readonly queue: Queue<{ eventId: string }>;
   private readonly worker: Worker<{ eventId: string }>;
   private pollTimer?: NodeJS.Timeout;
+  private ready = false;
 
   constructor(
     config: ConfigService,
@@ -43,18 +44,24 @@ export class OutboxWorkerService
 
   async onApplicationBootstrap(): Promise<void> {
     await this.enqueuePending();
+    this.ready = true;
     this.pollTimer = setInterval(() => {
       void this.enqueuePending();
     }, POLL_INTERVAL_MS);
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.ready = false;
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
     }
     await this.worker.close();
     await this.queue.close();
     await this.connection.quit();
+  }
+
+  isReady(): boolean {
+    return this.ready;
   }
 
   private async enqueuePending(): Promise<void> {

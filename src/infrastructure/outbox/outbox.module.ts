@@ -13,5 +13,6 @@ import { OutboxEventTypeOrmEntity } from './persistence/outbox-event.typeorm-ent
     NotificationsModule,
   ],
   providers: [OutboxDispatcher, OutboxWorkerService],
+  exports: [OutboxWorkerService],
 })
 export class OutboxModule {}

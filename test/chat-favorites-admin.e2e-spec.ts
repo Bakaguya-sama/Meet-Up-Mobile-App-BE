@@ -68,6 +68,8 @@ import { AddChatFavoritesAndAdminAudit1792140000000 } from '../src/infrastructur
 import { EnforceMeetupChatAccess1792150000000 } from '../src/infrastructure/database/migrations/1792150000000-enforce-meetup-chat-access';
 import { AddDirectChatAndAttachments1792190000000 } from '../src/infrastructure/database/migrations/1792190000000-add-direct-chat-and-attachments';
 import { UnifyChatConversations1792200000000 } from '../src/infrastructure/database/migrations/1792200000000-unify-chat-conversations';
+import { CreateRecommendationFeedbackEvents1792210000000 } from '../src/infrastructure/database/migrations/1792210000000-create-recommendation-feedback-events';
+import { CreateRecommendationRetentionHolds1792220000000 } from '../src/infrastructure/database/migrations/1792220000000-create-recommendation-retention-holds';
 import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persistence/outbox-event.typeorm-entity';
 import { AccessTokenGuard } from '../src/presentation/http/guards/access-token.guard';
 import { RolesGuard } from '../src/presentation/http/guards/roles.guard';
@@ -136,6 +138,8 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
         EnforceMeetupChatAccess1792150000000,
         AddDirectChatAndAttachments1792190000000,
         UnifyChatConversations1792200000000,
+        CreateRecommendationFeedbackEvents1792210000000,
+        CreateRecommendationRetentionHolds1792220000000,
       ],
     }).initialize();
     await db.runMigrations();

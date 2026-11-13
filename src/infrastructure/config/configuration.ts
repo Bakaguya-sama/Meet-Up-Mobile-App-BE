@@ -30,6 +30,9 @@ export const configuration = () => ({
     routingPreference:
       process.env.ROUTES_ROUTING_PREFERENCE ?? 'TRAFFIC_UNAWARE',
   },
+  recommendationRetention: {
+    enabled: process.env.RECOMMENDATION_RETENTION_ENABLED === 'true',
+  },
   firebase: {
     enabled: process.env.FIREBASE_ENABLED === 'true',
     projectId: process.env.FIREBASE_PROJECT_ID,

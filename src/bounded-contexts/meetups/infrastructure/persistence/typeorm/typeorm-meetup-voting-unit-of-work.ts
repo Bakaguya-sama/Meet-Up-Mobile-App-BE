@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import { TypeOrmTransactionalOutbox } from '../../../../../infrastructure/outbox/persistence/typeorm-outbox.port';
@@ -58,6 +59,36 @@ export class TypeOrmMeetupVotingUnitOfWork implements MeetupVotingUnitOfWork {
             'meetupId',
             'meetupParticipantId',
           ]);
+        },
+        recordRecommendationFeedback: async (input) => {
+          const payload = {
+            eventId: input.eventId,
+            runId: input.runId,
+            meetupParticipantId: input.meetupParticipantId,
+            eventType: input.eventType,
+            canonicalCandidateKey: input.canonicalCandidateKey,
+            fromCanonicalCandidateKey: input.fromCanonicalCandidateKey ?? null,
+            occurredAt: input.occurredAt.toISOString(),
+          };
+          await manager.query(
+            `INSERT INTO recommendation_feedback_events
+              (event_id, run_id, meetup_participant_id, event_type,
+               canonical_candidate_key, from_canonical_candidate_key,
+               payload_hash, occurred_at, metadata, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, NOW())`,
+            [
+              input.eventId,
+              input.runId,
+              input.meetupParticipantId,
+              input.eventType,
+              input.canonicalCandidateKey,
+              input.fromCanonicalCandidateKey ?? null,
+              createHash('sha256')
+                .update(JSON.stringify(payload))
+                .digest('hex'),
+              input.occurredAt,
+            ],
+          );
         },
       };
       const result = await work(tx);
