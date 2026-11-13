@@ -214,7 +214,12 @@ export class CreateRecommendationRunUseCase {
         new Map(
           eligible.flatMap((candidate) =>
             candidate.closingEvidence
-              ? [[candidate.canonicalCandidateKey, candidate.closingEvidence] as const]
+              ? [
+                  [
+                    candidate.canonicalCandidateKey,
+                    candidate.closingEvidence,
+                  ] as const,
+                ]
               : [],
           ),
         ),

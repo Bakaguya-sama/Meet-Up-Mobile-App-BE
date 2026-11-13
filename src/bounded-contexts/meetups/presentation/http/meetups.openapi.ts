@@ -21,12 +21,21 @@ export const inviteParticipantsSchema: SchemaObject = {
   },
 };
 export const castMeetupVoteSchema: SchemaObject = {
-  type: 'object', required: ['recommendationPlaceId'], additionalProperties: false,
+  type: 'object',
+  required: ['recommendationPlaceId'],
+  additionalProperties: false,
   properties: { recommendationPlaceId: uuid },
 };
 export const finalizeMeetupSchema: SchemaObject = {
-  type: 'object', additionalProperties: false,
-  properties: { recommendationPlaceId: { ...uuid, description: 'Optional explicit organizer choice; omitted selects the vote winner.' } },
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    recommendationPlaceId: {
+      ...uuid,
+      description:
+        'Optional explicit organizer choice; omitted selects the vote winner.',
+    },
+  },
 };
 export const updateMeetupSchema: SchemaObject = {
   type: 'object',
@@ -46,7 +55,8 @@ export const updateMeetupSchema: SchemaObject = {
     },
     voteDeadlineAt: {
       ...nullableDate,
-      description: 'Optional organizer-set voting deadline; null means manual finalization only.',
+      description:
+        'Optional organizer-set voting deadline; null means manual finalization only.',
     },
     searchRadiusM: { type: 'integer', minimum: 100, maximum: 50000 },
     placeType: {

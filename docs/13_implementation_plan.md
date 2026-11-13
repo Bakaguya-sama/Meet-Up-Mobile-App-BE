@@ -788,7 +788,7 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review nguồn travel mode v�
 - [ ] Thay window/weight làm thay checksum/version; replay cùng snapshot/config cho đúng rank mà không gọi Places/Routes. **Chưa đạt:** policy version/evidence đã persist nhưng chưa có replay use case/checksum versioned của Bước 5/BE-21 để chứng minh provider-disabled replay.
 - [x] Hai actor accepted gọi cùng run thấy cùng `memberEtas`, nhưng mỗi actor chỉ thấy `viewerFeature` của mình; organizer không thấy utility người khác và outsider bị từ chối. [Bằng chứng: `recommendation-runs.e2e-spec.ts`]
 - [ ] Public response/OpenAPI/serialized log không có `groupUtility`, `candidateLeastMiseryUtility`, `rankingUtility`, matched tags hoặc preference của actor khác. **Chưa đạt hoàn toàn:** HTTP/OpenAPI/presenter đã được E2E chứng minh; chưa có structured-log serialization contract để kiểm chứng phần log.
-- [ ] Finalize rồi GET lại cùng `runId` trả rank snapshot bất biến và viewer feature đúng actor; không có provider call/recompute/duplicate feature row. **Chưa đạt:** BE-10 đã có vote/finalize; chưa có kiểm thử liên tính năng chứng minh GET cùng run giữ snapshot và viewer privacy.
+- [x] Finalize rồi GET lại cùng `runId` trả rank snapshot bất biến và viewer feature đúng actor; không có provider call/recompute/duplicate feature row. **Bằng chứng Bước 4 (13/11/2026):** `test/recommendation-runs.e2e-spec.ts` — `keeps the same persisted viewer-aware result after vote/finalize without recomputing a run`, chạy PostgreSQL + Redis + Google HTTP boundary thật; full E2E 8 suites/72 tests pass hai lượt. Bước 3B vẫn mở các gate replay/checksum và structured-log redaction thuộc BE-21.
 - [x] Migration cycle, lint/unit/integration/E2E/build pass; E2E privacy/ranking chạy lặp hai lần xanh. [Bằng chứng: migration down/up PostgreSQL; quality gate 10/11/2026]
 - [x] Production chưa dùng `closing-policy-dev-v1` nếu window/weight chưa được Product phê duyệt; dev fixture mặc định 5.400 giây/0,15 phải ghi rõ môi trường. [Bằng chứng: `recommendationConfigForEnvironment`; production `closing-policy-off-v1`]
 
@@ -807,6 +807,8 @@ Tiêu chí không đạt: hard-filter `CLOSING_SOON`; missing hours bị phạt;
 Người xác nhận: Dev Backend 2; Dev Backend 1 review membership/finalize; Product duyệt production closing window/weight.
 
 ### 5.8. Bước 4 — Vote, chat, history và favorite
+
+**Trạng thái: ✅ Hoàn tất ngày 13/11/2026.**
 
 **Mục tiêu.** Hoàn tất các tính năng người dùng sau nền tảng và gắn vote/final selection với recommendation đã hiển thị. [Nguồn: workbook — BE-10–BE-12, BE-20]
 
@@ -861,20 +863,26 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review membership/finalize; P
 
 Điều kiện bắt buộc:
 
-- [ ] Concurrent first vote/change vote không tạo hơn một active vote cho member/meetup.
-- [ ] Candidate ngoài displayed run, run stale, non-member, quá deadline hoặc actor không có quyền finalize bị từ chối bằng nhóm status/error phù hợp.
-- [ ] Vote không thay đổi rank trong cùng run; event có `runId` và phát sau commit.
-- [ ] Sau finalize, hai participant đọc cùng `runId` thấy cùng ETA/selected candidate nhưng chỉ thấy viewer feature của chính mình; không phát sinh run/feature row mới.
-- [ ] Non-member không join/send chat; persisted message và emitted event có cùng identity/version.
-- [ ] History/favorite response không chứa member coordinates hoặc route history; duplicate favorite không tạo row thứ hai.
-- [ ] Lint/unit/integration/E2E/build pass; migration cycle pass nếu có.
-- [x] Chat attachments: tối đa 5 tệp/message, 10 MiB/tệp, 25 MiB tổng; chỉ nhận ảnh, PDF, Office, văn bản và archive allow-list sau kiểm tra chữ ký file. Chat 1–1 yêu cầu bạn bè accepted để gửi; unfriend/block ngăn gửi mới nhưng conversation cũ vẫn chỉ đọc. Antivirus/quarantine, edit/delete và retention không thuộc phiên bản này.
+- [x] Concurrent first vote/change vote không tạo hơn một active vote cho member/meetup. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts` chạy hai vote thực sự đồng thời (`Promise.all`) trên PostgreSQL và đếm đúng một row; full integration 4 suites/30 tests, exit 0 (2 lượt, 13/11/2026).
+- [x] Candidate ngoài displayed run, run stale, non-member, quá deadline hoặc actor không có quyền finalize bị từ chối bằng nhóm status/error phù hợp. Bằng chứng: cùng integration test gọi use case/repository thật và xác nhận `INVALID_INPUT`, `RECOMMENDATION_STALE_CONTEXT`, `MEETUP_VOTING_CLOSED`, `MEETUP_NOT_FOUND`; E2E 8 suites/72 tests, exit 0 (2 lượt).
+- [x] Vote không thay đổi rank trong cùng run; event có `runId` và phát sau commit. Bằng chứng: `cast-meetup-vote.use-case.ts`, `finalize-meetup.use-case.ts`, `typeorm-meetup-voting-unit-of-work.ts`, `meetup-outbox.ts`; integration test đọc persisted candidate rank và outbox `VoteUpdated.v1`/`MeetupFinalized.v1` trong transaction thật.
+- [x] Sau finalize, hai participant đọc cùng `runId` thấy cùng ETA/selected candidate nhưng chỉ thấy viewer feature của chính mình; không phát sinh run/feature row mới. Bằng chứng: `test/recommendation-runs.e2e-spec.ts` — `keeps the same persisted viewer-aware result...`; PostgreSQL + Redis + HTTP boundary, 15/15 test file pass và full E2E 8 suites/72 tests pass hai lượt.
+- [x] Non-member không join/send chat; persisted message và emitted event có cùng identity/version. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts`; migration trigger `trg_chat_sender_can_send`, unique `uq_chat_messages_sender_client`, outbox reference-only; integration 30/30 và E2E 72/72.
+- [x] History/favorite response không chứa member coordinates hoặc route history; duplicate favorite không tạo row thứ hai. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts` (history projection/privacy và concurrent favorite), `test/chat-favorites-admin.e2e-spec.ts`; PostgreSQL thực, integration 30/30.
+- [x] Lint/unit/integration/E2E/build pass; migration cycle pass nếu có. Bằng chứng: `npm run typecheck` exit 0; `npm run build` exit 0; `npm run lint` exit 0; `npm test -- --runInBand` 53 suites/237 tests exit 0; `npm run test:integration -- --runInBand` 4 suites/30 tests exit 0 hai lượt; `npx jest --config ./test/jest-e2e.json --runInBand --verbose` 8 suites/72 tests exit 0 hai lượt; PostgreSQL `migration:run → inspect → migration:revert → migration:run` exit 0.
+- [x] Chat attachments: tối đa 5 tệp/message, 10 MiB/tệp, 25 MiB tổng; chỉ nhận ảnh, PDF, Office, văn bản và archive allow-list sau kiểm tra chữ ký file. Chat 1–1 yêu cầu bạn bè accepted để gửi; unfriend/block ngăn gửi mới nhưng conversation cũ vẫn chỉ đọc. Antivirus/quarantine, edit/delete và retention không thuộc phiên bản này. Bằng chứng: `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts`, `docs/chat/chat_api.md`; full integration/E2E hai lượt xanh.
 
 Cách kiểm chứng: E2E với hai member và một outsider; test đồng thời vote/favorite; đọc outbox; scan response/log không có coordinates; chạy bộ lệnh chuẩn.
 
 Tiêu chí không đạt: vote candidate không được hiển thị; same-run rerank; chat outsider lọt; history lộ GPS/routes; event phát trước transaction commit.
 
 Người xác nhận: Dev Backend 1; Dev Backend 2 review Socket/outbox và `runId` linkage.
+
+**Files và bằng chứng hoàn tất (13/11/2026).** `test/chat-favorites-admin.integration-spec.ts`, `test/chat-favorites-admin.e2e-spec.ts`, `test/recommendation-runs.e2e-spec.ts`, `src/bounded-contexts/meetups/application/use-cases/cast-meetup-vote.use-case.ts`, `src/bounded-contexts/meetups/application/use-cases/finalize-meetup.use-case.ts`, `src/bounded-contexts/chat/`, `src/infrastructure/database/migrations/1792200000000-unify-chat-conversations.ts`, `docs/06_database_schema.dbml`, `docs/chat/chat_api.md`, `docs/outbox_event/realtime_event_contracts.md`, `docs/MeetUp_Product_Backlog_Function_Points.xlsx`.
+
+**[Giả định].** `Bổ sung BE-11A/B/C` trong workbook là nhãn phạm vi bổ sung của BE-11, không phải mã BE chính thức và có 0 điểm để không làm thay đổi tổng Function Point đã chốt. Không làm generic group chat, antivirus/quarantine, edit/delete hay retention trong Bước 4.
+
+**Bàn giao Bước 5.** Final selection giữ liên kết bất biến `runId` + canonical candidate key; outbox chat/vote chỉ mang reference. Bước 5/BE-21 sở hữu observability, replay/checksum và redacted structured log; không được sửa timeline vote, projection viewer-aware hoặc contract chat đã khóa nếu không có quyết định mới.
 
 ### 5.9. Bước 4A — Link mời meetup và QR kết bạn hybrid
 
@@ -1175,9 +1183,9 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-07 | Thiết bị và nền tảng FCM                         | Đã thực hiện           | Dev Backend 2 | Bước 0  | Baseline verified                                              |
 | BE-08 | Vòng đời Meetup và thành viên                    | Đã thực hiện           | Dev Backend 1 | Bước 0  | Baseline verified; không gồm recommendationMode                |
 | BE-09 | Sở thích tạm thời meetup                         | Đã thực hiện           | Dev Backend 1 | Bước 0  | Baseline verified                                              |
-| BE-10 | Vote và chốt địa điểm sau recommendation         | Đã thực hiện         | Dev Backend 1 | Bước 4  | Vote/finalize linked run                                       |
-| BE-11 | Chat trong meetup                                | Đã thực hiện           | Dev Backend 1 | Bước 4  | PostgreSQL-enforced send, bounded former history, HTTP/realtime tests |
-| BE-12 | Lịch sử meetup                                   | Đã thực hiện         | Dev Backend 1 | Bước 4  | Finished meetups + selected place snapshot; offset/limit; no GPS/route history                                           |
+| BE-10 | Vote và chốt địa điểm sau recommendation         | ✅ Hoàn tất 13/11/2026 | Dev Backend 1 | Bước 4  | Vote/finalize linked run; concurrent vote/outbox evidence      |
+| BE-11 | Chat trong meetup                                | ✅ Hoàn tất 13/11/2026 | Dev Backend 1 | Bước 4  | Unified meetup/direct persistence, attachment, PostgreSQL-enforced send and HTTP/realtime tests |
+| BE-12 | Lịch sử meetup                                   | ✅ Hoàn tất 13/11/2026 | Dev Backend 1 | Bước 4  | Finished meetups + selected place snapshot; offset/limit; no GPS/route history                                           |
 | BE-13 | Lấy địa điểm ứng viên (candidate-only)           | Đã thực hiện           | Dev Backend 2 | Bước 0  | Baseline verified; internal input for engine                   |
 | BE-14 | Khởi tạo recommendation run và context           | Đã thực hiện           | Dev Backend 2 | Bước 1  | Validated/idempotent run context                               |
 | BE-15 | Candidate pipeline và constraint                 | Đã thực hiện           | Dev Backend 2 | Bước 1  | Eligible deduplicated candidates                               |
@@ -1185,7 +1193,7 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-17 | Feature và member utility                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Versioned T/P/Q/U                                              |
 | BE-18 | Phát hiện bạn ở gần                              | Chưa thực hiện         | Dev Backend 2 | Bước 6  | Privacy-safe nearby notification                               |
 | BE-19 | Quản trị tài khoản                               | Đã thực hiện           | Dev Backend 1 | Bước 6  | Lock/unlock, session revoke, redacted audit; HTTP/DB tests    |
-| BE-20 | Địa điểm yêu thích                               | Đã thực hiện           | Dev Backend 1 | Bước 4  | Canonical 300-char add/remove; duplicate DB idempotency tests |
+| BE-20 | Địa điểm yêu thích                               | ✅ Hoàn tất 13/11/2026 | Dev Backend 1 | Bước 4  | Canonical 300-char add/remove; duplicate DB idempotency tests |
 | BE-21 | Observability và replay recommendation           | Chưa thực hiện         | Dev Backend 2 | Bước 5  | Metrics/log/replay                                             |
 | BE-22 | Group ranking và fairness                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Three deterministic strategies                                 |
 | BE-23 | Explanation, persistence và API kết quả          | Đã thực hiện           | Dev Backend 2 | Bước 3  | Atomic full run + top-K API                                    |

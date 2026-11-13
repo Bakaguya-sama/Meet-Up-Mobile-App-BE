@@ -6,8 +6,18 @@ import { RecommendationRunEntity } from './infrastructure/persistence/typeorm/en
 import { RecommendationPlaceEntity } from './infrastructure/persistence/typeorm/entities/recommendation-place.typeorm-entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RecommendationRunEntity, RecommendationPlaceEntity])],
-  providers: [{ provide: RecommendationVotingReader, useClass: TypeOrmRecommendationVotingReader }],
+  imports: [
+    TypeOrmModule.forFeature([
+      RecommendationRunEntity,
+      RecommendationPlaceEntity,
+    ]),
+  ],
+  providers: [
+    {
+      provide: RecommendationVotingReader,
+      useClass: TypeOrmRecommendationVotingReader,
+    },
+  ],
   exports: [RecommendationVotingReader],
 })
 export class RecommendationVotingModule {}

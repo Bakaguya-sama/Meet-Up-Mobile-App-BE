@@ -325,7 +325,9 @@ export class MeetupsController {
 
   @Put(':meetupId/recommendation-runs/:runId/vote')
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: 'Cast or replace your vote for a displayed candidate' })
+  @ApiOperation({
+    summary: 'Cast or replace your vote for a displayed candidate',
+  })
   @ApiBody({ schema: castMeetupVoteSchema })
   @ApiOkResponse({ description: 'Vote recorded or unchanged' })
   castRecommendationVote(
@@ -334,21 +336,36 @@ export class MeetupsController {
     @Param('runId', new ParseUUIDPipe()) runId: string,
     @Body() body: CastMeetupVoteRequest,
   ) {
-    return this.castVote.execute(actorId, meetupId, runId, body.recommendationPlaceId);
+    return this.castVote.execute(
+      actorId,
+      meetupId,
+      runId,
+      body.recommendationPlaceId,
+    );
   }
 
   @Post(':meetupId/recommendation-runs/:runId/finalize')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: 'Organizer finalizes a displayed candidate; omitted candidate uses vote winner' })
+  @ApiOperation({
+    summary:
+      'Organizer finalizes a displayed candidate; omitted candidate uses vote winner',
+  })
   @ApiBody({ schema: finalizeMeetupSchema })
-  @ApiOkResponse({ description: 'Meetup finalized with runId and selected candidate' })
+  @ApiOkResponse({
+    description: 'Meetup finalized with runId and selected candidate',
+  })
   finalize(
     @CurrentUser('id') actorId: string,
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
     @Param('runId', new ParseUUIDPipe()) runId: string,
     @Body() body: FinalizeMeetupRequest,
   ) {
-    return this.finalizeMeetup.execute(actorId, meetupId, runId, body.recommendationPlaceId);
+    return this.finalizeMeetup.execute(
+      actorId,
+      meetupId,
+      runId,
+      body.recommendationPlaceId,
+    );
   }
 }

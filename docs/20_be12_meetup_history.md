@@ -13,3 +13,7 @@ Meetup chưa chốt, đang diễn ra, bị hủy, hoặc người gọi không p
 BE-12 không tạo bảng history trùng lặp. Meetup giữ trạng thái/thời gian kết thúc và FK tới run cùng địa điểm đã chốt; recommendation context giữ candidate snapshot được dùng để tạo kết quả. FK selection giữ snapshot cần thiết khi retention job chạy.
 
 Reader chỉ chọn tên/provider ID/canonical key của candidate. Không đọc hoặc trả latitude/longitude, tọa độ member, ETA member, preference, route, hoặc GPS history. History không tạo bản ghi vị trí hay tuyến đường mới.
+
+## Bước 4 closure evidence — 13/11/2026
+
+`test/chat-favorites-admin.integration-spec.ts` verifies accepted-user history, outsider empty result, offset/limit and the selected-place-only projection on PostgreSQL thật. The test asserts serialized history has no latitude, longitude, route or member ETA data. It runs together with favorite duplicate/add/list/remove tests; the integration suite passed 4 suites/30 tests twice on 13/11/2026.

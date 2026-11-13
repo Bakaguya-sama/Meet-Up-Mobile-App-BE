@@ -1,8 +1,6 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddRecommendationClosingSnapshots1792180000000
-  implements MigrationInterface
-{
+export class AddRecommendationClosingSnapshots1792180000000 implements MigrationInterface {
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       "ALTER TABLE recommendation_runs ADD COLUMN closing_policy_version varchar(100) NOT NULL DEFAULT 'closing-policy-legacy-off'",

@@ -11,7 +11,10 @@ export type MeetupVotingTransaction = {
 };
 
 export interface MeetupVotingUnitOfWork {
-  runLocked<T>(meetupId: string, work: (tx: MeetupVotingTransaction) => Promise<T>): Promise<T>;
+  runLocked<T>(
+    meetupId: string,
+    work: (tx: MeetupVotingTransaction) => Promise<T>,
+  ): Promise<T>;
 }
 
 export const MEETUP_VOTING_UNIT_OF_WORK = Symbol('MEETUP_VOTING_UNIT_OF_WORK');

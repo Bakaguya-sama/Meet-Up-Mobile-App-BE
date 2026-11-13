@@ -10,7 +10,9 @@ const environmentSchema = Joi.object({
   PUBLIC_APP_BASE_URL: Joi.when('NODE_ENV', {
     is: 'test',
     then: Joi.string().allow('').optional(),
-    otherwise: Joi.string().uri({ scheme: ['https'] }).required(),
+    otherwise: Joi.string()
+      .uri({ scheme: ['https'] })
+      .required(),
   }),
   JWT_ACCESS_SECRET: Joi.string()
     .min(32)

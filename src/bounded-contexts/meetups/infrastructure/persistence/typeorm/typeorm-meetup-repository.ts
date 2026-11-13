@@ -188,15 +188,17 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
       ) {
         return [];
       }
-      return [{
-        id: row.id,
-        title: row.title,
-        description: row.description,
-        scheduledAt: row.scheduledAt,
-        finishedAt: row.finishedAt,
-        chosenRunId: row.chosenRunId,
-        chosenRecommendationPlaceId: row.chosenRecommendationPlaceId,
-      }];
+      return [
+        {
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          scheduledAt: row.scheduledAt,
+          finishedAt: row.finishedAt,
+          chosenRunId: row.chosenRunId,
+          chosenRecommendationPlaceId: row.chosenRecommendationPlaceId,
+        },
+      ];
     });
     return { items, total };
   }

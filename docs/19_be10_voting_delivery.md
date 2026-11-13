@@ -16,3 +16,7 @@ The unique `(meetup_id, participant_id)` constraint enforces one vote per member
 - `MeetupFinalized.v1`: `meetupId`, `runId`, `placeId`, `canonicalCandidateKey`, and `scheduledAt`.
 
 Realtime vote events go to accepted meetup members. Finalization is sent to realtime and push recipients after commit. Event payloads contain no member location, preference, or ranking utility details.
+
+## Bước 4 closure evidence — 13/11/2026
+
+`test/chat-favorites-admin.integration-spec.ts` sends concurrent first/change votes to PostgreSQL thật, verifies one active vote per `(meetup, participant)`, rejects wrong run/context/deadline/actor, and reads persisted outbox records. `test/recommendation-runs.e2e-spec.ts` finalizes a displayed run then reads it as two participants: ETA/selected snapshot remains shared, viewer feature remains actor-specific, and GET creates no provider call, run or member-feature row. The full integration suite passed 4/30 twice and E2E suite 8/72 twice.

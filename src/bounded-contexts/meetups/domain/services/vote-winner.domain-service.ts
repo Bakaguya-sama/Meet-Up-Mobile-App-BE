@@ -16,9 +16,7 @@ export class VoteWinnerDomainService {
         left.maxEtaSeconds - right.maxEtaSeconds ||
         right.groupUtility - left.groupUtility ||
         left.rank - right.rank ||
-        left.canonicalCandidateKey.localeCompare(
-          right.canonicalCandidateKey,
-        ),
+        left.canonicalCandidateKey.localeCompare(right.canonicalCandidateKey),
     )[0];
   }
 }

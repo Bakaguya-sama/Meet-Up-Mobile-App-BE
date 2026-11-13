@@ -41,3 +41,9 @@ Review the target account ID out-of-band before running this statement. Do not e
 ## Delivery limits
 
 Chat retention and edit/delete remain outside scope. Former meetup members retain history only through `leftAt`; direct participants retain existing read-only history after unfriend/block. The current database is a fresh environment, so migration `1792200000000-unify-chat-conversations` replaces provisional chat tables without a data backfill.
+
+## Bước 4 closure evidence — 13/11/2026
+
+- `test/chat-favorites-admin.integration-spec.ts` runs against PostgreSQL thật and covers concurrent direct retry/favorite, meetup membership boundary, attachment cleanup and reference-only outbox.
+- `test/chat-favorites-admin.e2e-spec.ts` exercises HTTP chat/favorite behavior. The integrated suite passed 4 suites/30 tests twice; the E2E suite passed 8 suites/72 tests twice.
+- The migration cycle `up → inspect tables/triggers/constraints → down → up` passed on isolated PostgreSQL/PostGIS. Checked objects include the unified four chat tables, `trg_chat_sender_can_send`, `trg_sync_meetup_chat_member`, and `uq_chat_messages_sender_client`.

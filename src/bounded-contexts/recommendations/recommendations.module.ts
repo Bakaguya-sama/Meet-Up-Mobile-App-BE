@@ -24,9 +24,7 @@ import { CreateRecommendationRunUseCase } from './application/use-cases/create-r
 import { GetRecommendationRunUseCase } from './application/use-cases/get-recommendation-run.use-case';
 import { RecommendationContextBuilder } from './application/services/recommendation-context.builder';
 import { CandidateGenerator } from './application/services/candidate-generator';
-import {
-  recommendationConfigForEnvironment,
-} from './application/recommendation-config';
+import { recommendationConfigForEnvironment } from './application/recommendation-config';
 import {
   RECOMMENDATION_RUN_STORE,
   type RecommendationRunStore,

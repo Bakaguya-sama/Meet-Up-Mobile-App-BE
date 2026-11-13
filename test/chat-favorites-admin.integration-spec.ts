@@ -18,16 +18,28 @@ import { ChatMessageAttachmentEntity } from '../src/bounded-contexts/chat/infras
 import { TypeOrmMeetupChatStore } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/typeorm-meetup-chat-store';
 import { TypeOrmDirectChatStore } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/typeorm-direct-chat-store';
 import { MeetupMembershipReader } from '../src/bounded-contexts/meetups/application/public/meetup-membership-reader';
+import { MeetupScheduleReader } from '../src/bounded-contexts/meetups/application/public/meetup-schedule-reader';
+import { ListMeetupHistoryQuery } from '../src/bounded-contexts/meetups/application/queries/list-meetup-history.query';
+import { CastMeetupVoteUseCase } from '../src/bounded-contexts/meetups/application/use-cases/cast-meetup-vote.use-case';
+import { FinalizeMeetupUseCase } from '../src/bounded-contexts/meetups/application/use-cases/finalize-meetup.use-case';
+import { VoteWinnerDomainService } from '../src/bounded-contexts/meetups/domain/services/vote-winner.domain-service';
 import { MeetupEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/meetup.typeorm-entity';
 import { ParticipantEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/participant.typeorm-entity';
 import { ParticipantPreferenceEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/participant-preference.typeorm-entity';
+import { MeetupVoteEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/meetup-vote.typeorm-entity';
 import { TypeOrmMeetupRepository } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/typeorm-meetup-repository';
+import { TypeOrmMeetupVotingUnitOfWork } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/typeorm-meetup-voting-unit-of-work';
 import { TypeOrmFavoritePlaceStore } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/typeorm-favorite-place-store';
 import { FavoritePlaceEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/favorite-place.typeorm-entity';
 import { RecommendationCandidateEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-candidate.typeorm-entity';
 import { RecommendationRunEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-run.typeorm-entity';
 import { RecommendationMemberFeatureEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-member-feature.typeorm-entity';
 import { RecommendationPlaceEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-place.typeorm-entity';
+import { TypeOrmRecommendationHistoryReader } from '../src/bounded-contexts/recommendations/infrastructure/adapters/typeorm-recommendation-history-reader';
+import { TypeOrmRecommendationVotingReader } from '../src/bounded-contexts/recommendations/infrastructure/adapters/typeorm-recommendation-voting-reader';
+import { RecommendationRunFreshnessGuard } from '../src/bounded-contexts/recommendations/application/public/recommendation-run-freshness.guard';
+import { GetRecommendationRunUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/get-recommendation-run.use-case';
+import { TypeOrmRecommendationRunRepository } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/typeorm-recommendation-run.repository';
 import { CreateAuthTables1760000001000 } from '../src/infrastructure/database/migrations/1760000001000-create-auth-tables';
 import { CreateUserPreferencesTables1760000002000 } from '../src/infrastructure/database/migrations/1760000002000-create-user-preferences-tables';
 import { CreateFriendshipsTable1760000003000 } from '../src/infrastructure/database/migrations/1760000003000-create-friendships-table';
@@ -40,6 +52,7 @@ import { AddRecommendationTemporalContext1792100000000 } from '../src/infrastruc
 import { CreateRecommendationResults1792110000000 } from '../src/infrastructure/database/migrations/1792110000000-create-recommendation-results';
 import { AddPublicHandleToUserAccounts1792130000000 } from '../src/infrastructure/database/migrations/1792130000000-add-public-handle-to-user-accounts';
 import { AddChatFavoritesAndAdminAudit1792140000000 } from '../src/infrastructure/database/migrations/1792140000000-add-chat-favorites-admin-audit';
+import { AddMeetupVoting1792150000000 } from '../src/infrastructure/database/migrations/1792150000000-add-meetup-voting';
 import { EnforceMeetupChatAccess1792150000000 } from '../src/infrastructure/database/migrations/1792150000000-enforce-meetup-chat-access';
 import { AddRecommendationTrafficWeatherContext1792160000000 } from '../src/infrastructure/database/migrations/1792160000000-add-recommendation-traffic-weather-context';
 import { AddRecommendationStaticDurationMetric1792170000000 } from '../src/infrastructure/database/migrations/1792170000000-add-recommendation-static-duration-metric';
@@ -51,7 +64,7 @@ import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persisten
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
 if (!databaseUrl) throw new Error('MEETUP_TEST_DATABASE_URL is required');
 
-describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
+describe('BE-10, BE-11, BE-12, BE-19 and BE-20 PostgreSQL integration', () => {
   const schema = `chat_favorite_admin_${randomUUID().replaceAll('-', '')}`;
   const aliceId = randomUUID();
   const bobId = randomUUID();
@@ -89,6 +102,7 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
         MeetupEntity,
         ParticipantEntity,
         ParticipantPreferenceEntity,
+        MeetupVoteEntity,
         RecommendationRunEntity,
         RecommendationCandidateEntity,
         RecommendationMemberFeatureEntity,
@@ -113,6 +127,7 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
         CreateRecommendationResults1792110000000,
         AddPublicHandleToUserAccounts1792130000000,
         AddChatFavoritesAndAdminAudit1792140000000,
+        AddMeetupVoting1792150000000,
         EnforceMeetupChatAccess1792150000000,
         AddRecommendationTrafficWeatherContext1792160000000,
         AddRecommendationStaticDurationMetric1792170000000,
@@ -371,6 +386,395 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
     expect(await favorites.add(aliceId, 'not-a-candidate')).toBeNull();
     await favorites.remove(aliceId, canonicalCandidateKey);
     expect(await favorites.list(aliceId)).toEqual([]);
+  });
+
+  async function createVotingScenario() {
+    const scenarioMeetupId = randomUUID();
+    const scenarioRunId = randomUUID();
+    const firstCandidateId = randomUUID();
+    const secondCandidateId = randomUUID();
+    const firstPlaceId = randomUUID();
+    const secondPlaceId = randomUUID();
+    const aliceParticipantId = randomUUID();
+    const bobParticipantId = randomUUID();
+    const scheduledAt = new Date(Date.now() + 7_200_000);
+    const voteDeadlineAt = new Date(Date.now() + 3_600_000);
+
+    await db.query(
+      `INSERT INTO meetup_sessions (
+         id, organizer_id, title, scheduled_at, invitation_deadline_at, vote_deadline_at,
+         search_radius_m, place_type, recommendation_mode, status, created_at, updated_at
+       ) VALUES ($1, $2, 'Voting meetup', $3, $4, $5, 1000, 'cafe', 'balanced', 'choosing', NOW(), NOW())`,
+      [
+        scenarioMeetupId,
+        aliceId,
+        scheduledAt,
+        new Date(Date.now() + 1_800_000),
+        voteDeadlineAt,
+      ],
+    );
+    await db.query(
+      `INSERT INTO meetup_participants (
+         id, meetup_id, user_id, status, invited_by_id, responded_at, joined_at
+       ) VALUES
+         ($1, $3, $4, 'accepted', $4, NOW(), NOW()),
+         ($2, $3, $5, 'accepted', $4, NOW(), NOW())`,
+      [aliceParticipantId, bobParticipantId, scenarioMeetupId, aliceId, bobId],
+    );
+    await db.query(
+      `INSERT INTO recommendation_runs (
+         id, meetup_id, request_id, payload_hash, requested_by_id, requested_k, status,
+         ranking_strategy, algorithm_version, config_version, feature_schema_version,
+         provider_mapping_version, provider_request_options_version, opening_filter,
+         opening_evaluator_version, requested_at, scheduled_at_snapshot, created_at,
+         completed_at, effective_k, warnings, random_seed, route_batch_count,
+         route_element_count, routing_preference_requested, routing_preference_effective,
+         weather_policy_requested, weather_policy_effective, weather_policy_version,
+         closing_policy_version
+       ) VALUES (
+         $1, $2, $3, $4, $5, 2, 'COMPLETED', 'fair-pareto-v1', 'engine-v1',
+         'config-v1', 'features-v1', 'mapping-v1', 'request-v1', 'ANY', 'not-applied',
+         NOW(), $6, NOW(), NOW(), 2, '[]'::jsonb, 'seed', 1, 4,
+         'TRAFFIC_UNAWARE', 'TRAFFIC_UNAWARE', 'OFF', 'OFF', 'weather-off-v1',
+         'closing-policy-off-v1'
+       )`,
+      [
+        scenarioRunId,
+        scenarioMeetupId,
+        randomUUID(),
+        'b'.repeat(64),
+        aliceId,
+        scheduledAt,
+      ],
+    );
+    const candidates = [
+      [
+        firstCandidateId,
+        firstPlaceId,
+        'google-places:voting-one',
+        'voting-one',
+        'Voting one',
+        1,
+        900,
+        1200,
+      ],
+      [
+        secondCandidateId,
+        secondPlaceId,
+        'google-places:voting-two',
+        'voting-two',
+        'Voting two',
+        2,
+        1200,
+        1500,
+      ],
+    ] as const;
+    for (const [
+      candidateId,
+      placeId,
+      key,
+      providerPlaceId,
+      name,
+      rank,
+      avgEta,
+      maxEta,
+    ] of candidates) {
+      await db.query(
+        `INSERT INTO recommendation_candidates (
+           id, run_id, canonical_candidate_key, provider, provider_place_id, name,
+           latitude, longitude, provider_types, source_categories, source_pages,
+           filter_status, normalized_tags, created_at
+         ) VALUES ($1, $2, $3, 'google-places', $4, $5, 10.7, 106.7,
+           '[]'::jsonb, '[]'::jsonb, '[1]'::jsonb, 'ELIGIBLE', '[]'::jsonb, NOW())`,
+        [candidateId, scenarioRunId, key, providerPlaceId, name],
+      );
+      await db.query(
+        `INSERT INTO recommendation_places (
+           id, run_id, candidate_id, canonical_candidate_key, rank, group_utility,
+           candidate_least_misery_utility, pareto_level, inclusion_probability,
+           avg_eta_seconds, max_eta_seconds, eta_range_seconds, scheduled_opening_status,
+           opening_evidence, weather_evidence, closing_evidence, explanation, created_at
+         ) VALUES ($1, $2, $3, $4, $5, 0.7, 0.6, 1, NULL, $6, $7, $8, 'OPEN',
+           NULL, NULL, NULL, '{"summaryCode":"VOTING","facts":[],"warnings":[]}'::jsonb, NOW())`,
+        [
+          placeId,
+          scenarioRunId,
+          candidateId,
+          key,
+          rank,
+          avgEta,
+          maxEta,
+          maxEta - avgEta,
+        ],
+      );
+      for (const [participantId, eta, utility] of [
+        [aliceParticipantId, avgEta, 0.7],
+        [bobParticipantId, maxEta, 0.6],
+      ] as const) {
+        await db.query(
+          `INSERT INTO recommendation_member_features (
+             id, run_id, candidate_id, participant_id, canonical_candidate_key,
+             eta_seconds, distance_meters, static_duration_seconds, matched_tags,
+             missing_flags, travel_utility, preference_utility, place_quality_utility,
+             member_utility, ranking_utility, route_status, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, 1000, 900, '[]'::jsonb,
+             '[]'::jsonb, $7, 0.6, 0.8, $7, $7, 'OK', NOW())`,
+          [
+            randomUUID(),
+            scenarioRunId,
+            candidateId,
+            participantId,
+            key,
+            eta,
+            utility,
+          ],
+        );
+      }
+    }
+    return {
+      meetupId: scenarioMeetupId,
+      runId: scenarioRunId,
+      firstPlaceId,
+      secondPlaceId,
+      aliceParticipantId,
+      bobParticipantId,
+    };
+  }
+
+  it('serializes concurrent vote changes, finalizes the displayed run, and preserves the viewer-aware snapshot', async () => {
+    const scenario = await createVotingScenario();
+    const meetupStore = new TypeOrmMeetupRepository(db);
+    const votingReader = new TypeOrmRecommendationVotingReader(
+      db.getRepository(RecommendationRunEntity),
+      db.getRepository(RecommendationPlaceEntity),
+    );
+    const voting = new TypeOrmMeetupVotingUnitOfWork(db);
+    const cast = new CastMeetupVoteUseCase(voting, votingReader);
+    const finalize = new FinalizeMeetupUseCase(
+      voting,
+      votingReader,
+      new VoteWinnerDomainService(),
+    );
+
+    await Promise.all([
+      cast.execute(
+        aliceId,
+        scenario.meetupId,
+        scenario.runId,
+        scenario.firstPlaceId,
+      ),
+      cast.execute(
+        aliceId,
+        scenario.meetupId,
+        scenario.runId,
+        scenario.secondPlaceId,
+      ),
+    ]);
+    const votesAfterRace = await db.query<
+      Array<{ recommendation_place_id: string }>
+    >(
+      `SELECT recommendation_place_id FROM votes
+       WHERE meetup_id = $1 AND meetup_participant_id = $2`,
+      [scenario.meetupId, scenario.aliceParticipantId],
+    );
+    expect(votesAfterRace).toHaveLength(1);
+    expect([scenario.firstPlaceId, scenario.secondPlaceId]).toContain(
+      votesAfterRace[0]?.recommendation_place_id,
+    );
+
+    await cast.execute(
+      bobId,
+      scenario.meetupId,
+      scenario.runId,
+      scenario.firstPlaceId,
+    );
+    const finalized = await finalize.execute(
+      aliceId,
+      scenario.meetupId,
+      scenario.runId,
+    );
+    expect(finalized).toMatchObject({
+      meetupId: scenario.meetupId,
+      runId: scenario.runId,
+    });
+    await expect(
+      db.query(
+        `SELECT status, chosen_run_id, chosen_recommendation_place_id
+         FROM meetup_sessions WHERE id = $1`,
+        [scenario.meetupId],
+      ),
+    ).resolves.toEqual([
+      {
+        status: 'selected',
+        chosen_run_id: scenario.runId,
+        chosen_recommendation_place_id: finalized.recommendationPlaceId,
+      },
+    ]);
+    const events = await db.query<
+      Array<{ event_name: string; payload: Record<string, unknown> }>
+    >(
+      `SELECT event_name, payload FROM outbox_events
+       WHERE payload->>'meetupId' = $1 AND event_name IN ('VoteUpdated.v1', 'MeetupFinalized.v1')`,
+      [scenario.meetupId],
+    );
+    expect(events.some((event) => event.event_name === 'VoteUpdated.v1')).toBe(
+      true,
+    );
+    expect(
+      events.find((event) => event.event_name === 'MeetupFinalized.v1')
+        ?.payload,
+    ).toMatchObject({
+      runId: scenario.runId,
+      placeId: finalized.recommendationPlaceId,
+      canonicalCandidateKey: finalized.canonicalCandidateKey,
+    });
+
+    const repository = new TypeOrmRecommendationRunRepository(db);
+    const getRun = new GetRecommendationRunUseCase(
+      repository,
+      new RecommendationRunFreshnessGuard(
+        repository,
+        new MeetupScheduleReader(meetupStore),
+      ),
+      new MeetupMembershipReader(meetupStore),
+    );
+    const [runCountBefore] = await db.query<Array<{ count: string }>>(
+      `SELECT count(*)::text AS count FROM recommendation_runs WHERE id = $1`,
+      [scenario.runId],
+    );
+    const [featureCountBefore] = await db.query<Array<{ count: string }>>(
+      `SELECT count(*)::text AS count FROM recommendation_member_features WHERE run_id = $1`,
+      [scenario.runId],
+    );
+    const aliceView = await getRun.execute(
+      aliceId,
+      scenario.meetupId,
+      scenario.runId,
+    );
+    const bobView = await getRun.execute(
+      bobId,
+      scenario.meetupId,
+      scenario.runId,
+    );
+    expect(aliceView.results.map((item) => item.memberEtas)).toEqual(
+      bobView.results.map((item) => item.memberEtas),
+    );
+    expect(aliceView.results[0]?.viewerFeature?.participantId).toBe(
+      scenario.aliceParticipantId,
+    );
+    expect(bobView.results[0]?.viewerFeature?.participantId).toBe(
+      scenario.bobParticipantId,
+    );
+    await expect(
+      db.query<Array<{ count: string }>>(
+        `SELECT count(*)::text AS count FROM recommendation_runs WHERE id = $1`,
+        [scenario.runId],
+      ),
+    ).resolves.toEqual([runCountBefore]);
+    await expect(
+      db.query<Array<{ count: string }>>(
+        `SELECT count(*)::text AS count FROM recommendation_member_features WHERE run_id = $1`,
+        [scenario.runId],
+      ),
+    ).resolves.toEqual([featureCountBefore]);
+  });
+
+  it('rejects outsider, unknown candidate, stale context, deadline and unauthorized finalize through real vote dependencies', async () => {
+    const scenario = await createVotingScenario();
+    const votingReader = new TypeOrmRecommendationVotingReader(
+      db.getRepository(RecommendationRunEntity),
+      db.getRepository(RecommendationPlaceEntity),
+    );
+    const voting = new TypeOrmMeetupVotingUnitOfWork(db);
+    const cast = new CastMeetupVoteUseCase(voting, votingReader);
+    const finalize = new FinalizeMeetupUseCase(
+      voting,
+      votingReader,
+      new VoteWinnerDomainService(),
+    );
+    await expect(
+      cast.execute(
+        outsiderId,
+        scenario.meetupId,
+        scenario.runId,
+        scenario.firstPlaceId,
+      ),
+    ).rejects.toMatchObject({ code: 'MEETUP_NOT_FOUND' });
+    await expect(
+      cast.execute(aliceId, scenario.meetupId, scenario.runId, randomUUID()),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(
+      finalize.execute(
+        outsiderId,
+        scenario.meetupId,
+        scenario.runId,
+        scenario.firstPlaceId,
+      ),
+    ).rejects.toMatchObject({ code: 'MEETUP_NOT_FOUND' });
+    await db.query(
+      `UPDATE recommendation_runs
+       SET provider_request_options_version = 'legacy-pre-temporal-v1'
+       WHERE id = $1`,
+      [scenario.runId],
+    );
+    await expect(
+      cast.execute(
+        aliceId,
+        scenario.meetupId,
+        scenario.runId,
+        scenario.firstPlaceId,
+      ),
+    ).rejects.toMatchObject({ code: 'RECOMMENDATION_STALE_CONTEXT' });
+    await db.query(
+      `UPDATE recommendation_runs SET provider_request_options_version = 'request-v1' WHERE id = $1`,
+      [scenario.runId],
+    );
+    await db.query(
+      `UPDATE meetup_sessions SET vote_deadline_at = NOW() - INTERVAL '1 minute' WHERE id = $1`,
+      [scenario.meetupId],
+    );
+    await expect(
+      cast.execute(
+        aliceId,
+        scenario.meetupId,
+        scenario.runId,
+        scenario.firstPlaceId,
+      ),
+    ).rejects.toMatchObject({ code: 'MEETUP_VOTING_CLOSED' });
+  });
+
+  it('returns only finished accepted-member history with a selected-place snapshot and no route or coordinate data', async () => {
+    const scenario = await createVotingScenario();
+    await db.query(
+      `UPDATE meetup_sessions
+       SET status = 'finished', finished_at = NOW(), chosen_run_id = $2,
+           chosen_recommendation_place_id = $3, chosen_by_id = $4, chosen_at = NOW(),
+           vote_deadline_at = NULL, invitation_deadline_at = NOW() - INTERVAL '2 minutes',
+           scheduled_at = NOW() - INTERVAL '1 minute'
+       WHERE id = $1`,
+      [scenario.meetupId, scenario.runId, scenario.firstPlaceId, aliceId],
+    );
+    const query = new ListMeetupHistoryQuery(
+      new TypeOrmMeetupRepository(db),
+      new TypeOrmRecommendationHistoryReader(
+        db.getRepository(RecommendationPlaceEntity),
+      ),
+    );
+    const page = await query.execute(aliceId, 0, 1);
+    expect(page).toMatchObject({ total: 1, offset: 0, limit: 1 });
+    expect(page.items[0]).toMatchObject({
+      meetupId: scenario.meetupId,
+      selectedPlace: { recommendationPlaceId: scenario.firstPlaceId },
+    });
+    expect(JSON.stringify(page.items[0])).not.toMatch(
+      /latitude|longitude|route|etaSeconds/i,
+    );
+    await expect(query.execute(outsiderId, 0, 20)).resolves.toEqual({
+      items: [],
+      total: 0,
+      offset: 0,
+      limit: 20,
+    });
   });
 
   it('locks and unlocks in one transaction with session revocation and redacted audit metadata', async () => {

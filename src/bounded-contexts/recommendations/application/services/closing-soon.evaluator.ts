@@ -25,14 +25,16 @@ export class ClosingSoonEvaluator {
     if (!this.policy.enabled) return unknown('POLICY_DISABLED');
     if (candidate.scheduledOpeningStatus !== 'OPEN')
       return unknown('OPENING_NOT_CONFIRMED_OPEN');
-    if (!Number.isFinite(scheduledAt.getTime())) return unknown('INVALID_SCHEDULED_AT');
+    if (!Number.isFinite(scheduledAt.getTime()))
+      return unknown('INVALID_SCHEDULED_AT');
     const evidence = candidate.openingEvidence;
     const close = evidence?.matchedPeriod?.close;
     if (!evidence || !close) return unknown('NEXT_CLOSING_UNAVAILABLE');
     const nextClosingAt = nextClosing(close, evidence, scheduledAt);
     if (!nextClosingAt || nextClosingAt.getTime() < scheduledAt.getTime())
       return unknown('NEXT_CLOSING_UNAVAILABLE');
-    const secondsUntilClose = (nextClosingAt.getTime() - scheduledAt.getTime()) / 1000;
+    const secondsUntilClose =
+      (nextClosingAt.getTime() - scheduledAt.getTime()) / 1000;
     const risk = Math.max(
       0,
       Math.min(1, 1 - secondsUntilClose / this.policy.closingSoonWindowSeconds),
@@ -59,7 +61,10 @@ function nextClosing(
   const utcOffset = offset as number;
   if (evidence.source === 'CURRENT' && close.date) {
     const [year, month, day] = close.date.split('-').map(Number);
-    return new Date(Date.UTC(year, month - 1, day, close.hour, close.minute) - utcOffset * 60_000);
+    return new Date(
+      Date.UTC(year, month - 1, day, close.hour, close.minute) -
+        utcOffset * 60_000,
+    );
   }
   if (evidence.source !== 'REGULAR') return null;
   const local = new Date(scheduledAt.getTime() + utcOffset * 60_000);

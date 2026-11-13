@@ -230,10 +230,7 @@ function recommendationRunSchema(): Extract<
               type: 'array',
               items: {
                 type: 'object',
-                required: [
-                  'participantId',
-                  'etaSeconds',
-                ],
+                required: ['participantId', 'etaSeconds'],
                 properties: {
                   participantId: { type: 'string', format: 'uuid' },
                   etaSeconds: { type: 'number' },

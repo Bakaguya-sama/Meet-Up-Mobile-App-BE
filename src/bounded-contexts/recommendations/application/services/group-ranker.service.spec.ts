@@ -80,8 +80,9 @@ describe('GroupRankerService', () => {
     openLonger.rankingUtility = 0.8;
 
     for (const strategy of ['min-sum', 'min-max', 'fair-pareto-v1'] as const) {
-      expect(ranker.rank([closingSoon, openLonger], strategy, 1, 'seed')[0])
-        .toMatchObject({ canonicalCandidateKey: 'open-longer' });
+      expect(
+        ranker.rank([closingSoon, openLonger], strategy, 1, 'seed')[0],
+      ).toMatchObject({ canonicalCandidateKey: 'open-longer' });
     }
   });
 });

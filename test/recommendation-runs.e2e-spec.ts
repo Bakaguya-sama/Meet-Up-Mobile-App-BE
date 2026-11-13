@@ -19,6 +19,13 @@ import { DatabaseModule } from '../src/infrastructure/database/typeorm/database.
 import { RedisModule } from '../src/infrastructure/redis/redis.module';
 import { RedisService } from '../src/infrastructure/redis/redis.service';
 import { RecommendationRunFreshnessGuard } from '../src/bounded-contexts/recommendations/application/public/recommendation-run-freshness.guard';
+import { CastMeetupVoteUseCase } from '../src/bounded-contexts/meetups/application/use-cases/cast-meetup-vote.use-case';
+import { FinalizeMeetupUseCase } from '../src/bounded-contexts/meetups/application/use-cases/finalize-meetup.use-case';
+import { VoteWinnerDomainService } from '../src/bounded-contexts/meetups/domain/services/vote-winner.domain-service';
+import { TypeOrmMeetupVotingUnitOfWork } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/typeorm-meetup-voting-unit-of-work';
+import { TypeOrmRecommendationVotingReader } from '../src/bounded-contexts/recommendations/infrastructure/adapters/typeorm-recommendation-voting-reader';
+import { RecommendationRunEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-run.typeorm-entity';
+import { RecommendationPlaceEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-place.typeorm-entity';
 
 jest.setTimeout(30_000);
 
@@ -254,6 +261,16 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
   afterAll(async () => {
     await redis?.del(`meetup-location:${meetupId}:${actorId}`);
     await redis?.del(`meetup-location:${meetupId}:${memberId}`);
+    await db?.query('DELETE FROM votes WHERE meetup_id = $1', [meetupId]);
+    await db?.query(
+      `UPDATE meetup_sessions
+       SET chosen_recommendation_place_id = NULL,
+           chosen_run_id = NULL,
+           chosen_by_id = NULL,
+           chosen_at = NULL
+       WHERE id = $1`,
+      [meetupId],
+    );
     await db?.query('DELETE FROM recommendation_runs WHERE meetup_id = $1', [
       meetupId,
     ]);
@@ -505,6 +522,91 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       .expect(({ body: error }) =>
         expect(error).toMatchObject({ code: 'RECOMMENDATION_RUN_FORBIDDEN' }),
       );
+  });
+
+  it('keeps the same persisted viewer-aware result after vote/finalize without recomputing a run', async () => {
+    googleMode = 'success';
+    const created = await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
+      .set('Authorization', `Bearer ${await token()}`)
+      .set('Idempotency-Key', randomUUID())
+      .send(body())
+      .expect(200);
+    const run = created.body as RecommendationRunHttpBody;
+    const placeId = await db.query<Array<{ id: string }>>(
+      `SELECT id FROM recommendation_places WHERE run_id = $1 ORDER BY rank ASC LIMIT 1`,
+      [run.id],
+    );
+    const recommendationPlaceId = placeId[0]?.id;
+    if (!recommendationPlaceId) {
+      throw new Error('Expected a persisted recommendation place');
+    }
+    const reader = new TypeOrmRecommendationVotingReader(
+      db.getRepository(RecommendationRunEntity),
+      db.getRepository(RecommendationPlaceEntity),
+    );
+    const voting = new TypeOrmMeetupVotingUnitOfWork(db);
+    const cast = new CastMeetupVoteUseCase(voting, reader);
+    await cast.execute(actorId, meetupId, run.id, recommendationPlaceId);
+    await cast.execute(memberId, meetupId, run.id, recommendationPlaceId);
+    await new FinalizeMeetupUseCase(
+      voting,
+      reader,
+      new VoteWinnerDomainService(),
+    ).execute(actorId, meetupId, run.id);
+    const countsBefore = await db.query<
+      Array<{ runs: number; features: number }>
+    >(
+      `SELECT
+         (SELECT count(*)::int FROM recommendation_runs WHERE id = $1) AS runs,
+         (SELECT count(*)::int FROM recommendation_member_features WHERE run_id = $1) AS features`,
+      [run.id],
+    );
+    const [organizer, member] = await Promise.all([
+      request(app.getHttpServer())
+        .get(`/api/v1/meetups/${meetupId}/recommendation-runs/${run.id}`)
+        .set('Authorization', `Bearer ${await token()}`)
+        .expect(200),
+      request(app.getHttpServer())
+        .get(`/api/v1/meetups/${meetupId}/recommendation-runs/${run.id}`)
+        .set(
+          'Authorization',
+          `Bearer ${await token(memberId, memberSessionId)}`,
+        )
+        .expect(200),
+    ]);
+    const organizerBody = organizer.body as RecommendationRunHttpBody;
+    const memberBody = member.body as RecommendationRunHttpBody;
+    expect(organizerBody.id).toBe(run.id);
+    expect(memberBody.id).toBe(run.id);
+    expect(organizerBody.results.map((result) => result.memberEtas)).toEqual(
+      memberBody.results.map((result) => result.memberEtas),
+    );
+    expect(organizerBody.results[0]?.viewerFeature?.participantId).toBe(
+      actorParticipantId,
+    );
+    expect(memberBody.results[0]?.viewerFeature?.participantId).toBe(
+      memberParticipantId,
+    );
+    await expect(
+      db.query<Array<{ runs: number; features: number }>>(
+        `SELECT
+           (SELECT count(*)::int FROM recommendation_runs WHERE id = $1) AS runs,
+           (SELECT count(*)::int FROM recommendation_member_features WHERE run_id = $1) AS features`,
+        [run.id],
+      ),
+    ).resolves.toEqual(countsBefore);
+    await db.query('DELETE FROM votes WHERE meetup_id = $1', [meetupId]);
+    await db.query(
+      `UPDATE meetup_sessions
+       SET status = 'inviting',
+           chosen_recommendation_place_id = NULL,
+           chosen_run_id = NULL,
+           chosen_by_id = NULL,
+           chosen_at = NULL
+       WHERE id = $1`,
+      [meetupId],
+    );
   });
 
   it('evaluates scheduled opening before Routes and persists temporal evidence', async () => {

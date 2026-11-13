@@ -179,7 +179,12 @@ export interface RecommendationPublicResult {
   canonicalCandidateKey: string;
   candidate: Pick<
     RecommendationCandidateSnapshot,
-    'canonicalCandidateKey' | 'provider' | 'providerPlaceId' | 'name' | 'rating0To5' | 'userRatingCount'
+    | 'canonicalCandidateKey'
+    | 'provider'
+    | 'providerPlaceId'
+    | 'name'
+    | 'rating0To5'
+    | 'userRatingCount'
   >;
   avgEtaSeconds: number;
   maxEtaSeconds: number;

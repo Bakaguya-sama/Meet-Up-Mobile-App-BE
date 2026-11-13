@@ -6,8 +6,13 @@ export function applyClosingPenalty(
   evidenceByCandidate: ReadonlyMap<string, ClosingEvidence>,
 ): MemberFeature[] {
   return features.map((feature) => {
-    const penalty = evidenceByCandidate.get(feature.canonicalCandidateKey)?.closingPenalty ?? 0;
-    return { ...feature, rankingUtility: clamp(feature.memberUtility - penalty) };
+    const penalty =
+      evidenceByCandidate.get(feature.canonicalCandidateKey)?.closingPenalty ??
+      0;
+    return {
+      ...feature,
+      rankingUtility: clamp(feature.memberUtility - penalty),
+    };
   });
 }
 
