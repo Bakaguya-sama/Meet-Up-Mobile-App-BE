@@ -15,8 +15,9 @@ export type VotingRecommendationRun = {
 };
 
 /** Public, privacy-minimal recommendation contract for meetup voting. */
-export class RecommendationVotingReader {
-  getDisplayedRun(meetupId: string, runId: string): Promise<VotingRecommendationRun | null> {
-    throw new Error('RecommendationVotingReader must be provided by its context');
-  }
+export abstract class RecommendationVotingReader {
+  abstract getDisplayedRun(
+    meetupId: string,
+    runId: string,
+  ): Promise<VotingRecommendationRun | null>;
 }

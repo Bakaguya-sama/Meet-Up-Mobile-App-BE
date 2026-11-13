@@ -81,22 +81,12 @@ export type MeetupInviteLinkAcceptedV1 =
     inviteLinkId: string;
   };
 
-type ChatAttachmentDelivery = {
-  fileName: string;
-  mimeType: string;
-  bytes: number;
-  downloadUrl: string;
-  expiresAt: string;
-};
-
 export type MeetupChatMessageCreatedV1 =
   EventMetadata<'MeetupChatMessageCreated.v1'> & {
+    conversationId: string;
     meetupId: string;
     messageId: string;
     senderUserId: string;
-    textContent: string;
-    attachments: ChatAttachmentDelivery[];
-    sentAt: string;
   };
 
 export type DirectChatMessageCreatedV1 =
@@ -105,9 +95,6 @@ export type DirectChatMessageCreatedV1 =
     messageId: string;
     senderUserId: string;
     recipientUserId: string;
-    textContent: string;
-    attachments: ChatAttachmentDelivery[];
-    sentAt: string;
   };
 
 export type IntegrationEvent =
@@ -145,6 +132,9 @@ const FORBIDDEN_SENSITIVE_KEYS = new Set([
   'lat',
   'lng',
   'token',
+  'downloadurl',
+  'textcontent',
+  'attachments',
 ]);
 
 export function isIntegrationEvent(value: unknown): value is IntegrationEvent {
@@ -207,27 +197,20 @@ export function isIntegrationEvent(value: unknown): value is IntegrationEvent {
     case 'MeetupInviteLinkAccepted.v1':
       return hasStrings(value, 'meetupId', 'participantId', 'inviteLinkId');
     case 'MeetupChatMessageCreated.v1':
-      return (
-        hasStrings(
-          value,
-          'meetupId',
-          'messageId',
-          'senderUserId',
-          'textContent',
-          'sentAt',
-        ) && Array.isArray(value.attachments)
+      return hasStrings(
+        value,
+        'conversationId',
+        'meetupId',
+        'messageId',
+        'senderUserId',
       );
     case 'DirectChatMessageCreated.v1':
-      return (
-        hasStrings(
-          value,
-          'conversationId',
-          'messageId',
-          'senderUserId',
-          'recipientUserId',
-          'textContent',
-          'sentAt',
-        ) && Array.isArray(value.attachments)
+      return hasStrings(
+        value,
+        'conversationId',
+        'messageId',
+        'senderUserId',
+        'recipientUserId',
       );
   }
 

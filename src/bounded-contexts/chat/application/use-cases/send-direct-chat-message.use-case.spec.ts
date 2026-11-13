@@ -9,6 +9,7 @@ import { SendDirectChatMessageUseCase } from './send-direct-chat-message.use-cas
 describe('SendDirectChatMessageUseCase', () => {
   const actorId = '00000000-0000-4000-8000-000000000001';
   const peerId = '00000000-0000-4000-8000-000000000002';
+  const clientMessageId = '00000000-0000-4000-8000-000000000005';
   let friendships: jest.Mocked<Pick<FriendshipReader, 'areAccepted'>>;
   let store: jest.Mocked<DirectChatStore>;
   let attachments: jest.Mocked<
@@ -23,11 +24,17 @@ describe('SendDirectChatMessageUseCase', () => {
       conversationId: '00000000-0000-4000-8000-000000000004',
       senderUserId: actorId,
       recipientUserId: peerId,
+      clientMessageId,
       textContent: 'hello',
       sentAt: new Date('2026-01-01T00:00:00Z'),
       attachments: [],
     };
-    store = { append: jest.fn().mockResolvedValue(message), list: jest.fn(), hasConversation: jest.fn() };
+    store = {
+      append: jest.fn().mockResolvedValue(message),
+      findByClientMessageId: jest.fn().mockResolvedValue(null),
+      list: jest.fn(),
+      hasConversation: jest.fn(),
+    };
     attachments = {
       upload: jest.fn().mockResolvedValue([]),
       createViews: jest.fn().mockResolvedValue([]),
@@ -41,15 +48,37 @@ describe('SendDirectChatMessageUseCase', () => {
   });
 
   it('persists an outbox-ready message for accepted friends', async () => {
-    await useCase.execute({ actorId, peerId, text: 'hello' });
+    await useCase.execute({ actorId, peerId, clientMessageId, text: 'hello' });
     expect(store.append.mock.calls).toHaveLength(1);
   });
 
   it('rejects before reading or writing when the friendship is not accepted', async () => {
     friendships.areAccepted.mockResolvedValue(false);
     await expect(
-      useCase.execute({ actorId, peerId, text: 'hello' }),
+      useCase.execute({ actorId, peerId, clientMessageId, text: 'hello' }),
     ).rejects.toMatchObject({ code: 'DIRECT_CHAT_FORBIDDEN' });
+    expect(store.append.mock.calls).toHaveLength(0);
+  });
+
+  it('returns the existing message without checking friendship or uploading again', async () => {
+    store.findByClientMessageId.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000003',
+      conversationId: '00000000-0000-4000-8000-000000000004',
+      senderUserId: actorId,
+      recipientUserId: peerId,
+      clientMessageId,
+      textContent: 'hello',
+      sentAt: new Date('2026-01-01T00:00:00Z'),
+      attachments: [],
+    });
+    await useCase.execute({
+      actorId,
+      peerId,
+      clientMessageId,
+      text: 'changed',
+    });
+    expect(friendships.areAccepted).not.toHaveBeenCalled();
+    expect(attachments.upload).not.toHaveBeenCalled();
     expect(store.append.mock.calls).toHaveLength(0);
   });
 });

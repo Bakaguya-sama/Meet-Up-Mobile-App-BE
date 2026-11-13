@@ -72,8 +72,10 @@ export class MeetupChatController {
       type: 'object',
       properties: {
         text: { type: 'string', maxLength: 2000 },
+        clientMessageId: { type: 'string', format: 'uuid' },
         files: { type: 'array', items: { type: 'string', format: 'binary' } },
       },
+      required: ['clientMessageId'],
     },
   })
   @UseInterceptors(
@@ -94,6 +96,7 @@ export class MeetupChatController {
     return this.sendMessage.execute({
       actorId,
       meetupId,
+      clientMessageId: body.clientMessageId,
       text: body.text,
       files: files.map(toIncomingChatFile),
     });

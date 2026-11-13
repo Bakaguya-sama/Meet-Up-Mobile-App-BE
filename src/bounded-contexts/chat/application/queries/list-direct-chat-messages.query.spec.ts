@@ -15,7 +15,11 @@ describe('ListDirectChatMessagesQuery', () => {
   const attachments = {
     createViews: jest.fn(),
   } as unknown as jest.Mocked<ChatAttachmentService>;
-  const query = new ListDirectChatMessagesQuery(store, friendships, attachments);
+  const query = new ListDirectChatMessagesQuery(
+    store,
+    friendships,
+    attachments,
+  );
 
   beforeEach(() => jest.resetAllMocks());
 
@@ -34,6 +38,6 @@ describe('ListDirectChatMessagesQuery', () => {
     await expect(
       query.execute({ actorId: 'a', peerId: 'b', limit: 20 }),
     ).rejects.toBeInstanceOf(ChatError);
-    expect(store.list).not.toHaveBeenCalled();
+    expect(store.list.mock.calls).toHaveLength(0);
   });
 });

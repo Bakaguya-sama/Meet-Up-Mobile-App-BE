@@ -436,47 +436,77 @@
     Note: 'Contains only a small candidate snapshot. Never stores route history or exact user coordinates.'
   }
 
-  Table meetup_chat_messages {
+  Table chat_conversations {
     id uuid [pk]
-    meetup_id uuid [not null]
-    sender_user_id uuid [not null]
-    text_content varchar(2000) [not null]
-    attachments jsonb [not null, default: `[]`]
-    sent_at timestamptz [not null]
-
-    Indexes {
-      (meetup_id, sent_at, id)
-    }
-
-    Note: 'BE-11: Attachments contain Cloudinary private asset metadata only, never file bytes or long-lived access URLs. PostgreSQL trigger only allows insert when sender is accepted and meetup active.'
-  }
-
-  Table direct_chat_conversations {
-    id uuid [pk]
-    user_a_id uuid [not null]
-    user_b_id uuid [not null]
+    type varchar(20) [not null, note: 'direct or meetup']
+    meetup_id uuid
+    direct_user_a_id uuid
+    direct_user_b_id uuid
+    last_message_id uuid
+    last_message_at timestamptz
     created_at timestamptz [not null]
 
     Indexes {
-      (user_a_id, user_b_id) [unique]
+      meetup_id [unique, name: 'uq_chat_conversations_meetup']
+      (direct_user_a_id, direct_user_b_id) [unique, name: 'uq_chat_conversations_direct_pair']
+      (last_message_at, id)
     }
 
-    Note: 'Canonical sorted pair; both users must remain accepted friends to use direct chat.'
+    Note: 'Unified direct/meetup conversation. A direct pair is canonical user A < user B and is created lazily on the first valid send. A meetup conversation is created atomically with the meetup. Shape and partial uniqueness are enforced by PostgreSQL.'
   }
 
-  Table direct_chat_messages {
+  Table chat_conversation_members {
+    conversation_id uuid [not null]
+    user_id uuid [not null]
+    joined_at timestamptz [not null]
+    left_at timestamptz
+    history_visible_until timestamptz
+    last_read_message_id uuid
+    last_read_at timestamptz
+
+    Indexes {
+      (conversation_id, user_id) [pk]
+      (user_id, left_at, conversation_id)
+    }
+
+    Note: 'Direct members remain for retained read-only history after unfriend/block. Meetup membership is synchronized from meetup_participants; newly accepted members can read the complete earlier history, while former members stop at history_visible_until = left_at.'
+  }
+
+  Table chat_messages {
     id uuid [pk]
     conversation_id uuid [not null]
     sender_user_id uuid [not null]
+    client_message_id uuid [not null]
     text_content varchar(2000) [not null, default: '']
-    attachments jsonb [not null, default: `[]`]
     sent_at timestamptz [not null]
 
     Indexes {
+      (conversation_id, sender_user_id, client_message_id) [unique]
       (conversation_id, sent_at, id)
     }
 
-    Note: 'A message needs text or at least one attachment. PostgreSQL checks accepted friendship at insert.'
+    Note: 'Immutable message shared by direct and meetup chat. client_message_id makes mobile retries idempotent. A deferred constraint requires text or at least one normalized attachment; a database trigger is the final send-authorization guard.'
+  }
+
+  Table chat_message_attachments {
+    id uuid [pk]
+    message_id uuid [not null]
+    storage_provider varchar(30) [not null]
+    storage_key varchar(500) [not null]
+    resource_type varchar(20) [not null]
+    format varchar(30) [not null]
+    original_file_name varchar(180) [not null]
+    mime_type varchar(150) [not null]
+    bytes bigint [not null]
+    sort_order smallint [not null]
+    created_at timestamptz [not null]
+
+    Indexes {
+      (message_id, sort_order) [unique]
+      (storage_provider, storage_key) [unique]
+    }
+
+    Note: 'Private Cloudinary metadata only. Never store file bytes, public URLs, short-lived signed URLs or antivirus/quarantine state. Storage keys are deterministic per conversation/clientMessageId/file index/content fingerprint.'
   }
 
   Table device_tokens {
@@ -612,9 +642,7 @@
   Ref: user_accounts.id < oauth_identities.user_account_id
   Ref: user_accounts.id < user_sessions.user_account_id
   Ref: user_accounts.id < favorite_places.user_id
-  Ref: user_accounts.id < meetup_chat_messages.sender_user_id
   Ref: user_accounts.id < audit_logs.actor_id
-  Ref: meetup_sessions.id < meetup_chat_messages.meetup_id
   Ref: user_sessions.id < user_sessions.parent_session_id
   Ref: user_sessions.id < user_sessions.replaced_by_session_id
   Ref: user_accounts.id < friendships.user_a_id
@@ -650,12 +678,16 @@
   Ref: votes.(meetup_id, meetup_participant_id) > meetup_participants.(meetup_id, id)
   Ref: user_accounts.id < favorite_places.user_id
   Ref: place_snapshots.id < favorite_places.place_snapshot_id
-  Ref: meetup_sessions.id < meetup_chat_messages.meetup_id
-  Ref: user_accounts.id < meetup_chat_messages.sender_user_id
-  Ref: user_accounts.id < direct_chat_conversations.user_a_id
-  Ref: user_accounts.id < direct_chat_conversations.user_b_id
-  Ref: direct_chat_conversations.id < direct_chat_messages.conversation_id
-  Ref: user_accounts.id < direct_chat_messages.sender_user_id
+  Ref: meetup_sessions.id < chat_conversations.meetup_id
+  Ref: user_accounts.id < chat_conversations.direct_user_a_id
+  Ref: user_accounts.id < chat_conversations.direct_user_b_id
+  Ref: chat_conversations.id < chat_conversation_members.conversation_id
+  Ref: user_accounts.id < chat_conversation_members.user_id
+  Ref: chat_messages.id < chat_conversation_members.last_read_message_id
+  Ref: chat_conversations.id < chat_messages.conversation_id
+  Ref: user_accounts.id < chat_messages.sender_user_id
+  Ref: chat_messages.id < chat_message_attachments.message_id
+  Ref: chat_messages.id < chat_conversations.last_message_id
   Ref: user_accounts.id < device_tokens.user_account_id
   Ref: user_accounts.id < notification_campaigns.created_by_user_id
   Ref: user_accounts.id < notification_deliveries.recipient_user_id

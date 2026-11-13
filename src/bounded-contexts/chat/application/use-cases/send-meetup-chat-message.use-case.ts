@@ -15,10 +15,25 @@ export class SendMeetupChatMessageUseCase {
   async execute(input: {
     actorId: string;
     meetupId: string;
+    clientMessageId: string;
     text?: string;
     files?: IncomingChatFile[];
   }) {
-    if (!(await this.membership.canSendChat(input.meetupId, input.actorId))) {
+    const meetupId = input.meetupId.toLowerCase();
+    const existing = await this.store.findByClientMessageId({
+      meetupId,
+      actorId: input.actorId,
+      clientMessageId: input.clientMessageId,
+    });
+    if (existing) {
+      return {
+        ...existing,
+        attachments: this.attachmentService
+          ? await this.attachmentService.createViews(existing.attachments ?? [])
+          : [],
+      };
+    }
+    if (!(await this.membership.canSendChat(meetupId, input.actorId))) {
       throw new ChatError(
         'CHAT_FORBIDDEN',
         'Only accepted members of an active meetup can use chat',
@@ -36,38 +51,42 @@ export class SendMeetupChatMessageUseCase {
       throw new ChatError('INVALID_INPUT', 'File attachments are unavailable');
     }
     const attachments = files.length
-      ? await this.attachmentService!.upload(files)
+      ? await this.attachmentService!.upload(files, {
+          scope: `meetup/${meetupId}`,
+          clientMessageId: input.clientMessageId,
+        })
       : [];
-    let attachmentViews;
-    try {
-      attachmentViews = this.attachmentService
-        ? await this.attachmentService.createViews(attachments)
-        : [];
-    } catch (error) {
-      await this.attachmentService?.delete(attachments);
-      throw error;
-    }
     const message = {
       id: randomUUID(),
-      meetupId: input.meetupId.toLowerCase(),
+      meetupId,
       senderUserId: input.actorId,
+      clientMessageId: input.clientMessageId,
       textContent: text,
       sentAt: new Date(),
       attachments,
     };
+    let persisted;
     try {
-      const recipients = await this.membership.listActiveRecipientIds(
-        message.meetupId,
-      );
-      await this.store.append(
-        message,
-        { ...message, attachments: attachmentViews },
-        recipients,
-      );
+      persisted = await this.store.append(message);
     } catch (error) {
       await this.attachmentService?.delete(attachments);
       throw error;
     }
-    return { ...message, attachments: attachmentViews };
+    if (persisted.id !== message.id) {
+      await this.attachmentService?.delete(
+        attachments.filter(
+          (attachment) =>
+            !persisted.attachments?.some(
+              (stored) => stored.storageKey === attachment.storageKey,
+            ),
+        ),
+      );
+    }
+    return {
+      ...persisted,
+      attachments: this.attachmentService
+        ? await this.attachmentService.createViews(persisted.attachments ?? [])
+        : [],
+    };
   }
 }

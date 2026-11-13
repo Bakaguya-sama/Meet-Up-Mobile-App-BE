@@ -11,9 +11,12 @@ import { ChatError } from '../src/bounded-contexts/chat/domain/errors/chat.error
 import { ListMeetupChatMessagesQuery } from '../src/bounded-contexts/chat/application/queries/list-meetup-chat-messages.query';
 import { SendMeetupChatMessageUseCase } from '../src/bounded-contexts/chat/application/use-cases/send-meetup-chat-message.use-case';
 import { MeetupChatAccessAdapter } from '../src/bounded-contexts/chat/infrastructure/adapters/meetup-chat-access.adapter';
-import { RealtimeChatMessagePublisherAdapter } from '../src/bounded-contexts/chat/infrastructure/adapters/realtime-chat-message-publisher.adapter';
-import { MeetupChatMessageEntity } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/entities/meetup-chat-message.typeorm-entity';
+import { ChatConversationEntity } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/entities/chat-conversation.typeorm-entity';
+import { ChatConversationMemberEntity } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/entities/chat-conversation-member.typeorm-entity';
+import { ChatMessageEntity } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/entities/chat-message.typeorm-entity';
+import { ChatMessageAttachmentEntity } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/entities/chat-message-attachment.typeorm-entity';
 import { TypeOrmMeetupChatStore } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/typeorm-meetup-chat-store';
+import { TypeOrmDirectChatStore } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/typeorm-direct-chat-store';
 import { MeetupMembershipReader } from '../src/bounded-contexts/meetups/application/public/meetup-membership-reader';
 import { MeetupEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/meetup.typeorm-entity';
 import { ParticipantEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/participant.typeorm-entity';
@@ -25,12 +28,9 @@ import { RecommendationCandidateEntity } from '../src/bounded-contexts/recommend
 import { RecommendationRunEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-run.typeorm-entity';
 import { RecommendationMemberFeatureEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-member-feature.typeorm-entity';
 import { RecommendationPlaceEntity } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/entities/recommendation-place.typeorm-entity';
-import type {
-  RealtimeMessage,
-  RealtimePublisherPort,
-} from '../src/shared-kernel/application/realtime-publisher.port';
 import { CreateAuthTables1760000001000 } from '../src/infrastructure/database/migrations/1760000001000-create-auth-tables';
 import { CreateUserPreferencesTables1760000002000 } from '../src/infrastructure/database/migrations/1760000002000-create-user-preferences-tables';
+import { CreateFriendshipsTable1760000003000 } from '../src/infrastructure/database/migrations/1760000003000-create-friendships-table';
 import { CreateOutboxEventsTable1760000006000 } from '../src/infrastructure/database/migrations/1760000006000-create-outbox-events-table';
 import { CreateMeetupsTables1792070000000 } from '../src/infrastructure/database/migrations/1792070000000-create-meetups-tables';
 import { CreateMeetupParticipantPreferencesTable1792070001000 } from '../src/infrastructure/database/migrations/1792070001000-create-meetup-participant-preferences-table';
@@ -45,6 +45,8 @@ import { AddRecommendationTrafficWeatherContext1792160000000 } from '../src/infr
 import { AddRecommendationStaticDurationMetric1792170000000 } from '../src/infrastructure/database/migrations/1792170000000-add-recommendation-static-duration-metric';
 import { AddRecommendationClosingSnapshots1792180000000 } from '../src/infrastructure/database/migrations/1792180000000-add-recommendation-closing-snapshots';
 import { AddDirectChatAndAttachments1792190000000 } from '../src/infrastructure/database/migrations/1792190000000-add-direct-chat-and-attachments';
+import { UnifyChatConversations1792200000000 } from '../src/infrastructure/database/migrations/1792200000000-unify-chat-conversations';
+import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persistence/outbox-event.typeorm-entity';
 
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
 if (!databaseUrl) throw new Error('MEETUP_TEST_DATABASE_URL is required');
@@ -54,11 +56,11 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
   const aliceId = randomUUID();
   const bobId = randomUUID();
   const outsiderId = randomUUID();
+  const lateJoinerId = randomUUID();
   const meetupId = randomUUID();
   const runId = randomUUID();
   const candidateId = randomUUID();
   const canonicalCandidateKey = `google-places:${'x'.repeat(286)}`;
-  const published: RealtimeMessage[] = [];
   let bootstrap: DataSource;
   let db: DataSource;
   let chatStore: TypeOrmMeetupChatStore;
@@ -92,11 +94,16 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
         RecommendationMemberFeatureEntity,
         RecommendationPlaceEntity,
         FavoritePlaceEntity,
-        MeetupChatMessageEntity,
+        ChatConversationEntity,
+        ChatConversationMemberEntity,
+        ChatMessageEntity,
+        ChatMessageAttachmentEntity,
+        OutboxEventTypeOrmEntity,
       ],
       migrations: [
         CreateAuthTables1760000001000,
         CreateUserPreferencesTables1760000002000,
+        CreateFriendshipsTable1760000003000,
         CreateOutboxEventsTable1760000006000,
         CreateMeetupsTables1792070000000,
         CreateMeetupParticipantPreferencesTable1792070001000,
@@ -111,36 +118,24 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
         AddRecommendationStaticDurationMetric1792170000000,
         AddRecommendationClosingSnapshots1792180000000,
         AddDirectChatAndAttachments1792190000000,
+        UnifyChatConversations1792200000000,
       ],
     }).initialize();
     await db.runMigrations();
-    await expectTrigger(true);
+    await expectUnifiedSchema(true);
     await db.undoLastMigration();
-    await expectTrigger(true);
-    // 179216 is unrelated to chat but is part of the current schema.
-    await db.undoLastMigration();
-    await db.undoLastMigration();
-    await db.undoLastMigration();
-    await db.undoLastMigration();
-    await expectTrigger(false);
-    await db.undoLastMigration();
-    await expect(
-      db.query(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'meetup_chat_messages'`,
-        [schema],
-      ),
-    ).resolves.toEqual([]);
+    await expectUnifiedSchema(false);
     await db.runMigrations();
-    await expectTrigger(true);
+    await expectUnifiedSchema(true);
 
     await db.query(
       `INSERT INTO user_accounts (id, email, display_name, role, created_at, updated_at)
        SELECT id, id::text || '@test.invalid', display_name, role, NOW(), NOW()
        FROM unnest($1::uuid[], $2::text[], $3::varchar[]) AS users(id, display_name, role)`,
       [
-        [aliceId, bobId, outsiderId],
-        ['Alice', 'Bob', 'Outsider'],
-        ['user', 'user', 'admin'],
+        [aliceId, bobId, outsiderId, lateJoinerId],
+        ['Alice', 'Bob', 'Outsider', 'Late joiner'],
+        ['user', 'user', 'admin', 'user'],
       ],
     );
     await db.query(
@@ -183,20 +178,7 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
       new MeetupMembershipReader(new TypeOrmMeetupRepository(db)),
     );
     chatStore = new TypeOrmMeetupChatStore(db);
-    const realtime: RealtimePublisherPort = {
-      publish(event) {
-        published.push(event);
-        return Promise.resolve();
-      },
-    };
-    const chatPublisher = new RealtimeChatMessagePublisherAdapter(
-      realtime,
-      membership,
-    );
-    send = new SendMeetupChatMessageUseCase(
-      chatStore,
-      membership,
-    );
+    send = new SendMeetupChatMessageUseCase(chatStore, membership);
     list = new ListMeetupChatMessagesQuery(chatStore, membership);
     favorites = new TypeOrmFavoritePlaceStore(db);
   });
@@ -209,18 +191,14 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
     }
   });
 
-  async function expectTrigger(expected: boolean) {
+  async function expectUnifiedSchema(expected: boolean) {
     await expect(
       db.query(
-        `SELECT trigger_name FROM information_schema.triggers
-         WHERE event_object_schema = $1
-           AND event_object_table = 'meetup_chat_messages'
-           AND trigger_name = 'trg_meetup_chat_sender_active'`,
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = $1 AND table_name = 'chat_messages'`,
         [schema],
       ),
-    ).resolves.toEqual(
-      expected ? [{ trigger_name: 'trg_meetup_chat_sender_active' }] : [],
-    );
+    ).resolves.toEqual(expected ? [{ table_name: 'chat_messages' }] : []);
   }
 
   it('retains former-member history only through leftAt, rejects their writes atomically, and excludes them from new realtime delivery', async () => {
@@ -229,12 +207,14 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
       id: historicalId,
       meetupId,
       senderUserId: aliceId,
+      clientMessageId: randomUUID(),
       textContent: 'before departure',
       sentAt: new Date(Date.now() - 120_000),
+      attachments: [],
     });
     await db.query(
       `UPDATE meetup_participants
-       SET status = 'left', left_at = NOW() - INTERVAL '60 seconds'
+       SET status = 'left', left_at = NOW()
        WHERE meetup_id = $1 AND user_id = $2`,
       [meetupId, bobId],
     );
@@ -244,40 +224,142 @@ describe('BE-11, BE-19 and BE-20 PostgreSQL integration', () => {
         id: randomUUID(),
         meetupId,
         senderUserId: bobId,
+        clientMessageId: randomUUID(),
         textContent: 'must not be stored',
         sentAt,
+        attachments: [],
       }),
     ).rejects.toMatchObject({
       code: 'CHAT_FORBIDDEN',
     } satisfies Partial<ChatError>);
 
-    published.length = 0;
     const newMessage = await send.execute({
       actorId: aliceId,
       meetupId,
+      clientMessageId: randomUUID(),
       text: 'after departure',
     });
     const history = await list.execute({ actorId: bobId, meetupId, limit: 50 });
     expect(history.map((message) => message.id)).toEqual([historicalId]);
     await expect(
-      send.execute({ actorId: bobId, meetupId, text: 'forbidden' }),
-    ).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' });
-    expect(published).toEqual([
-      expect.objectContaining({
-        room: `user:${aliceId}`,
-        eventId: newMessage.id,
-        eventName: 'meetup:chat-message',
+      send.execute({
+        actorId: bobId,
+        meetupId,
+        clientMessageId: randomUUID(),
+        text: 'forbidden',
       }),
-    ]);
-    expect(published[0].payload).toMatchObject({
-      id: newMessage.id,
+    ).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' });
+    const outbox = await db.query<
+      Array<{ payload: Record<string, unknown>; recipient_ids: string[] }>
+    >(
+      `SELECT payload, recipient_ids FROM outbox_events
+       WHERE event_name = 'MeetupChatMessageCreated.v1' AND payload->>'messageId' = $1`,
+      [newMessage.id],
+    );
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]?.recipient_ids).toEqual([aliceId]);
+    expect(outbox[0]?.payload).toMatchObject({
+      messageId: newMessage.id,
+      conversationId: newMessage.conversationId,
       meetupId,
-      senderUserId: aliceId,
-      textContent: 'after departure',
     });
+    expect(outbox[0]?.payload).not.toHaveProperty('attachments');
+    expect(outbox[0]?.payload).not.toHaveProperty('downloadUrl');
     await expect(
       list.execute({ actorId: outsiderId, meetupId, limit: 50 }),
     ).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' });
+  });
+
+  it('lets a newly accepted meetup member read the complete earlier history', async () => {
+    const beforeJoinId = randomUUID();
+    await chatStore.append({
+      id: beforeJoinId,
+      meetupId,
+      senderUserId: aliceId,
+      clientMessageId: randomUUID(),
+      textContent: 'created before late join',
+      sentAt: new Date(),
+      attachments: [],
+    });
+    await db.query(
+      `INSERT INTO meetup_participants (
+         id, meetup_id, user_id, status, invited_by_id, responded_at, joined_at
+       ) VALUES ($1, $2, $3, 'accepted', $4, NOW(), NOW())`,
+      [randomUUID(), meetupId, lateJoinerId, aliceId],
+    );
+    const history = await list.execute({
+      actorId: lateJoinerId,
+      meetupId,
+      limit: 100,
+    });
+    expect(history.map((message) => message.id)).toContain(beforeJoinId);
+  });
+
+  it('keeps direct history readable after block and de-duplicates client retries', async () => {
+    const [userAId, userBId] = [aliceId, lateJoinerId].sort();
+    await db.query(
+      `INSERT INTO friendships (
+         id, user_a_id, user_b_id, requested_by_id, status,
+         requested_at, responded_at, updated_at
+       ) VALUES ($1, $2, $3, $2, 'accepted', NOW(), NOW(), NOW())`,
+      [randomUUID(), userAId, userBId],
+    );
+    const store = new TypeOrmDirectChatStore(db);
+    const clientMessageId = randomUUID();
+    const input = {
+      id: randomUUID(),
+      senderUserId: aliceId,
+      recipientUserId: lateJoinerId,
+      clientMessageId,
+      textContent: '',
+      sentAt: new Date(),
+      attachments: [
+        {
+          storageProvider: 'cloudinary' as const,
+          storageKey: `chat/direct/${userAId}/${userBId}/${clientMessageId}/0-test`,
+          resourceType: 'raw' as const,
+          format: 'pdf',
+          fileName: 'plan.pdf',
+          mimeType: 'application/pdf',
+          bytes: 5,
+        },
+      ],
+    };
+    const [first, retried] = await Promise.all([
+      store.append(input),
+      store.append({ ...input, id: randomUUID() }),
+    ]);
+    expect(retried.id).toBe(first.id);
+    await db.query(
+      `UPDATE friendships SET status = 'blocked', responded_at = NOW(), updated_at = NOW()
+       WHERE user_a_id = $1 AND user_b_id = $2`,
+      [userAId, userBId],
+    );
+    const history = await store.list({
+      actorId: aliceId,
+      peerId: lateJoinerId,
+      limit: 20,
+    });
+    expect(history.map((message) => message.id)).toEqual([first.id]);
+    await expect(
+      store.append({
+        ...input,
+        id: randomUUID(),
+        clientMessageId: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: 'DIRECT_CHAT_FORBIDDEN' });
+    const count = await db.query<Array<{ count: string }>>(
+      `SELECT count(*)::text AS count FROM chat_messages
+       WHERE conversation_id = $1 AND sender_user_id = $2`,
+      [first.conversationId, aliceId],
+    );
+    expect(count).toEqual([{ count: '1' }]);
+    const attachmentCount = await db.query<Array<{ count: string }>>(
+      `SELECT count(*)::text AS count FROM chat_message_attachments
+       WHERE message_id = $1`,
+      [first.id],
+    );
+    expect(attachmentCount).toEqual([{ count: '1' }]);
   });
 
   it('uses the database unique key for idempotent canonical favorite add and accepts the 300-character key', async () => {

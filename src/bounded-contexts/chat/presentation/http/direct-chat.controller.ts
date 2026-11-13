@@ -73,8 +73,10 @@ export class DirectChatController {
       type: 'object',
       properties: {
         text: { type: 'string', maxLength: 2000 },
+        clientMessageId: { type: 'string', format: 'uuid' },
         files: { type: 'array', items: { type: 'string', format: 'binary' } },
       },
+      required: ['clientMessageId'],
     },
   })
   @UseInterceptors(
@@ -94,6 +96,7 @@ export class DirectChatController {
     return this.sendMessage.execute({
       actorId,
       peerId,
+      clientMessageId: body.clientMessageId,
       text: body.text,
       files: files.map(toIncomingChatFile),
     });

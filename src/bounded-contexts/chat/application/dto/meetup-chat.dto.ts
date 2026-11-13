@@ -11,6 +11,9 @@ import {
 } from 'class-validator';
 
 export class SendMeetupChatMessageRequest {
+  @IsUUID()
+  clientMessageId: string;
+
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,

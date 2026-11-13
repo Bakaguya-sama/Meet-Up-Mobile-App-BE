@@ -8,6 +8,7 @@ export interface DirectChatMessage {
   conversationId: string;
   senderUserId: string;
   recipientUserId: string;
+  clientMessageId: string;
   textContent: string;
   sentAt: Date;
   attachments: ChatAttachmentMetadata[];
@@ -23,8 +24,12 @@ export interface DirectChatMessageView extends Omit<
 export interface DirectChatStore {
   append(
     message: Omit<DirectChatMessage, 'conversationId'>,
-    delivery: Omit<DirectChatMessageView, 'conversationId'>,
   ): Promise<DirectChatMessage>;
+  findByClientMessageId(input: {
+    actorId: string;
+    peerId: string;
+    clientMessageId: string;
+  }): Promise<DirectChatMessage | null>;
   list(input: {
     actorId: string;
     peerId: string;

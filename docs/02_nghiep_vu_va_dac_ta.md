@@ -212,7 +212,7 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 
 **Tác nhân:** Thành viên meetup.
 **Điều kiện trước:** Là accepted member của meetup còn active để gửi/nhận tin; former member `left`/`removed` chỉ có quyền đọc đến `leftAt`.
-**Luồng chính:** Mở phòng chat, gửi tin nhắn văn bản hoặc tối đa 5 tệp (ảnh, PDF, Office, văn bản và tệp nén trong allow-list; tối đa 10 MiB/tệp, 25 MiB/tin), nhận tin mới gần thời gian thực. Tệp được xác minh extension/MIME/chữ ký, lưu riêng tư trên Cloudinary; API chỉ trả URL tải có hạn 15 phút. Antivirus/quarantine không thuộc v1. Server lưu message và outbox event trong cùng transaction; worker fan-out sau commit vào `user:{userId}`, không broadcast qua meetup room có thể còn socket cũ.
+**Luồng chính:** Mở phòng chat, gửi tin nhắn văn bản hoặc tối đa 5 tệp (ảnh, PDF, Office, văn bản và tệp nén trong allow-list; tối đa 10 MiB/tệp, 25 MiB/tin), nhận tin mới gần thời gian thực. Mobile sinh `clientMessageId` và giữ nguyên khi retry để server không tạo tin trùng. Tệp được xác minh extension/MIME/chữ ký, lưu riêng tư trên Cloudinary; API chỉ trả URL tải có hạn 15 phút. Antivirus/quarantine không thuộc v1. Server lưu message và outbox reference trong cùng transaction; worker fan-out sau commit vào `user:{userId}`, không broadcast qua meetup room có thể còn socket cũ. Participant được accepted sau có quyền đọc toàn bộ lịch sử trước lúc tham gia.
 **Ngoại lệ:** Không phải member, declined, meetup inactive hoặc former member gửi tin thì bị từ chối; former member không thấy message sau `leftAt`; mạng mất thì HTTP vẫn đọc lại message đã lưu và UI báo trạng thái gửi.
 **Kết quả:** Các thành viên trao đổi được về kế hoạch trong đúng meetup.
 
@@ -220,7 +220,7 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 
 **Tác nhân:** Hai tài khoản đã chấp nhận kết bạn.
 **Điều kiện trước:** Friendship vẫn ở trạng thái `accepted`; mỗi message có văn bản hoặc tệp hợp lệ.
-**Luồng chính:** Gửi/đọc lịch sử tại `GET/POST /api/v1/chats/direct/:peerId/messages`; message được lưu theo conversation chuẩn hóa cặp user và phát `direct:chat-message` vào hai user room. Có thể gửi kèm tệp theo cùng giới hạn UC-12.
+**Luồng chính:** Gửi/đọc lịch sử tại `GET/POST /api/v1/chats/direct/:peerId/messages`; mobile gửi `clientMessageId` ổn định qua mọi lần retry; message được lưu theo conversation chuẩn hóa cặp user và phát realtime reference `direct:chat-message` vào hai user room. Có thể gửi kèm tệp theo cùng giới hạn UC-12.
 **Ngoại lệ:** Người lạ hoặc lời mời pending không thể gửi/đọc. Sau unfriend hoặc block, hai bên không thể gửi thêm hoặc tạo conversation mới nhưng vẫn chỉ đọc được lịch sử conversation đã tồn tại; PostgreSQL kiểm tra friendship khi insert để đóng race với thao tác unfriend/block.
 **Kết quả:** Chỉ hai người bạn đã chấp nhận trao đổi được tin nhắn riêng.
 

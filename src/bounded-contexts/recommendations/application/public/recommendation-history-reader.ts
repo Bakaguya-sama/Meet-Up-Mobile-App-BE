@@ -12,10 +12,8 @@ export type SelectedPlaceHistorySnapshot = SelectedPlaceReference & {
 };
 
 /** Privacy-minimal reader for the selected place stored by Recommendations. */
-export class RecommendationHistoryReader {
-  getSelectedPlaceSnapshots(
+export abstract class RecommendationHistoryReader {
+  abstract getSelectedPlaceSnapshots(
     references: SelectedPlaceReference[],
-  ): Promise<SelectedPlaceHistorySnapshot[]> {
-    throw new Error('RecommendationHistoryReader must be provided by its context');
-  }
+  ): Promise<SelectedPlaceHistorySnapshot[]>;
 }

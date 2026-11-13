@@ -257,6 +257,16 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     await db?.query('DELETE FROM recommendation_runs WHERE meetup_id = $1', [
       meetupId,
     ]);
+    await db?.query(
+      `DELETE FROM chat_conversation_members
+       WHERE conversation_id IN (
+         SELECT id FROM chat_conversations WHERE meetup_id = $1
+       )`,
+      [meetupId],
+    );
+    await db?.query('DELETE FROM chat_conversations WHERE meetup_id = $1', [
+      meetupId,
+    ]);
     await db?.query('DELETE FROM meetup_sessions WHERE id = $1', [meetupId]);
     await db?.query(
       'DELETE FROM user_sessions WHERE user_account_id IN ($1, $2, $3)',
@@ -472,10 +482,13 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       .set('Authorization', `Bearer ${await token(memberId, memberSessionId)}`)
       .expect(200);
 
-    const organizerResult = organizer.body.results[0];
-    const memberResult = member.body.results[0];
+    const organizerResult = (organizer.body as RecommendationRunHttpBody)
+      .results[0];
+    const memberResult = (member.body as RecommendationRunHttpBody).results[0];
     expect(memberResult.memberEtas).toEqual(organizerResult.memberEtas);
-    expect(organizerResult.viewerFeature.participantId).toBe(actorParticipantId);
+    expect(organizerResult.viewerFeature.participantId).toBe(
+      actorParticipantId,
+    );
     expect(memberResult.viewerFeature.participantId).toBe(memberParticipantId);
     expect(organizerResult).not.toHaveProperty('groupUtility');
     expect(memberResult).not.toHaveProperty('groupUtility');
@@ -597,9 +610,9 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     const result = created.body as RecommendationRunHttpBody;
 
     expect(result.scheduledAtSnapshot).toBe('2030-01-02T00:10:00.000Z');
-    expect(
-      result.results[0].memberEtas.map((item) => item.etaSeconds),
-    ).toEqual([1500, 1500]);
+    expect(result.results[0].memberEtas.map((item) => item.etaSeconds)).toEqual(
+      [1500, 1500],
+    );
   });
 
   it('filters CLOSED before Routes and keeps UNKNOWN with a warning', async () => {
@@ -731,9 +744,9 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
     const result = created.body as RecommendationRunHttpBody;
     expect(result.results).toHaveLength(2);
     expect(result.results.map((item) => item.rank)).toEqual([1, 2]);
-    expect(
-      result.results.every((item) => item.memberEtas.length === 2),
-    ).toBe(true);
+    expect(result.results.every((item) => item.memberEtas.length === 2)).toBe(
+      true,
+    );
     for (const item of result.results) {
       expect(item.explanation.summaryCode).toBe('FAIR_PARETO_RANKED');
       expect(item.explanation.facts).toEqual(

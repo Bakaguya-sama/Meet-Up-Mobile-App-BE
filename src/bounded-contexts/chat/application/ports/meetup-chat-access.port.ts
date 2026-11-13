@@ -11,5 +11,4 @@ export interface MeetupChatAccessPort {
     meetupId: string,
     userId: string,
   ): Promise<MeetupChatHistoryAccess | null>;
-  listActiveRecipientIds(meetupId: string): Promise<string[]>;
 }

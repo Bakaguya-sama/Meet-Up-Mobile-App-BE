@@ -5,8 +5,10 @@ import type {
 
 export interface MeetupChatMessage {
   id: string;
+  conversationId: string;
   meetupId: string;
   senderUserId: string;
+  clientMessageId: string;
   textContent: string;
   sentAt: Date;
   attachments?: ChatAttachmentMetadata[];
@@ -22,10 +24,13 @@ export interface MeetupChatMessageView extends Omit<
 export const MEETUP_CHAT_STORE = Symbol('MEETUP_CHAT_STORE');
 export interface MeetupChatStore {
   append(
-    input: MeetupChatMessage,
-    delivery: MeetupChatMessageView,
-    recipientIds: string[],
-  ): Promise<void>;
+    input: Omit<MeetupChatMessage, 'conversationId'>,
+  ): Promise<MeetupChatMessage>;
+  findByClientMessageId(input: {
+    meetupId: string;
+    actorId: string;
+    clientMessageId: string;
+  }): Promise<MeetupChatMessage | null>;
   list(input: {
     meetupId: string;
     before?: Date;

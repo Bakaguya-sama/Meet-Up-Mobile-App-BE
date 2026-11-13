@@ -17,6 +17,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `09_cong_nghe_su_dung.md` | Stack kỹ thuật, chiến lược Neon/Redis, Docker Compose, biến môi trường và cách triển khai theo từng môi trường. |
 | `MeetUp_Product_Backlog_Function_Points.xlsx` | Chia việc theo Function Points, backlog và tiến độ. |
 | `friends/friends_api.md` | API kết bạn BE-03, quy tắc concurrency, migration, QR hybrid và kiểm thử. |
+| `chat/chat_api.md` | Contract chat meetup/direct hợp nhất, idempotency, attachment, quyền lịch sử và realtime recovery. |
 | `11_location_privacy_api.md` | Cài đặt quyền riêng tư vị trí, kiểm quyền mỗi yêu cầu và contract cho realtime. |
 | `outbox_event/notifications_api.md` | Đăng ký thiết bị FCM, mã hóa token, outbox retry và contract deep-link notification. |
 | `outbox_event/realtime_event_contracts.md` | Contract integration event có version, Socket room, outbox, retry/idempotency và notification payload. |

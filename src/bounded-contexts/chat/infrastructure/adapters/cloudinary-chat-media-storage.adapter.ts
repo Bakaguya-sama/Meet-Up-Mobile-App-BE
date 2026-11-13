@@ -1,7 +1,6 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
-import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 import type {
   ChatAttachmentMetadata,
@@ -29,13 +28,13 @@ export class CloudinaryChatMediaStorageAdapter implements ChatMediaStoragePort {
     fileName: string;
     mimeType: string;
     resourceType: 'image' | 'raw';
+    storageKey: string;
   }): Promise<ChatAttachmentMetadata> {
     this.assertEnabled();
-    const publicId = randomUUID();
     const cloudinaryPublicId =
       input.resourceType === 'raw'
-        ? `${publicId}${extname(input.fileName).toLowerCase()}`
-        : publicId;
+        ? `${input.storageKey}${extname(input.fileName).toLowerCase()}`
+        : input.storageKey;
     const result = await new Promise<{
       public_id: string;
       format: string;
@@ -43,14 +42,13 @@ export class CloudinaryChatMediaStorageAdapter implements ChatMediaStoragePort {
     }>((resolve, reject) => {
       const upload = cloudinary.uploader.upload_stream(
         {
-          folder: 'meetup-chat',
           public_id: cloudinaryPublicId,
           resource_type: input.resourceType,
           type: 'authenticated',
           filename_override: input.fileName,
           use_filename: false,
           unique_filename: false,
-          overwrite: false,
+          overwrite: true,
         },
         (error, response) => {
           if (error) {
@@ -65,7 +63,8 @@ export class CloudinaryChatMediaStorageAdapter implements ChatMediaStoragePort {
     });
 
     return {
-      publicId: result.public_id,
+      storageProvider: 'cloudinary',
+      storageKey: result.public_id,
       resourceType: input.resourceType,
       format: result.format,
       fileName: input.fileName,
@@ -81,7 +80,7 @@ export class CloudinaryChatMediaStorageAdapter implements ChatMediaStoragePort {
     this.assertEnabled();
     return Promise.resolve(
       cloudinary.utils.private_download_url(
-        attachment.publicId,
+        attachment.storageKey,
         attachment.format,
         {
           resource_type: attachment.resourceType,
@@ -95,7 +94,7 @@ export class CloudinaryChatMediaStorageAdapter implements ChatMediaStoragePort {
 
   async delete(attachment: ChatAttachmentMetadata): Promise<void> {
     if (!this.enabled) return;
-    await cloudinary.uploader.destroy(attachment.publicId, {
+    await cloudinary.uploader.destroy(attachment.storageKey, {
       resource_type: attachment.resourceType,
       type: 'authenticated',
       invalidate: true,

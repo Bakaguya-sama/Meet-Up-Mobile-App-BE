@@ -17,12 +17,23 @@ import { UserSessionEntity } from '../src/bounded-contexts/auth/infrastructure/p
 import { ManageAccountLockUseCase as ManageAdminAccountLockUseCase } from '../src/bounded-contexts/admin/application/use-cases/manage-account-lock.use-case';
 import { AdminAccountsController } from '../src/bounded-contexts/admin/presentation/http/admin-accounts.controller';
 import { ListMeetupChatMessagesQuery } from '../src/bounded-contexts/chat/application/queries/list-meetup-chat-messages.query';
+import { ListDirectChatMessagesQuery } from '../src/bounded-contexts/chat/application/queries/list-direct-chat-messages.query';
 import { SendMeetupChatMessageUseCase } from '../src/bounded-contexts/chat/application/use-cases/send-meetup-chat-message.use-case';
+import { SendDirectChatMessageUseCase } from '../src/bounded-contexts/chat/application/use-cases/send-direct-chat-message.use-case';
+import { ChatAttachmentService } from '../src/bounded-contexts/chat/application/services/chat-attachment.service';
+import type { ChatMediaStoragePort } from '../src/bounded-contexts/chat/application/ports/chat-media-storage.port';
 import { MeetupChatAccessAdapter } from '../src/bounded-contexts/chat/infrastructure/adapters/meetup-chat-access.adapter';
-import { RealtimeChatMessagePublisherAdapter } from '../src/bounded-contexts/chat/infrastructure/adapters/realtime-chat-message-publisher.adapter';
-import { MeetupChatMessageEntity } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/entities/meetup-chat-message.typeorm-entity';
+import { ChatConversationEntity } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/entities/chat-conversation.typeorm-entity';
+import { ChatConversationMemberEntity } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/entities/chat-conversation-member.typeorm-entity';
+import { ChatMessageEntity } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/entities/chat-message.typeorm-entity';
+import { ChatMessageAttachmentEntity } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/entities/chat-message-attachment.typeorm-entity';
 import { TypeOrmMeetupChatStore } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/typeorm-meetup-chat-store';
+import { TypeOrmDirectChatStore } from '../src/bounded-contexts/chat/infrastructure/persistence/typeorm/typeorm-direct-chat-store';
 import { MeetupChatController } from '../src/bounded-contexts/chat/presentation/http/meetup-chat.controller';
+import { DirectChatController } from '../src/bounded-contexts/chat/presentation/http/direct-chat.controller';
+import { FriendshipReader } from '../src/bounded-contexts/friends/application/public/friendship-reader';
+import { TypeOrmFriendshipRepository } from '../src/bounded-contexts/friends/infrastructure/persistence/typeorm/typeorm-friendship-repository';
+import { FriendshipEntity } from '../src/bounded-contexts/friends/infrastructure/persistence/typeorm/entities/friendship.typeorm-entity';
 import { MeetupMembershipReader } from '../src/bounded-contexts/meetups/application/public/meetup-membership-reader';
 import { MeetupEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/meetup.typeorm-entity';
 import { ParticipantEntity } from '../src/bounded-contexts/meetups/infrastructure/persistence/typeorm/entities/participant.typeorm-entity';
@@ -41,6 +52,7 @@ import { FavoritePlacesController } from '../src/bounded-contexts/recommendation
 import { configureApp } from '../src/configure-app';
 import { CreateAuthTables1760000001000 } from '../src/infrastructure/database/migrations/1760000001000-create-auth-tables';
 import { CreateUserPreferencesTables1760000002000 } from '../src/infrastructure/database/migrations/1760000002000-create-user-preferences-tables';
+import { CreateFriendshipsTable1760000003000 } from '../src/infrastructure/database/migrations/1760000003000-create-friendships-table';
 import { CreateOutboxEventsTable1760000006000 } from '../src/infrastructure/database/migrations/1760000006000-create-outbox-events-table';
 import { CreateMeetupsTables1792070000000 } from '../src/infrastructure/database/migrations/1792070000000-create-meetups-tables';
 import { CreateMeetupParticipantPreferencesTable1792070001000 } from '../src/infrastructure/database/migrations/1792070001000-create-meetup-participant-preferences-table';
@@ -55,9 +67,10 @@ import { AddPublicHandleToUserAccounts1792130000000 } from '../src/infrastructur
 import { AddChatFavoritesAndAdminAudit1792140000000 } from '../src/infrastructure/database/migrations/1792140000000-add-chat-favorites-admin-audit';
 import { EnforceMeetupChatAccess1792150000000 } from '../src/infrastructure/database/migrations/1792150000000-enforce-meetup-chat-access';
 import { AddDirectChatAndAttachments1792190000000 } from '../src/infrastructure/database/migrations/1792190000000-add-direct-chat-and-attachments';
+import { UnifyChatConversations1792200000000 } from '../src/infrastructure/database/migrations/1792200000000-unify-chat-conversations';
+import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persistence/outbox-event.typeorm-entity';
 import { AccessTokenGuard } from '../src/presentation/http/guards/access-token.guard';
 import { RolesGuard } from '../src/presentation/http/guards/roles.guard';
-import type { RealtimePublisherPort } from '../src/shared-kernel/application/realtime-publisher.port';
 import type { Request } from 'express';
 
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
@@ -97,11 +110,17 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
         RecommendationMemberFeatureEntity,
         RecommendationPlaceEntity,
         FavoritePlaceEntity,
-        MeetupChatMessageEntity,
+        ChatConversationEntity,
+        ChatConversationMemberEntity,
+        ChatMessageEntity,
+        ChatMessageAttachmentEntity,
+        FriendshipEntity,
+        OutboxEventTypeOrmEntity,
       ],
       migrations: [
         CreateAuthTables1760000001000,
         CreateUserPreferencesTables1760000002000,
+        CreateFriendshipsTable1760000003000,
         CreateOutboxEventsTable1760000006000,
         CreateMeetupsTables1792070000000,
         CreateMeetupParticipantPreferencesTable1792070001000,
@@ -116,6 +135,7 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
         AddChatFavoritesAndAdminAudit1792140000000,
         EnforceMeetupChatAccess1792150000000,
         AddDirectChatAndAttachments1792190000000,
+        UnifyChatConversations1792200000000,
       ],
     }).initialize();
     await db.runMigrations();
@@ -139,6 +159,14 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
        VALUES ($1, $3, $4, 'accepted', $4, NOW(), NOW()), ($2, $3, $5, 'accepted', $4, NOW(), NOW())`,
       [randomUUID(), randomUUID(), meetupId, memberId, otherMemberId],
     );
+    const [userAId, userBId] = [memberId, otherMemberId].sort();
+    await db.query(
+      `INSERT INTO friendships (
+         id, user_a_id, user_b_id, requested_by_id, status,
+         requested_at, responded_at, updated_at
+       ) VALUES ($1, $2, $3, $2, 'accepted', NOW(), NOW(), NOW())`,
+      [randomUUID(), userAId, userBId],
+    );
     const runId = randomUUID();
     await db.query(
       `INSERT INTO recommendation_runs (id, meetup_id, request_id, payload_hash, requested_by_id, requested_k, status, ranking_strategy, algorithm_version, config_version, feature_schema_version, provider_mapping_version, provider_request_options_version, opening_filter, opening_evaluator_version, requested_at, scheduled_at_snapshot, created_at)
@@ -155,16 +183,21 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
       new MeetupMembershipReader(new TypeOrmMeetupRepository(db)),
     );
     const chatStore = new TypeOrmMeetupChatStore(db);
-    const realtime: RealtimePublisherPort = {
-      publish: () => Promise.resolve(),
-    };
-    const chatPublisher = new RealtimeChatMessagePublisherAdapter(
-      realtime,
-      meetupAccess,
+    const directStore = new TypeOrmDirectChatStore(db);
+    const friendshipReader = new FriendshipReader(
+      new TypeOrmFriendshipRepository(db),
     );
+    const mediaStorage: ChatMediaStoragePort = {
+      upload: () => Promise.reject(new Error('not used in text-only E2E')),
+      createDownloadUrl: () =>
+        Promise.reject(new Error('not used in text-only E2E')),
+      delete: () => Promise.resolve(),
+    };
+    const attachments = new ChatAttachmentService(mediaStorage);
     const fixture = await Test.createTestingModule({
       controllers: [
         MeetupChatController,
+        DirectChatController,
         FavoritePlacesController,
         AdminAccountsController,
       ],
@@ -177,14 +210,27 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
         },
         {
           provide: SendMeetupChatMessageUseCase,
-          useValue: new SendMeetupChatMessageUseCase(
-            chatStore,
-            meetupAccess,
-          ),
+          useValue: new SendMeetupChatMessageUseCase(chatStore, meetupAccess),
         },
         {
           provide: ListMeetupChatMessagesQuery,
           useValue: new ListMeetupChatMessagesQuery(chatStore, meetupAccess),
+        },
+        {
+          provide: SendDirectChatMessageUseCase,
+          useValue: new SendDirectChatMessageUseCase(
+            directStore,
+            friendshipReader,
+            attachments,
+          ),
+        },
+        {
+          provide: ListDirectChatMessagesQuery,
+          useValue: new ListDirectChatMessagesQuery(
+            directStore,
+            friendshipReader,
+            attachments,
+          ),
         },
         {
           provide: AddFavoritePlaceUseCase,
@@ -256,16 +302,24 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
   }
 
   it('persists an accepted member message and denies an outsider through HTTP', async () => {
+    const clientMessageId = randomUUID();
     const created = await request(app.getHttpServer())
       .post(`/api/v1/meetups/${meetupId}/chat/messages`)
       .set(auth(memberId))
-      .send({ text: '  HTTP chat  ' })
+      .send({ clientMessageId, text: '  HTTP chat  ' })
       .expect(201);
     expect(created.body).toMatchObject({
       meetupId,
       senderUserId: memberId,
       textContent: 'HTTP chat',
+      clientMessageId,
     });
+    const retried = await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/chat/messages`)
+      .set(auth(memberId))
+      .send({ clientMessageId, text: 'ignored retry body' })
+      .expect(201);
+    expect(responseString(retried, 'id')).toBe(responseString(created, 'id'));
     await request(app.getHttpServer())
       .get(`/api/v1/meetups/${meetupId}/chat/messages`)
       .set(auth(otherMemberId))
@@ -278,8 +332,50 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
     await request(app.getHttpServer())
       .post(`/api/v1/meetups/${meetupId}/chat/messages`)
       .set(auth(memberId))
-      .send({ text: '' })
+      .send({ clientMessageId: randomUUID(), text: '' })
       .expect(400);
+    await request(app.getHttpServer())
+      .post(`/api/v1/meetups/${meetupId}/chat/messages`)
+      .set(auth(memberId))
+      .send({ text: 'missing idempotency key' })
+      .expect(400);
+  });
+
+  it('de-duplicates direct sends and preserves read-only history after block', async () => {
+    const clientMessageId = randomUUID();
+    const created = await request(app.getHttpServer())
+      .post(`/api/v1/chats/direct/${otherMemberId}/messages`)
+      .set(auth(memberId))
+      .send({ clientMessageId, text: 'direct hello' })
+      .expect(201);
+    const retried = await request(app.getHttpServer())
+      .post(`/api/v1/chats/direct/${otherMemberId}/messages`)
+      .set(auth(memberId))
+      .send({ clientMessageId, text: 'ignored retry content' })
+      .expect(201);
+    expect(responseString(retried, 'id')).toBe(responseString(created, 'id'));
+    await request(app.getHttpServer())
+      .get(`/api/v1/chats/direct/${memberId}/messages`)
+      .set(auth(otherMemberId))
+      .expect(200)
+      .expect(({ body }: { body: unknown }) => expect(body).toHaveLength(1));
+
+    const [userAId, userBId] = [memberId, otherMemberId].sort();
+    await db.query(
+      `UPDATE friendships SET status = 'blocked', responded_at = NOW(), updated_at = NOW()
+       WHERE user_a_id = $1 AND user_b_id = $2`,
+      [userAId, userBId],
+    );
+    await request(app.getHttpServer())
+      .get(`/api/v1/chats/direct/${otherMemberId}/messages`)
+      .set(auth(memberId))
+      .expect(200)
+      .expect(({ body }: { body: unknown }) => expect(body).toHaveLength(1));
+    await request(app.getHttpServer())
+      .post(`/api/v1/chats/direct/${otherMemberId}/messages`)
+      .set(auth(memberId))
+      .send({ clientMessageId: randomUUID(), text: 'must be rejected' })
+      .expect(403);
   });
 
   it('validates, de-duplicates, lists and deletes favorites through HTTP', async () => {

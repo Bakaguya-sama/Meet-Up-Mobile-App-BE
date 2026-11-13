@@ -30,6 +30,7 @@ import { CreateRecommendationResults1792110000000 } from '../src/infrastructure/
 import { AddRecommendationTrafficWeatherContext1792160000000 } from '../src/infrastructure/database/migrations/1792160000000-add-recommendation-traffic-weather-context';
 import { AddRecommendationStaticDurationMetric1792170000000 } from '../src/infrastructure/database/migrations/1792170000000-add-recommendation-static-duration-metric';
 import { AddRecommendationClosingSnapshots1792180000000 } from '../src/infrastructure/database/migrations/1792180000000-add-recommendation-closing-snapshots';
+import { AddMeetupVoting1792150000000 } from '../src/infrastructure/database/migrations/1792150000000-add-meetup-voting';
 
 const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
 if (!databaseUrl) {
@@ -82,6 +83,7 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
         AddRecommendationRankingSnapshots1792090000000,
         AddRecommendationTemporalContext1792100000000,
         CreateRecommendationResults1792110000000,
+        AddMeetupVoting1792150000000,
         AddRecommendationTrafficWeatherContext1792160000000,
         AddRecommendationStaticDurationMetric1792170000000,
         AddRecommendationClosingSnapshots1792180000000,

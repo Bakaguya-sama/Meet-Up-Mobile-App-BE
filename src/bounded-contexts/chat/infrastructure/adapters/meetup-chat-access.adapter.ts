@@ -13,8 +13,4 @@ export class MeetupChatAccessAdapter implements MeetupChatAccessPort {
   getHistoryAccess(meetupId: string, userId: string) {
     return this.membership.getChatAccess(meetupId, userId);
   }
-
-  listActiveRecipientIds(meetupId: string): Promise<string[]> {
-    return this.membership.listActiveChatRecipientIds(meetupId);
-  }
 }

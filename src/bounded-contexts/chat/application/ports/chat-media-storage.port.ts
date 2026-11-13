@@ -1,7 +1,8 @@
 export type ChatMediaResourceType = 'image' | 'raw';
 
 export interface ChatAttachmentMetadata {
-  publicId: string;
+  storageProvider: 'cloudinary';
+  storageKey: string;
   resourceType: ChatMediaResourceType;
   format: string;
   fileName: string;
@@ -23,6 +24,7 @@ export interface ChatMediaStoragePort {
     fileName: string;
     mimeType: string;
     resourceType: ChatMediaResourceType;
+    storageKey: string;
   }): Promise<ChatAttachmentMetadata>;
   createDownloadUrl(
     attachment: ChatAttachmentMetadata,

@@ -1,4 +1,5 @@
 import { extname, basename } from 'node:path';
+import { createHash } from 'node:crypto';
 import { ChatError } from '../../domain/errors/chat.error';
 import type {
   ChatAttachmentMetadata,
@@ -51,11 +52,14 @@ const allowedMimeTypesByExtension: Record<string, string[]> = {
 export class ChatAttachmentService {
   constructor(private readonly storage: ChatMediaStoragePort) {}
 
-  async upload(files: IncomingChatFile[]): Promise<ChatAttachmentMetadata[]> {
+  async upload(
+    files: IncomingChatFile[],
+    identity: { scope: string; clientMessageId: string },
+  ): Promise<ChatAttachmentMetadata[]> {
     this.validateFiles(files);
     const uploaded: ChatAttachmentMetadata[] = [];
     try {
-      for (const file of files) {
+      for (const [index, file] of files.entries()) {
         const fileName = sanitizeFileName(file.originalName);
         uploaded.push(
           await this.storage.upload({
@@ -63,6 +67,7 @@ export class ChatAttachmentService {
             fileName,
             mimeType: file.mimeType,
             resourceType: resourceTypeFor(file.mimeType),
+            storageKey: `chat/${identity.scope}/${identity.clientMessageId}/${index}-${contentFingerprint(file.buffer)}`,
           }),
         );
       }
@@ -114,6 +119,10 @@ export class ChatAttachmentService {
     }
     for (const file of files) validateFile(file);
   }
+}
+
+function contentFingerprint(buffer: Buffer): string {
+  return createHash('sha256').update(buffer).digest('hex').slice(0, 24);
 }
 
 function validateFile(file: IncomingChatFile): void {
