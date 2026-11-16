@@ -20,6 +20,7 @@ export class TypeOrmPrivacySettingsRepository implements PrivacySettingsStorePor
           sharingExpiresAt: row.sharingExpiresAt,
           useApproximateLocation: row.useApproximateLocation,
           nearbyFeatureEnabled: row.nearbyFeatureEnabled,
+          friendLiveLocationEnabled: row.friendLiveLocationEnabled,
           selectedFriendIds: row.selectedFriendIds,
           updatedAt: row.updatedAt,
         })
@@ -43,6 +44,7 @@ export class TypeOrmPrivacySettingsRepository implements PrivacySettingsStorePor
         sharing_expires_at = EXCLUDED.sharing_expires_at,
         use_approximate_location = EXCLUDED.use_approximate_location,
         nearby_feature_enabled = EXCLUDED.nearby_feature_enabled,
+        friend_live_location_enabled = EXCLUDED.friend_live_location_enabled,
         selected_friend_ids = EXCLUDED.selected_friend_ids,
         updated_at = EXCLUDED.updated_at`,
       )
@@ -67,6 +69,7 @@ export class TypeOrmPrivacySettingsRepository implements PrivacySettingsStorePor
         sharingExpiresAt: row.sharingExpiresAt,
         useApproximateLocation: row.useApproximateLocation,
         nearbyFeatureEnabled: row.nearbyFeatureEnabled,
+        friendLiveLocationEnabled: row.friendLiveLocationEnabled,
         selectedFriendIds: row.selectedFriendIds,
         updatedAt: row.updatedAt,
       });

@@ -26,6 +26,18 @@ export const configuration = () => ({
   googleMaps: {
     apiKey: process.env.GOOGLE_MAPS_API_KEY ?? '',
   },
+  aiExplanation: {
+    enabled: process.env.AI_EXPLANATION_ENABLED === 'true',
+    geminiApiKey: process.env.GEMINI_API_KEY ?? '',
+    model: 'gemini-2.5-flash-lite',
+    timeoutMs: 5_000,
+    retryAttempts: 1,
+    cacheTtlSeconds: 86_400,
+    promptVersion: process.env.AI_EXPLANATION_PROMPT_VERSION ?? 'v1',
+  },
+  nearby: {
+    radiusMeters: Number(process.env.NEARBY_RADIUS_METERS ?? 3_000),
+  },
   routes: {
     routingPreference:
       process.env.ROUTES_ROUTING_PREFERENCE ?? 'TRAFFIC_UNAWARE',
@@ -44,6 +56,12 @@ export const configuration = () => ({
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
+  files: {
+    rootFolder: process.env.FILE_STORAGE_ROOT_FOLDER ?? 'mobile-meetup',
+  },
+  chat: {
+    mediaFolder: process.env.CHAT_MEDIA_FOLDER ?? 'chat',
   },
   deviceTokens: {
     encryptionKey: process.env.DEVICE_TOKEN_ENCRYPTION_KEY,

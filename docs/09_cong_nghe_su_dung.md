@@ -119,10 +119,12 @@ location:{userId}                    TTL 5 phút
 presence:{userId}                    TTL ngắn
 active-meetup:{userId}               TTL theo phiên hoạt động
 nearby-cooldown:{userA}:{userB}      TTL 2 giờ
+nearby-state:{userA}:{userB}         TTL 7 ngày, chỉ lưu inside/outside
+ai-explanation:{sha256}              TTL 24 giờ, chỉ lưu output/fact keys đã redact
 bull:*                                Dữ liệu hàng đợi của BullMQ
 ```
 
-Vị trí người dùng hết TTL không được dùng để tính ETA hoặc phát cho client. Không ghi lịch sử GPS vào PostgreSQL, outbox, audit log hoặc application log.
+`userA:userB` luôn được sắp xếp để A–B và B–A là cùng một pair. Vị trí người dùng hết TTL không được dùng để tính ETA hoặc phát cho client. Không ghi lịch sử GPS vào PostgreSQL, outbox, audit log hoặc application log. Nearby dùng `NEARBY_RADIUS_METERS` (mặc định `3000 m`, min 100, max 50000), freshness `5 phút`, cooldown `2 giờ` và chỉ phát lại sau outside → inside. AI prompt dùng `AI_EXPLANATION_PROMPT_VERSION` để chọn template source đã review, không lấy template tự do từ env. AI cache dùng fingerprint gồm run/snapshot, config, provider/model, prompt và schema version; không có bảng PostgreSQL tương ứng.
 
 ### 5.2 Redis theo môi trường
 
@@ -293,6 +295,8 @@ FIREBASE_PRIVATE_KEY=
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
+FILE_STORAGE_ROOT_FOLDER=mobile-meetup
+CHAT_MEDIA_FOLDER=chat
 ```
 
 Project phải cung cấp `.env.example` chỉ chứa tên biến và giá trị mẫu không nhạy cảm. Staging và production lấy secret từ secret manager của nền tảng deploy, không copy `.env` vào Docker image.

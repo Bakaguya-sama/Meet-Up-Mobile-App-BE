@@ -36,8 +36,9 @@ export class PushNotificationAdapter implements PushNotificationPort {
             body: input.body,
             data: {
               type: input.data.type,
-              meetupId: input.data.meetupId,
+              ...(input.data.meetupId ? { meetupId: input.data.meetupId } : {}),
               ...(input.data.placeId ? { placeId: input.data.placeId } : {}),
+              ...(input.data.friendId ? { friendId: input.data.friendId } : {}),
             },
           });
         } catch (error) {

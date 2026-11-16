@@ -34,4 +34,12 @@ Payload deep-link chỉ gồm:
 }
 ```
 
-BE-07 chỉ là nền tảng gửi notification. Backend sở hữu Meetup/Vote sẽ ghi outbox event và quyết định thời điểm gửi.
+BE-18 dùng cùng pipeline outbox/BullMQ/FCM, với payload tối thiểu:
+
+```json
+{ "type": "nearby.friend", "friendId": "uuid" }
+```
+
+Hai outbox row recipient-specific được ghi trong một PostgreSQL transaction sau khi Redis đã claim pair transition. Payload không có tọa độ, địa chỉ, khoảng cách, token hoặc GPS history. `friendId` chỉ để mobile deep-link sang màn hình tạo meetup. Retry delivery dùng `eventId` của outbox và không tạo thêm business notification.
+
+BE-07 chỉ là nền tảng gửi notification. Backend sở hữu Meetup/Vote/Nearby sẽ ghi outbox event và quyết định thời điểm gửi.

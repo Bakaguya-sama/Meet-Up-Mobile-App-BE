@@ -12,6 +12,7 @@ const base: PrivacySettingsState = {
   sharingExpiresAt: null,
   useApproximateLocation: false,
   nearbyFeatureEnabled: false,
+  friendLiveLocationEnabled: false,
   selectedFriendIds: [],
   updatedAt: now,
 };

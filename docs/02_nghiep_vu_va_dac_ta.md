@@ -277,7 +277,7 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 | Meetup | Meetup, MeetupMember, MeetupMemberPreference, Vote, PlaceSnapshot, FavoritePlace, ChatMessage, hash/token metadata của link mời | PostgreSQL |
 | Profile | UserPreference dùng để điền sẵn preference meetup | PostgreSQL |
 | Quyền | PrivacySetting, thời hạn chia sẻ | PostgreSQL |
-| Context mở rộng | NearbyPreference, ngưỡng gần, lần gợi ý gần nhất, AI explanation cache đã ẩn dữ liệu nhạy cảm | PostgreSQL hoặc Redis TTL |
+| Context mở rộng | Opt-in nearby nằm trong PrivacySetting; pair inside/outside + cooldown và AI explanation cache đã ẩn dữ liệu nhạy cảm | Redis TTL; radius canonical 3000 m, không tạo bảng nearby/AI cache |
 | Realtime | LatestLocation, presence, active meetup, socket room, phiên QR kết bạn tạm thời | Redis có TTL |
 
 `PlaceSnapshot` chỉ lưu thông tin nơi đã được chọn hoặc danh sách đã dùng cho meetup; không cần lưu toàn bộ lịch sử truy vấn.

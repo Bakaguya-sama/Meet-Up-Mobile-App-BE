@@ -46,6 +46,7 @@ Room chỉ là routing. Gateway ở BE-06 vẫn phải xác thực JWT khi hands
 | `MeetupInviteLinkAccepted.v1` | `meetupId`, `participantId`, `inviteLinkId`                                 |
 | `MeetupChatMessageCreated.v1` | `conversationId`, `messageId`, `meetupId`, `senderUserId`                   |
 | `DirectChatMessageCreated.v1` | `conversationId`, `messageId`, `senderUserId`, `recipientUserId`            |
+| `NearbyFriendDetected.v1` | `friendId`; push-only, recipient nằm trong metadata outbox                    |
 
 `LocationUpdated.v1` chỉ truyền trạng thái location đã được project cho người xem; event contract không có trường tọa độ.
 
@@ -55,13 +56,32 @@ Producer BE-23 chỉ phát `RecommendationReady.v1` sau khi transaction hoàn t�
 
 ## Push deep-link data
 
-Payload data giao cho mobile luôn có đúng ba trường nghiệp vụ:
+Payload meetup finalized:
 
 ```json
 { "type": "meetup.finalized", "meetupId": "uuid", "placeId": "uuid" }
 ```
 
 Backend không phát URI deep-link. Mobile map `type` sang screen/router của chính ứng dụng. Danh sách recipient được lưu tách riêng ở metadata delivery của outbox, không nằm trong integration event.
+
+Payload nearby có đúng hai trường:
+
+```json
+{ "type": "nearby.friend", "friendId": "uuid" }
+```
+
+`NearbyFriendDetected.v1` không được publish realtime và không có tọa độ, exact distance hoặc địa chỉ.
+
+## Friend Live Location
+
+Friend Live Location is independent from meetup location. REST or Socket `location:update` uses the same `PublishLocationUseCase`, writes only the latest sample to Redis (`location:{ownerId}`, TTL 300 seconds), then verifies accepted friendship, active accounts, owner opt-in, sharing mode, expiry and selected-friend policy **per viewer** before user-room fan-out. It never broadcasts an unprojected location.
+
+| Event | Direction | Payload | Rule |
+| --- | --- | --- | --- |
+| `friend:location:updated` | server → `user:{viewerId}` | `{ ownerId, location: { latitude, longitude, accuracy, recordedAt } }` | Location is projected independently; approximate policy rounds it before emit. |
+| `friend:location:unavailable` | server → `user:{viewerId}` | `{ ownerId, reason: 'privacy_revoked'\|'friendship_removed'\|'blocked'\|'expired' }` | Client removes marker; payload has no location. |
+
+Updates are throttled: at least ten seconds since the previous fan-out or at least 25 metres movement. No GPS is written to PostgreSQL, outbox, FCM, audit, metrics or structured logs. Reconnect uses `GET /api/v1/friends/live-locations`; FE also expires local markers after 300 seconds. Unfriend emits unavailable to both users. Privacy revocation notifies accepted friends; authorization is rechecked for every snapshot and delta.
 
 ## Firebase trong giai đoạn này
 

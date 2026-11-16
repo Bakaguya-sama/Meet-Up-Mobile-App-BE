@@ -28,6 +28,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `18_be11_be19_be20_delivery.md` | API, ranh giới context và lưu ý triển khai cho BE-11, BE-19, BE-20. |
 | `19_be10_voting_delivery.md` | Contract vote/finalize theo displayed run, transactional outbox và bằng chứng Bước 4. |
 | `20_be12_meetup_history.md` | API lịch sử meetup, quyền xem và snapshot địa điểm đã chốt theo BE-12. |
+| `21_step6_nearby_admin_ai_delivery.md` | Contract, luồng, Redis keys, privacy, Gemini fallback và bằng chứng triển khai Bước 6. |
 
 ## Cách dùng nhanh
 
@@ -49,4 +50,4 @@ Sở thích profile chỉ là giá trị mặc định. Khi tạo hoặc nhận 
 Budget filter và PricePenalty không nằm trong phạm vi vì `priceLevel` của Google Places là mức phân loại tham khảo, không đủ đáng tin để quyết định hoặc hạ hạng địa điểm. Giọng nói và gợi ý theo thời tiết vẫn là phần mở rộng. AI chỉ nhận dữ liệu tổng hợp của nhóm và kết quả xếp hạng; không gửi tọa độ chính xác hoặc lịch sử GPS cho dịch vụ AI.
 # Chat media configuration
 
-Set `CLOUDINARY_ENABLED=true` and provide `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to enable image/file uploads. Keep the API secret only in the backend environment. With the flag unset or false, text chat remains available and file uploads return a service-unavailable response. The backend stores assets as authenticated Cloudinary resources and returns signed download links that expire after 15 minutes. If the Cloudinary product environment blocks PDF/archive delivery, allow those delivery formats in the Cloudinary security settings.
+Set `CLOUDINARY_ENABLED=true` and provide `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to enable image/file uploads. `FILE_STORAGE_ROOT_FOLDER` (default: `mobile-meetup`) is the shared Cloudinary root namespace, while `CHAT_MEDIA_FOLDER` (default: `chat`) is the namespace beneath it used by chat uploads. This lets a deployment choose a complete prefix such as `mobile-meetup/chat` without changing bounded-context code. Keep the API secret only in the backend environment. With the flag unset or false, text chat remains available and file uploads return a service-unavailable response. The backend stores assets as authenticated Cloudinary resources and returns signed download links that expire after 15 minutes. If the Cloudinary product environment blocks PDF/archive delivery, allow those delivery formats in the Cloudinary security settings.

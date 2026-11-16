@@ -33,6 +33,9 @@ export class SavePrivacySettingsRequest {
   @IsBoolean()
   nearbyFeatureEnabled: boolean = false;
 
+  @IsBoolean()
+  friendLiveLocationEnabled: boolean = false;
+
   @Transform(({ value }: { value: unknown }) =>
     Array.isArray(value)
       ? value.map((id: unknown) =>
@@ -53,6 +56,7 @@ export interface PrivacySettingsDto {
   isLocationSharingEnabled: boolean;
   useApproximateLocation: boolean;
   nearbyFeatureEnabled: boolean;
+  friendLiveLocationEnabled: boolean;
   selectedFriendIds: string[];
   updatedAt: Date | null;
 }

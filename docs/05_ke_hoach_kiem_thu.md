@@ -13,7 +13,7 @@
 9. Bật lọc đang mở cửa, lưu một nơi yêu thích, mở lịch sử meetup và dẫn đường.
 10. Gửi tin nhắn trong chat meetup/direct với `clientMessageId`, retry cùng ID để xác nhận chỉ có một message/outbox; dùng outsider để xác nhận không đọc/gửi được. Xác nhận member meetup vào muộn đọc toàn bộ lịch sử, former member chỉ đọc đến `leftAt`, và unfriend/block chỉ chặn direct send mới chứ không xóa lịch sử cũ.
 11. Bấm “Vì sao gợi ý?”. Kiểm tra lời giải thích nhắc ETA, loại địa điểm hoặc giờ mở nhưng không chứa tọa độ hay địa chỉ vị trí của thành viên.
-12. Bật phát hiện bạn ở gần ở hai máy thử nghiệm. Kiểm tra chỉ khi cả hai cùng opt-in mới có một thông báo gợi ý; không có thông báo lặp trong 2 giờ.
+12. Bật phát hiện bạn ở gần ở hai máy thử nghiệm. Kiểm tra chỉ khi cả hai cùng opt-in, accepted friend, privacy active, location dưới 5 phút và trong 3000 m mới có một thông báo; vẫn ở gần sau 2 giờ không phát lại, chỉ phát sau outside → re-enter.
 13. Tạo meetup 21 người bằng dữ liệu thử nghiệm để kiểm tra Route Matrix chạy theo batch; tạo meetup trên 50 người để kiểm tra UI ghi rõ kết quả theo cụm.
 14. Cho các thành viên chọn sở thích khác với profile và kiểm tra thứ hạng dùng preference trong meetup.
 
@@ -31,10 +31,10 @@
 | Thông báo | Bấm notification “Place selected” | Mở đúng trang chi tiết meetup đã chốt |
 | Bộ lọc | Places thiếu giờ mở | UI ghi “chưa có dữ liệu”, không tự suy đoán địa điểm đang mở |
 | Chat | Retry, outsider, join muộn, leave/block đồng thời và attachment URL | Một message cho mỗi `clientMessageId`; quyền đọc đúng boundary; outbox chỉ có reference và signed URL chỉ xuất hiện trong HTTP response |
-| AI | Kiểm tra payload gửi dịch vụ AI | Chỉ có số người, ETA, bộ lọc và điểm; không có latitude/longitude, tên thật, lịch sử GPS |
+| AI | Kiểm tra payload gửi Gemini `gemini-2.5-flash-lite` | Chỉ aggregate facts đã persist; không có latitude/longitude, member feature/preference/utility thô, tên/email, token, lịch sử GPS |
 | AI fallback | Dịch vụ AI lỗi hoặc timeout | App hiển thị lý do từ thuật toán, luồng vote vẫn dùng được |
 | Bạn ở gần | Chỉ một người bật tính năng | Không có gợi ý hoặc tiết lộ vị trí của người còn lại |
-| Chống làm phiền | Cùng một cặp ở gần liên tục | Tối đa một thông báo trong 2 giờ |
+| Chống làm phiền | Cùng một cặp ở gần liên tục | Một thông báo; hết 2 giờ vẫn không phát lại nếu chưa outside → re-enter |
 | Quy mô meetup | 21–50 thành viên có vị trí hợp lệ | Request Route Matrix chia batch; kết quả không mất thành viên hợp lệ |
 | Quy mô meetup lớn | Trên 50 thành viên | Có nhãn “ước lượng theo cụm”; top 3 được tính ETA chi tiết |
 | Sở thích | Profile khác lựa chọn meetup | Điểm dùng preference trong meetup, profile chỉ có nhãn `profile_fallback` khi chưa chọn |

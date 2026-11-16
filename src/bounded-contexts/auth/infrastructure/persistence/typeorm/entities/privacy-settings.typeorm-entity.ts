@@ -36,6 +36,8 @@ export class PrivacySettingsEntity {
   useApproximateLocation: boolean;
   @Column('boolean', { name: 'nearby_feature_enabled', default: false })
   nearbyFeatureEnabled: boolean;
+  @Column('boolean', { name: 'friend_live_location_enabled', default: false })
+  friendLiveLocationEnabled: boolean;
   @Column('uuid', {
     name: 'selected_friend_ids',
     array: true,

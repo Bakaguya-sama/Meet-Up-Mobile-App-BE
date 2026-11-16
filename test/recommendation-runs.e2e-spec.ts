@@ -469,6 +469,39 @@ describe('Recommendation run HTTP + PostgreSQL + Redis + Google HTTP boundary', 
       .expect(200);
     expect(fetched.body).toEqual(retriedBody);
 
+    const aiExplanation = await request(app.getHttpServer())
+      .get(
+        `/api/v1/meetups/${meetupId}/recommendation-runs/${createdBody.id}/ai-explanations`,
+      )
+      .set('Authorization', authorization)
+      .expect(200);
+    expect(aiExplanation.body).toMatchObject({
+      runId: createdBody.id,
+      items: [
+        {
+          rank: createdBody.results[0]?.rank,
+          explanation: { source: 'rule_fallback' },
+        },
+      ],
+    });
+    expect(JSON.stringify(aiExplanation.body)).not.toMatch(
+      /latitude|longitude|memberFeatures|email|token/i,
+    );
+    const afterAi = await request(app.getHttpServer())
+      .get(`/api/v1/meetups/${meetupId}/recommendation-runs/${createdBody.id}`)
+      .set('Authorization', authorization)
+      .expect(200);
+    expect(afterAi.body).toEqual(fetched.body);
+    await request(app.getHttpServer())
+      .get(
+        `/api/v1/meetups/${meetupId}/recommendation-runs/${createdBody.id}/ai-explanations`,
+      )
+      .set(
+        'Authorization',
+        `Bearer ${await token(outsiderId, outsiderSessionId)}`,
+      )
+      .expect(403);
+
     await request(app.getHttpServer())
       .post(`/api/v1/meetups/${meetupId}/recommendation-runs`)
       .set('Authorization', authorization)

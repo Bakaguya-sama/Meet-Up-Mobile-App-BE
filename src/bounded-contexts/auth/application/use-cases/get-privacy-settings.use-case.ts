@@ -22,6 +22,7 @@ export class GetPrivacySettingsUseCase extends LocationPrivacyReader {
         isLocationSharingEnabled: false,
         useApproximateLocation: false,
         nearbyFeatureEnabled: false,
+        friendLiveLocationEnabled: false,
         selectedFriendIds: [],
         updatedAt: null,
       };
@@ -30,6 +31,7 @@ export class GetPrivacySettingsUseCase extends LocationPrivacyReader {
       sharingExpiresAt,
       useApproximateLocation,
       nearbyFeatureEnabled,
+      friendLiveLocationEnabled,
       selectedFriendIds,
       updatedAt,
     } = settings.snapshot();
@@ -38,6 +40,7 @@ export class GetPrivacySettingsUseCase extends LocationPrivacyReader {
       sharingExpiresAt,
       useApproximateLocation,
       nearbyFeatureEnabled,
+      friendLiveLocationEnabled,
       selectedFriendIds,
       updatedAt,
       isLocationSharingEnabled: settings.isSharingEnabled(new Date()),

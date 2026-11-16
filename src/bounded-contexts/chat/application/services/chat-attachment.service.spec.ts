@@ -111,4 +111,23 @@ describe('ChatAttachmentService', () => {
       /^chat\/direct\/a\/b\/client-id\/0-[0-9a-f]{24}$/,
     );
   });
+
+  it('uses the configured chat media folder without coupling to storage root', async () => {
+    service = new ChatAttachmentService(storage, 'messaging-assets');
+    await service.upload(
+      [
+        {
+          buffer: Buffer.from('%PDF-'),
+          originalName: 'agenda.pdf',
+          mimeType: 'application/pdf',
+          size: 5,
+        },
+      ],
+      { scope: 'meetup/test', clientMessageId: 'client-id' },
+    );
+
+    expect(storage.upload.mock.calls[0]?.[0].storageKey).toMatch(
+      /^messaging-assets\/meetup\/test\/client-id\/0-[0-9a-f]{24}$/,
+    );
+  });
 });

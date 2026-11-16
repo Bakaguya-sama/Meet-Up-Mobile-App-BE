@@ -17,6 +17,7 @@ export class AuthLocationPrivacyAdapter implements LocationPrivacyPort {
       sharingMode: result.sharingMode,
       sharingExpiresAt: result.sharingExpiresAt,
       useApproximateLocation: result.useApproximateLocation,
+      friendLiveLocationEnabled: result.friendLiveLocationEnabled,
       selectedFriendIds: result.selectedFriendIds,
       updatedAt: result.updatedAt,
     };

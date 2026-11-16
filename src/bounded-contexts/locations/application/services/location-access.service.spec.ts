@@ -31,6 +31,7 @@ describe('LocationAccessService', () => {
       sharingMode: 'friends',
       sharingExpiresAt: null,
       useApproximateLocation: false,
+      friendLiveLocationEnabled: true,
       selectedFriendIds: [],
       updatedAt: new Date(now.getTime() - 1000),
     };
@@ -182,6 +183,24 @@ describe('LocationAccessService', () => {
       (await service.projectForViewer(request, { ...sample, accuracy: 2000 }))
         .accuracy,
     ).toBe(2000);
+  });
+
+  it('requires explicit live-location opt-in while preserving selected-friend, expiry and approximation rules', async () => {
+    settings.sharingMode = 'selected_friends';
+    settings.selectedFriendIds = ['viewer'];
+    settings.useApproximateLocation = true;
+    await expect(
+      service.projectFriendLiveLocation('owner', 'viewer', sample),
+    ).resolves.toMatchObject({ latitude: 10.78, longitude: 106.7, isApproximate: true });
+    settings.friendLiveLocationEnabled = false;
+    await expect(
+      service.projectFriendLiveLocation('owner', 'viewer', sample),
+    ).rejects.toMatchObject({ code: 'LOCATION_ACCESS_DENIED' });
+    settings.friendLiveLocationEnabled = true;
+    settings.sharingExpiresAt = now;
+    await expect(
+      service.projectFriendLiveLocation('owner', 'viewer', sample),
+    ).rejects.toMatchObject({ code: 'LOCATION_ACCESS_DENIED' });
   });
 
   it.each([

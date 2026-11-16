@@ -130,11 +130,20 @@ function pushContent(event: IntegrationEvent) {
         body: 'Your meetup has been cancelled.',
         data: { type: 'meetup.cancelled', meetupId: event.meetupId },
       };
+    case 'NearbyFriendDetected.v1':
+      return {
+        title: 'Friend nearby',
+        body: 'A friend is nearby. You can create a new meetup.',
+        data: { type: 'nearby.friend', friendId: event.friendId },
+      };
   }
   throw new Error(`Push delivery is not configured for ${event.eventName}`);
 }
 
 function roomForEvent(event: IntegrationEvent): string {
+  if (event.eventName === 'NearbyFriendDetected.v1') {
+    throw new Error('NearbyFriendDetected.v1 only supports push delivery');
+  }
   if (event.eventName === 'DirectChatMessageCreated.v1') {
     return realtimeRooms.user(event.senderUserId);
   }
