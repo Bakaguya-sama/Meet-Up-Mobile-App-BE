@@ -4,6 +4,7 @@ export interface LocationPrivacy {
   sharingMode: 'off' | 'friends' | 'selected_friends' | 'meetup_only';
   sharingExpiresAt: Date | null;
   useApproximateLocation: boolean;
+  friendLiveLocationEnabled: boolean;
   selectedFriendIds: string[];
   updatedAt: Date | null;
 }

@@ -17,6 +17,7 @@ import { CreateRecommendationRunUseCase } from '../src/bounded-contexts/recommen
 import { GetRecommendationRunUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/get-recommendation-run.use-case';
 import { RecordRecommendationFeedbackUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/record-recommendation-feedback.use-case';
 import { ReplayRecommendationRunUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/replay-recommendation-run.use-case';
+import { GetAiExplanationsUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/get-ai-explanations.use-case';
 
 describe('BE-13 candidate-only HTTP contract', () => {
   const actorId = 'aaaaaaaa-0000-4000-8000-000000000001';
@@ -27,6 +28,7 @@ describe('BE-13 candidate-only HTTP contract', () => {
   const getRun = { execute: jest.fn() };
   const feedback = { impression: jest.fn(), feedback: jest.fn() };
   const replay = { execute: jest.fn() };
+  const aiExplanations = { execute: jest.fn() };
 
   beforeAll(async () => {
     const fixture = await Test.createTestingModule({
@@ -37,6 +39,7 @@ describe('BE-13 candidate-only HTTP contract', () => {
         { provide: GetRecommendationRunUseCase, useValue: getRun },
         { provide: RecordRecommendationFeedbackUseCase, useValue: feedback },
         { provide: ReplayRecommendationRunUseCase, useValue: replay },
+        { provide: GetAiExplanationsUseCase, useValue: aiExplanations },
         {
           provide: ConfigService,
           useValue: new ConfigService({

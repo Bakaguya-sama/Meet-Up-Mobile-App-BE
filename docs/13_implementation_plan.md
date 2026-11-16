@@ -1017,6 +1017,8 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review linkage từ Vote/Favo
 
 **Mục tiêu.** Hoàn tất ba Planned function có thể phát triển tương đối độc lập sau contract nền tảng. [Nguồn: workbook — BE-18, BE-19, BE-27]
 
+**Trạng thái: ✅ Hoàn tất 15/11/2026.** BE-27 đã được Product chọn trong release scope; adapter Gemini vẫn disabled-by-default và mọi kiểm chứng dùng boundary fake/HTTP, không cần API key production.
+
 **Function thuộc bước**
 
 | ID    | Function                          | Owner         |
@@ -1027,11 +1029,11 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review linkage từ Vote/Favo
 
 **Checklist triển khai**
 
-- [ ] BE-18 chỉ xử lý khi hai user là accepted friends, cả hai opt-in, latest location hợp lệ và privacy cho phép; không phát tọa độ/địa chỉ người kia. [Nguồn: workbook — BE-18; `02_nghiep_vu_va_dac_ta.md` — BR-21]
-- [ ] Chuẩn hóa pair key và dùng Redis cooldown 2 giờ; concurrent request không gửi hơn một notification cho cùng pair. [Nguồn: workbook — BE-18; DBML — Redis keys]
-- [ ] BE-19 khóa/mở khóa account và ghi security audit không có exact coordinates/token; locked account không đăng nhập. [Nguồn: workbook — BE-19; `07_usecase_admin.puml`; DBML — `audit_logs`]
-- [ ] BE-27 nhận only aggregate facts từ BE-23, redaction trước provider, validate schema/length/timeout và dùng deterministic rule fallback. [Nguồn: workbook — BE-27; DBML — `ai_explanation_cache`; Doc 12 — Mục 1.5, 13]
-- [ ] AI không thay score/rank và không tạo claim ngoài feature snapshot. [Nguồn: workbook — BE-27; Doc 12 — Mục 5.2 Bước 10, 13]
+- [x] BE-18 chỉ xử lý khi hai user là accepted friends, cả hai opt-in, latest location hợp lệ và privacy cho phép; không phát tọa độ/địa chỉ người kia. [Bằng chứng: `nearby-detector.ts`; `test/step6.integration-spec.ts`; `test/step6.e2e-spec.ts`]
+- [x] Chuẩn hóa pair key và dùng Redis cooldown 2 giờ; concurrent request không gửi hơn một notification cho cùng pair. [Bằng chứng: `redis-nearby-pair-state.ts` Lua atomic claim; 8 trigger song song trong `step6.e2e-spec.ts`]
+- [x] BE-19 khóa/mở khóa account và ghi security audit không có exact coordinates/token; locked account không đăng nhập. [Bằng chứng: `chat-favorites-admin.integration-spec.ts`, `chat-favorites-admin.e2e-spec.ts`]
+- [x] BE-27 nhận only aggregate facts từ BE-23, redaction trước provider, validate schema/length/timeout và dùng deterministic rule fallback. [Bằng chứng: `ai-explanation.service.ts`, `gemini-ai-explanation.adapter.ts` và các spec tương ứng; cache Redis canonical]
+- [x] AI không thay score/rank và không tạo claim ngoài feature snapshot. [Bằng chứng: `get-ai-explanations.use-case.ts`; regression `recommendation-runs.e2e-spec.ts`]
 
 **Đầu vào cần có**
 
@@ -1055,17 +1057,23 @@ Người xác nhận: Dev Backend 2; Dev Backend 1 review linkage từ Vote/Favo
 
 Điều kiện bắt buộc:
 
-- [ ] BE-18: một phía opt-in, non-friend, stale location hoặc privacy deny đều không gửi; cùng pair trong 2 giờ tối đa một notification; payload không có coordinates/address.
-- [ ] BE-19: actor không có quyền bị từ chối; lock/unlock đổi trạng thái đúng; mỗi thay đổi có audit actor/action/subject/timestamp; locked login bị chặn.
-- [ ] BE-27 nếu được duyệt: timeout/invalid JSON/invalid schema đều dùng rule fallback; AI output không đổi ranking; redaction test chứng minh không gửi coordinate, GPS history, token hoặc tên thật không cần thiết.
-- [ ] Lint/unit/integration/E2E/build pass; migration cycle pass nếu có.
-- [ ] **[Thiếu tiêu chí trong nguồn]** Sheet chưa nêu role model/admin endpoint cụ thể và AI provider/model/timeout/retention. Các giá trị này phải được duyệt trước khi adapter production được bật.
+- [x] BE-18: một phía opt-in, non-friend, stale location hoặc privacy deny đều không gửi; cùng pair trong 2 giờ tối đa một notification; payload không có coordinates/address. [Bằng chứng: `step6.e2e-spec.ts`; `step6.integration-spec.ts`]
+- [x] BE-19: actor không có quyền bị từ chối; lock/unlock đổi trạng thái đúng; mỗi thay đổi có audit actor/action/subject/timestamp; locked login bị chặn. [Bằng chứng: `chat-favorites-admin.*-spec.ts`]
+- [x] BE-27 nếu được duyệt: timeout/invalid JSON/invalid schema đều dùng rule fallback; AI output không đổi ranking; redaction test chứng minh không gửi coordinate, GPS history, token hoặc tên thật không cần thiết. [Bằng chứng: AI unit specs, `recommendation-runs.e2e-spec.ts`]
+- [x] Lint/unit/integration/E2E/build pass; migration cycle pass nếu có. [Bằng chứng 15/11/2026: typecheck/build/lint exit 0; unit 59 suite/262 test; integration hai lượt 5 suite/37 test; E2E hai lượt 9 suite/73 test; `migration:run → psql inspect → migration:revert → migration:run` exit 0]
+- [x] Role admin canonical là `user_accounts.role`; BE-27 dùng Gemini `gemini-2.5-flash-lite`, timeout 5 giây, một retry exponential, Redis cache 24 giờ và disabled-by-default. [Quyết định đã chốt 15/11/2026]
 
 Cách kiểm chứng: E2E/privacy/concurrency cho nearby; admin auth/audit E2E; fake AI provider cho timeout/schema/redaction; chạy bộ lệnh chuẩn.
 
 Tiêu chí không đạt: notification lộ location; cooldown race gửi trùng; admin action thiếu audit; AI đổi rank hoặc fail mà không fallback; BE-27 bị bật production khi không nằm trong release scope.
 
 Người xác nhận: owner theo sheet; backend còn lại review integration contract. Security/privacy reviewer nếu team có vai trò này; tài liệu hiện tại chưa nêu tên cụ thể.
+
+**Files chính tạo/sửa.** `src/bounded-contexts/nearby/**`; `publish-location.use-case.ts`; `friendship-reader.ts`; notification/outbox contract và dispatcher; AI explanation port/service/use case/Gemini/Redis adapters; controller/module/config; Step-6 integration/E2E/unit specs; DBML, API/notification/realtime/test-plan/delivery docs và workbook.
+
+**[Giả định/độ lệch đã chốt.]** Nearby pair state, cooldown và AI cache là Redis canonical, nên không thêm migration/table mới; DBML đã bỏ các bảng AI/nearby giả định để khớp implementation. `NEARBY_RADIUS_METERS=3000` là default (100..50000), freshness 5 phút, cooldown 2 giờ. Gemini adapter chỉ được bật bởi `AI_EXPLANATION_ENABLED=true` sau khi deployment có credential hợp lệ; `AI_EXPLANATION_PROMPT_VERSION=v1` chọn template source đã review.
+
+**Handoff Bước 7.** Dùng feedback/impression và snapshot persisted của Bước 5 làm nguồn dataset; không dùng AI explanation hay nearby state làm label. Giữ `fair-pareto-v1` là baseline deterministic, time split và redaction theo Doc 12.
 
 ### 5.12. Bước 7 — Offline dataset và evaluation
 
@@ -1193,7 +1201,7 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-15 | Candidate pipeline và constraint                 | Đã thực hiện           | Dev Backend 2 | Bước 1  | Eligible deduplicated candidates                               |
 | BE-16 | Route Matrix và route validation                 | Đã thực hiện           | Dev Backend 2 | Bước 2  | Route-complete candidates                                      |
 | BE-17 | Feature và member utility                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Versioned T/P/Q/U                                              |
-| BE-18 | Phát hiện bạn ở gần                              | Chưa thực hiện         | Dev Backend 2 | Bước 6  | Privacy-safe nearby notification                               |
+| BE-18 | Phát hiện bạn ở gần                              | ✅ Hoàn tất 15/11/2026 | Dev Backend 2 | Bước 6  | Privacy-safe nearby notification + atomic Redis/outbox         |
 | BE-19 | Quản trị tài khoản                               | Đã thực hiện           | Dev Backend 1 | Bước 6  | Lock/unlock, session revoke, redacted audit; HTTP/DB tests    |
 | BE-20 | Địa điểm yêu thích                               | ✅ Hoàn tất 13/11/2026 | Dev Backend 1 | Bước 4  | Canonical 300-char add/remove; duplicate DB idempotency tests |
 | BE-21 | Observability và replay recommendation           | Chưa thực hiện         | Dev Backend 2 | Bước 5  | Metrics/log/replay                                             |
@@ -1202,7 +1210,7 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-24 | Impression và feedback linkage                   | Chưa thực hiện         | Dev Backend 2 | Bước 5  | Idempotent feedback trail                                      |
 | BE-25 | Offline dataset và evaluation                    | Chưa thực hiện         | Dev Backend 2 | Bước 7  | Time-split dataset + report                                    |
 | BE-26 | Learning-to-rank và model lifecycle              | Chưa thực hiện         | Dev Backend 2 | Bước 8  | Shadow-first model lifecycle                                   |
-| BE-27 | AI explanation mở rộng (tùy chọn)                | Chưa thực hiện         | Dev Backend 2 | Bước 6  | Optional safe AI + fallback                                    |
+| BE-27 | AI explanation mở rộng                           | ✅ Hoàn tất 15/11/2026 | Dev Backend 2 | Bước 6  | Gemini-safe aggregate explanation + fallback                   |
 | BE-28 | Temporal context và opening tại scheduledAt      | Đã thực hiện           | Dev Backend 2 | Bước 2A | Temporal snapshot, opening status, ETA per-member, stale guard |
 | BE-29 | Traffic-aware và travel mode theo thành viên     | Đã thực hiện 10/11/2026 | Dev Backend 2 | Bước 3A | Configurable traffic + mode-aware complete matrix              |
 | BE-30 | Weather context và outdoor filtering             | Đã thực hiện 10/11/2026 | Dev Backend 2 | Bước 3A | Versioned weather policy before Routes                         |
@@ -1227,7 +1235,7 @@ Các quyết định tại Mục 7.1 là baseline để triển khai. Mục 7.2 
 | Q4  | Retrieval center dùng `search-center-medoid-v1`: chọn valid member location có tổng Haversine distance nhỏ nhất; tie-break bằng `participantId`. Input chỉ là location đã được ContextBuilder cho phép dùng.                                                                                                                                | Medoid là điểm thật, ít nhạy với outlier hơn arithmetic mean và deterministic. Nó chỉ giới hạn retrieval, không thay ETA/ranking. [Nguồn: Doc 12 — Mục 5.2 Bước 3]                                                     | BE-14/15 dùng medoid; loại arithmetic mean trong implementation/test mới.                                                                                    |
 | Q5  | V1 dùng synchronous API: `POST /api/v1/meetups/:meetupId/recommendation-runs` và `GET /api/v1/meetups/:meetupId/recommendation-runs/:runId`. Run state là `RUNNING`, `COMPLETED`, `FAILED`; retry theo idempotency contract Doc 12. Không thêm async `202` ở v1.                                                                            | Doc 12 nêu synchronous flow, state, retry và điều kiện chỉ được thêm async sau khi có durable job/polling contract riêng. Prefix `/api/v1` giữ nhất quán với handoff. [Nguồn: Doc 12 — Mục 11.2–11.4; handoff — Mục 8] | BE-14/23 DTO, migration, error handling và E2E bám contract này.                                                                                             |
 | Q6  | Schema đích là recommendation schema của Doc 12. Evolve append-only từ DBML hiện tại; không xóa dữ liệu/bảng cũ trước migration/replay được review. Numeric retention **chưa chốt** và phải đi qua quyết định privacy riêng.                                                                                                                | Schema cũ không đủ cho full candidate logging, feature snapshot, feedback, replay và LTR. Doc 12 liệt kê bảng/cột đích; DDD yêu cầu migration append-only. [Nguồn: Doc 12 — Mục 11.1, 11.3; DDD doc — Mục 7; DBML]     | BE-14–17, BE-21–26 thêm bảng/trường theo migration; DBML cập nhật cùng PR; không tự đặt số ngày retention.                                                   |
-| Q7  | BE-27 là **optional Planned**. Rule-based explanation của BE-23 là release gate. AI chỉ được đưa vào release khi còn capacity hoặc có yêu cầu product riêng; AI không chặn recommendation/vote.                                                                                                                                             | Doc 12 ưu tiên explanation deterministic dựa trên fact; AI chỉ diễn đạt, có fallback và không đổi rank. [Nguồn: workbook — BE-27; Doc 12 — Mục 1.5, 5.2 Bước 10, 13]                                                   | Capacity plan ghi BE-27 là optional; nếu không chọn, không tạo AI provider/config; nếu chọn phải qua exit gate Bước 6.                                       |
+| Q7  | BE-27 đã được chọn trong release scope. Provider là Gemini `gemini-2.5-flash-lite`; adapter disabled-by-default, timeout 5 giây, một retry exponential, cache Redis aggregate-redacted 24 giờ và deterministic fallback. AI không chặn recommendation/vote. | AI chỉ diễn đạt fact đã persist; rule-based fallback bảo đảm provider lỗi không đổi rank. [Nguồn: quyết định Product/Tech Lead 15/11/2026; Doc 12 — Mục 1.5, 5.2 Bước 10, 13] | Triển khai port/config/adapter; chỉ enable qua env khi deployment có credential hợp lệ. |
 | Q11 | Với `OPEN_AT_REQUEST_TIME`, gửi `openNow=true` cho Places. Nếu provider trả candidate nhưng thiếu opening data, giữ candidate với `OPENING_STATUS_UNKNOWN` và warning/explanation; không tự loại chỉ vì dữ liệu thiếu. Candidate provider xác nhận đóng vĩnh viễn hoặc vi phạm policy vẫn bị loại.                                          | Dữ liệu thiếu không đồng nghĩa địa điểm đóng; Doc 12 cấm biến rating/dữ liệu thiếu thành hard constraint. [Nguồn: Doc 12 — Mục 3, 5.2 Bước 3–4, 16.2]                                                                  | BE-15 residual filter/explanation phải phân biệt `UNKNOWN` với `CLOSED`; test missing opening-hours không loại candidate.                                    |
 | Q12 | Thứ tự canonical: (1) workbook backend cho inventory/owner/status; (2) Doc 12 cho engine đích; (3) handoff cho BE-13 hiện hành đến khi run API thay thế; (4) DBML cho schema đang tồn tại, không là schema engine đích; (5) `Project Documents/*` và `Source/13_backend2_roadmap.md` phải gắn `Superseded` hoặc bỏ khỏi chỉ mục triển khai. | Các bản cũ mâu thuẫn về budget, cluster, BE ID/point, formula và API. Thứ tự này ngăn reviewer dùng acceptance criteria cũ. [Nguồn: workbook; Doc 12; handoff; DBML; `Project Documents/*`; roadmap]                   | Cập nhật README/index và banner deprecation; PR liên quan contract/schema/algorithm phải cập nhật nguồn canonical tương ứng.                                 |
 | Q14 | `scheduledAt` là giờ gặp và là temporal snapshot bắt buộc. Engine trả `etaSeconds` theo từng member–candidate; không suy diễn/lưu giờ khởi hành, không thêm `latestArrivalAt`, calendar API hoặc calendar OAuth.                                                                                                                            | ETA là dữ liệu route thực tế và trực quan cho UI; giờ khởi hành suy diễn không xét buffer hay traffic tương lai. [Nguồn: workbook — BE-28; Doc 12 — Mục 3, 5.2 Bước 2/7, 13; quyết định Product 02/11/2026]            | BE-28 persist snapshot/ETA; đổi `scheduledAt` làm run cũ `STALE_CONTEXT` và cần run mới.                                                                     |

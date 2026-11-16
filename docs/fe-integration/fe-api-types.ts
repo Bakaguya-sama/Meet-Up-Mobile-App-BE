@@ -487,6 +487,20 @@ export interface ReplayRecommendationRunResponse {
   fullRankFingerprint:string; replayConsistent:true; providerCalls:0;
 }
 
+/** GET /meetups/:meetupId/recommendation-runs/:runId/ai-explanations */
+export interface AiExplanationListResponse {
+  runId: UUID;
+  items: Array<{
+    rank: number;
+    canonicalCandidateKey: string;
+    explanation: {
+      text: string;
+      factKeys: string[];
+      source: 'ai' | 'rule_fallback';
+    };
+  }>;
+}
+
 export interface CastMeetupVoteRequest { recommendationPlaceId: UUID }
 export interface CastMeetupVoteResponse {
   meetupId:UUID;runId:UUID;recommendationPlaceId:UUID;
@@ -581,6 +595,17 @@ export interface LocationUpdateMessage extends PublishLocationRequest {}
 export interface LocationUpdateAck { accepted:true }
 export interface LocationUpdatedPayload {
   ownerId:UUID;meetupId:UUID;location:ProjectedLocationResponse;
+}
+/** GET /friends/live-locations; location is already projected for the viewer. */
+export interface FriendLiveLocationItemResponse { ownerId:UUID; location:ProjectedLocationResponse; }
+/** GET /friends/live-locations */
+export interface FriendLiveLocationsResponse { items:FriendLiveLocationItemResponse[]; }
+/** Socket.IO server → client; emitted only to an authorized user room. */
+export interface FriendLocationUpdatedPayload { ownerId:UUID; location:ProjectedLocationResponse; }
+/** Socket.IO server → client; client removes the owner's marker. */
+export interface FriendLocationUnavailablePayload {
+  ownerId:UUID;
+  reason:'privacy_revoked'|'friendship_removed'|'blocked'|'expired';
 }
 export interface RealtimeError { code:'UNAUTHORIZED'|'FORBIDDEN'|'INVALID_EVENT_PAYLOAD' }
 

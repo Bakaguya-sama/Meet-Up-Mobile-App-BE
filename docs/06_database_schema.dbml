@@ -155,6 +155,7 @@
     sharing_expires_at timestamptz [note: 'Null = no time limit; required null when off.']
     use_approximate_location boolean [not null, default: false]
     nearby_feature_enabled boolean [not null, default: false]
+    friend_live_location_enabled boolean [not null, default: false, note: 'Explicit owner opt-in for ephemeral friend live-location fan-out.']
     selected_friend_ids uuid[] [not null, note: 'Empty unless selected_friends; 1..100 unique other account IDs. Accepted friendship rechecked on every access.']
     updated_at timestamptz [not null]
   }
@@ -631,36 +632,6 @@
     }
   }
 
-  Table ai_explanation_cache {
-    id uuid [pk]
-    recommendation_run_id uuid [not null]
-    input_hash varchar(64) [not null, unique]
-    explanation varchar(1500) [not null]
-    source varchar(30) [not null] // ai or rule_fallback
-    expires_at timestamptz
-    created_at timestamptz [not null]
-
-    Note: 'Only receives aggregate ETA, ranking and preference data. No coordinates, GPS history or real name.'
-  }
-
-  Table nearby_preferences {
-    user_id uuid [pk]
-    radius_m integer [not null, default: 1000]
-    cooldown_minutes integer [not null, default: 120]
-    updated_at timestamptz [not null]
-  }
-
-  // user_a_id and user_b_id are stored in sorted UUID order.
-  Table nearby_suggestion_cooldowns {
-    user_a_id uuid [not null]
-    user_b_id uuid [not null]
-    last_suggested_at timestamptz [not null]
-
-    Indexes {
-      (user_a_id, user_b_id) [pk]
-    }
-  }
-
   Table user_reports {
     id uuid [pk]
     reporter_id uuid [not null]
@@ -751,10 +722,6 @@
   Ref: device_tokens.id < notification_deliveries.device_id
   Ref: notification_campaigns.id < notification_deliveries.notification_campaign_id
   Ref: meetup_sessions.id < notification_deliveries.meetup_id
-  Ref: recommendation_runs.id < ai_explanation_cache.recommendation_run_id
-  Ref: user_accounts.id < nearby_preferences.user_id
-  Ref: user_accounts.id < nearby_suggestion_cooldowns.user_a_id
-  Ref: user_accounts.id < nearby_suggestion_cooldowns.user_b_id
   Ref: user_accounts.id < user_reports.reporter_id
   Ref: user_accounts.id < user_reports.reported_user_id
   Ref: user_accounts.id < user_reports.handled_by_id
@@ -764,4 +731,6 @@
   // location:{userId} -> latitude, longitude, accuracy, updatedAt; TTL 5 minutes
   // presence:{userId} -> online state, socketId, updatedAt; TTL short
   // active-meetup:{userId} -> meetupId; TTL follows session
-  // nearby-cooldown:{userA}:{userB} -> timestamp; TTL 2 hours
+  // nearby-state:{sortedUserA}:{sortedUserB} -> inside|outside; TTL 7 days
+  // nearby-cooldown:{sortedUserA}:{sortedUserB} -> eventId; TTL 2 hours
+  // ai-explanation:{sha256(snapshot+versions)} -> redacted text + referenced fact keys; TTL 24 hours

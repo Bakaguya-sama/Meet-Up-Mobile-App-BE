@@ -32,4 +32,23 @@ export class FriendshipReader {
       (relationship) => relationship.status === 'accepted',
     );
   }
+
+  async acceptedFriendIds(userId: string): Promise<string[]> {
+    const actorId = userId.toLowerCase();
+    const result: string[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await this.store.list({
+        actorId,
+        kind: 'accepted',
+        offset,
+        limit: 500,
+      });
+      result.push(
+        ...page.items.map((row) =>
+          row.userAId === actorId ? row.userBId : row.userAId,
+        ),
+      );
+      if (offset + page.items.length >= page.total) return result;
+    }
+  }
 }

@@ -430,5 +430,22 @@ describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
       .set(auth(adminId))
       .expect(200);
     expect(unlocked.body).toMatchObject({ id: otherMemberId, locked: false });
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/admin/accounts/${adminId}/lock`)
+      .set(auth(adminId))
+      .send({ reason: 'self lock must be rejected' })
+      .expect(409)
+      .expect(({ body }: { body: { code?: string } }) =>
+        expect(body.code).toBe('ADMIN_SELF_LOCK'),
+      );
+    await request(app.getHttpServer())
+      .post(`/api/v1/admin/accounts/${randomUUID()}/lock`)
+      .set(auth(adminId))
+      .send({ reason: 'unknown account' })
+      .expect(404)
+      .expect(({ body }: { body: { code?: string } }) =>
+        expect(body.code).toBe('ACCOUNT_NOT_FOUND'),
+      );
   });
 });

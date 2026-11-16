@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './presentation/http/auth.controller';
@@ -48,10 +48,17 @@ import { RotatePublicHandleUseCase } from './application/use-cases/rotate-public
 import { DisablePublicHandleUseCase } from './application/use-cases/disable-public-handle.use-case';
 import { ManageAccountLockUseCase } from './application/use-cases/manage-account-lock.use-case';
 import { ACCOUNT_LOCK_ADMINISTRATION } from './application/public/account-lock-administration';
+import { FriendsModule } from '../friends/friends.module';
+import { FriendshipReader } from '../friends/application/public/friendship-reader';
+import {
+  FRIEND_LIVE_LOCATION_REVOKER,
+  type FriendLiveLocationRevokerPort,
+} from '../../shared-kernel/application/friend-live-location-revoker.port';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature(authEntities),
+    forwardRef(() => FriendsModule),
     JwtInfrastructureModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
   ],
@@ -74,11 +81,22 @@ import { ACCOUNT_LOCK_ADMINISTRATION } from './application/public/account-lock-a
         store: PrivacySettingsStorePort,
         users: UserDirectory,
         getSettings: GetPrivacySettingsUseCase,
-      ) => new SavePrivacySettingsUseCase(store, users, getSettings),
+        friendships: FriendshipReader,
+        revoker: FriendLiveLocationRevokerPort,
+      ) =>
+        new SavePrivacySettingsUseCase(
+          store,
+          users,
+          getSettings,
+          friendships,
+          revoker,
+        ),
       inject: [
         PRIVACY_SETTINGS_STORE,
         UserDirectory,
         GetPrivacySettingsUseCase,
+        FriendshipReader,
+        FRIEND_LIVE_LOCATION_REVOKER,
       ],
     },
     {

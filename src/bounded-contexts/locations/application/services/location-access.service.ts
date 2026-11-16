@@ -97,4 +97,19 @@ export class LocationAccessService {
       throw new LocationAccessError();
     return visibleLocation(sample, settings.useApproximateLocation, new Date());
   }
+
+  /** Friend live sharing has a separate owner consent from generic location access. */
+  async projectFriendLiveLocation(
+    ownerId: string,
+    viewerId: string,
+    sample: LocationSample,
+  ) {
+    const settings = await this.readGrant({
+      ownerId,
+      viewerId,
+      scope: 'friends',
+    });
+    if (!settings?.friendLiveLocationEnabled) throw new LocationAccessError();
+    return visibleLocation(sample, settings.useApproximateLocation, new Date());
+  }
 }

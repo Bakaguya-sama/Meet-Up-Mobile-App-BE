@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { ManageAccountLockUseCase as ManageAuthAccountLockUseCase } from '../src/bounded-contexts/auth/application/use-cases/manage-account-lock.use-case';
+import { AuthenticateAccessUseCase } from '../src/bounded-contexts/auth/application/use-cases/authenticate-access.use-case';
 import { TypeOrmAuthUnitOfWork } from '../src/bounded-contexts/auth/infrastructure/persistence/typeorm/typeorm-auth-unit-of-work';
 import { UserAccountEntity } from '../src/bounded-contexts/auth/infrastructure/persistence/typeorm/entities/user-account.typeorm-entity';
 import { UserSessionEntity } from '../src/bounded-contexts/auth/infrastructure/persistence/typeorm/entities/user-session.typeorm-entity';
@@ -832,6 +833,17 @@ describe('BE-10, BE-11, BE-12, BE-19 and BE-20 PostgreSQL integration', () => {
       [sessionId],
     );
     expect(revokedSessions[0]?.revoked_at).toBeInstanceOf(Date);
+    const authenticate = new AuthenticateAccessUseCase(
+      new TypeOrmAuthUnitOfWork(db),
+    );
+    await expect(
+      authenticate.execute({
+        sub: aliceId,
+        sid: sessionId,
+        type: 'access',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_TOKEN' });
     await expect(
       db.query(
         `SELECT actor_id, action, subject_type, subject_id, metadata_json
@@ -852,6 +864,14 @@ describe('BE-10, BE-11, BE-12, BE-19 and BE-20 PostgreSQL integration', () => {
       accountId: aliceId,
       locked: false,
     });
+    await expect(
+      authenticate.execute({
+        sub: aliceId,
+        sid: sessionId,
+        type: 'access',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_TOKEN' });
     try {
       await adminLock.execute({
         actorId: outsiderId,
@@ -863,5 +883,50 @@ describe('BE-10, BE-11, BE-12, BE-19 and BE-20 PostgreSQL integration', () => {
       expect(error).toBeInstanceOf(AdminError);
       expect((error as AdminError).code).toBe('ADMIN_SELF_LOCK');
     }
+  });
+
+  it('rolls back account and session changes when the audit write fails', async () => {
+    const sessionId = randomUUID();
+    await db.query(
+      `INSERT INTO user_sessions (
+         id, user_account_id, refresh_token_hash, refresh_token_family_id, expires_at, created_at
+       ) VALUES ($1, $2, 'rollback-session-hash', $3, NOW() + INTERVAL '1 day', NOW())`,
+      [sessionId, bobId, randomUUID()],
+    );
+    await db.query(`
+      CREATE FUNCTION reject_account_lock_audit() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.action = 'account.locked' AND NEW.subject_id = '${bobId}'::uuid THEN
+          RAISE EXCEPTION 'injected audit failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      CREATE TRIGGER reject_account_lock_audit_trigger
+      BEFORE INSERT ON audit_logs
+      FOR EACH ROW EXECUTE FUNCTION reject_account_lock_audit();
+    `);
+    const useCase = new ManageAdminAccountLockUseCase(
+      new ManageAuthAccountLockUseCase(new TypeOrmAuthUnitOfWork(db)),
+    );
+    await expect(
+      useCase.execute({
+        actorId: outsiderId,
+        accountId: bobId,
+        locked: true,
+      }),
+    ).rejects.toThrow('injected audit failure');
+    await expect(
+      db.query(`SELECT is_locked FROM user_accounts WHERE id = $1`, [bobId]),
+    ).resolves.toEqual([{ is_locked: false }]);
+    await expect(
+      db.query(`SELECT revoked_at FROM user_sessions WHERE id = $1`, [
+        sessionId,
+      ]),
+    ).resolves.toEqual([{ revoked_at: null }]);
+    await db.query(
+      `DROP TRIGGER reject_account_lock_audit_trigger ON audit_logs`,
+    );
+    await db.query(`DROP FUNCTION reject_account_lock_audit()`);
   });
 });

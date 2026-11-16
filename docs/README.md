@@ -28,6 +28,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `18_be11_be19_be20_delivery.md` | API, ranh giới context và lưu ý triển khai cho BE-11, BE-19, BE-20. |
 | `19_be10_voting_delivery.md` | Contract vote/finalize theo displayed run, transactional outbox và bằng chứng Bước 4. |
 | `20_be12_meetup_history.md` | API lịch sử meetup, quyền xem và snapshot địa điểm đã chốt theo BE-12. |
+| `21_step6_nearby_admin_ai_delivery.md` | Contract, luồng, Redis keys, privacy, Gemini fallback và bằng chứng triển khai Bước 6. |
 
 ## Cách dùng nhanh
 

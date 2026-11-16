@@ -12,6 +12,7 @@ export const INTEGRATION_EVENT_NAMES = [
   'MeetupInviteLinkAccepted.v1',
   'MeetupChatMessageCreated.v1',
   'DirectChatMessageCreated.v1',
+  'NearbyFriendDetected.v1',
 ] as const;
 
 export type IntegrationEventName = (typeof INTEGRATION_EVENT_NAMES)[number];
@@ -97,6 +98,11 @@ export type DirectChatMessageCreatedV1 =
     recipientUserId: string;
   };
 
+export type NearbyFriendDetectedV1 =
+  EventMetadata<'NearbyFriendDetected.v1'> & {
+    friendId: string;
+  };
+
 export type IntegrationEvent =
   | MeetupCreatedV1
   | MeetupLifecycleV1
@@ -108,7 +114,8 @@ export type IntegrationEvent =
   | MeetupFinalizedV1
   | MeetupInviteLinkAcceptedV1
   | MeetupChatMessageCreatedV1
-  | DirectChatMessageCreatedV1;
+  | DirectChatMessageCreatedV1
+  | NearbyFriendDetectedV1;
 
 export const EVENT_ERROR_CODES = {
   UNAUTHORIZED: 'UNAUTHORIZED',
@@ -212,6 +219,8 @@ export function isIntegrationEvent(value: unknown): value is IntegrationEvent {
         'senderUserId',
         'recipientUserId',
       );
+    case 'NearbyFriendDetected.v1':
+      return hasStrings(value, 'friendId');
   }
 
   return false;

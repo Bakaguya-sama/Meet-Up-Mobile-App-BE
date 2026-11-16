@@ -2,8 +2,9 @@ export const PUSH_NOTIFICATION = Symbol('PUSH_NOTIFICATION');
 
 export type PushData = {
   type: string;
-  meetupId: string;
+  meetupId?: string;
   placeId?: string;
+  friendId?: string;
 };
 
 export interface PushNotificationPort {

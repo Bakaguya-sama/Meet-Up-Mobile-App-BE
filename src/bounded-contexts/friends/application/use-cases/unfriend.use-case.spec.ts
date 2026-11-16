@@ -2,6 +2,7 @@ import { UnfriendUseCase } from './unfriend.use-case';
 import { Friendship } from '../../domain/aggregates/friendship.aggregate';
 import type { FriendshipStorePort } from '../ports/persistence/friendship-store.port';
 import type { PrivacySelectedFriendPurge } from '../../../auth/application/public/privacy-selected-friend-purge';
+import type { FriendLiveLocationRevokerPort } from '../../../../shared-kernel/application/friend-live-location-revoker.port';
 
 describe('UnfriendUseCase', () => {
   const now = new Date('2026-10-10T12:00:00Z');
@@ -12,6 +13,7 @@ describe('UnfriendUseCase', () => {
   let friendship: Friendship;
   let store: jest.Mocked<FriendshipStorePort>;
   let purge: jest.Mocked<PrivacySelectedFriendPurge>;
+  let revoker: jest.Mocked<FriendLiveLocationRevokerPort>;
   let useCase: UnfriendUseCase;
 
   beforeEach(() => {
@@ -38,7 +40,8 @@ describe('UnfriendUseCase', () => {
     purge = {
       removeFromOwnerSelection: jest.fn().mockResolvedValue(undefined),
     };
-    useCase = new UnfriendUseCase(store, purge);
+    revoker = { revoke: jest.fn().mockResolvedValue(undefined) };
+    useCase = new UnfriendUseCase(store, purge, revoker);
   });
   afterEach(() => jest.useRealTimers());
 
@@ -49,6 +52,16 @@ describe('UnfriendUseCase', () => {
       [userA, userB],
       [userB, userA],
     ]);
+    expect(revoker.revoke).toHaveBeenCalledWith(
+      userA,
+      userB,
+      'friendship_removed',
+    );
+    expect(revoker.revoke).toHaveBeenCalledWith(
+      userB,
+      userA,
+      'friendship_removed',
+    );
   });
 
   it('both parties can initiate the unfriend', async () => {

@@ -97,9 +97,10 @@ Nguồn chuẩn: 14 file controller, 16 controller class, 73 HTTP route decorato
 | 57 | Recommendation | Record impression | `POST /api/v1/meetups/:meetupId/recommendation-runs/:runId/impressions` | Bearer accepted | `RecordRecommendationImpressionRequest` | `200 RecommendationEventReceiptResponse` | `404 – candidate/run`<br>`409 – RECOMMENDATION_EVENT_ID_REUSED` | Gửi khi card thực sự render |
 | 58 | Recommendation | Record feedback | `POST /api/v1/meetups/:meetupId/recommendation-runs/:runId/feedback-events` | Bearer accepted | `RecordRecommendationFeedbackRequest` | `200 RecommendationEventReceiptResponse` | `409 – RECOMMENDATION_NOT_SHOWN/EVENT_ID_REUSED` | Navigation/other post-display event; vote/finalize/favorite đã tự link server-side |
 | 59 | Recommendation | Replay audit | `POST /api/v1/meetups/:meetupId/recommendation-runs/:runId/replay` | Bearer accepted | UUID params | `200 ReplayRecommendationRunResponse` | `403/404`<br>`409 – version/snapshot mismatch` | Recompute từ snapshot; providerCalls=0 |
-| 60 | Favorite | List favorites | `GET /api/v1/favorites/places` | Bearer user | — | `200 FavoritePlaceResponse[]` | `401/403` | Favorite của caller |
-| 61 | Favorite | Add favorite | `POST /api/v1/favorites/places` | Bearer user | `{placeId:string 1..300}`<br>Type: `AddFavoritePlaceRequest` | `201 FavoritePlaceResponse` | `404 – RECOMMENDATION_CANDIDATE_NOT_FOUND` | Duplicate idempotent |
-| 62 | Favorite | Remove favorite | `DELETE /api/v1/favorites/places/:placeId` | Bearer user | URL-encoded placeId 1..300 | `204` | `400 – invalid length` | Idempotent remove |
+| 60 | Recommendation | Get AI explanation | `GET /api/v1/meetups/:meetupId/recommendation-runs/:runId/ai-explanations` | Bearer accepted participant | UUID params | `200 AiExplanationListResponse` | `403 – RECOMMENDATION_RUN_FORBIDDEN`<br>`404 – RECOMMENDATION_RUN_NOT_FOUND` | Trả wording từ Gemini khi bật và hợp lệ; mọi lỗi/provider disabled trả deterministic fallback, không đổi rank |
+| 61 | Favorite | List favorites | `GET /api/v1/favorites/places` | Bearer user | — | `200 FavoritePlaceResponse[]` | `401/403` | Favorite của caller |
+| 62 | Favorite | Add favorite | `POST /api/v1/favorites/places` | Bearer user | `{placeId:string 1..300}`<br>Type: `AddFavoritePlaceRequest` | `201 FavoritePlaceResponse` | `404 – RECOMMENDATION_CANDIDATE_NOT_FOUND` | Duplicate idempotent |
+| 63 | Favorite | Remove favorite | `DELETE /api/v1/favorites/places/:placeId` | Bearer user | URL-encoded placeId 1..300 | `204` | `400 – invalid length` | Idempotent remove |
 
 Privacy: `memberEtas` có thể hiển thị cho mọi accepted participant; `viewerFeature` chỉ thuộc caller. Không hiển thị/suy luận preference hoặc utility của người khác.
 
@@ -107,17 +108,17 @@ Privacy: `memberEtas` có thể hiển thị cho mọi accepted participant; `vi
 
 | STT | Nhóm | Tên | Method + Endpoint | Auth | Input | Response | Error | Mục đích |
 |---|---|---|---|---|---|---|---|---|
-| 63 | Meetup chat | List messages | `GET /api/v1/meetups/:meetupId/chat/messages` | Bearer member/former | **Query:** `before?` ISO và `beforeId?` UUID phải đi cùng; `limit?`1..100<br>Type: `ChatMessagePageParams` | `200 MeetupChatMessageResponse[]` | `400 – INVALID_INPUT`<br>`403 – CHAT_FORBIDDEN` | Late member xem full history; former tới leftAt |
-| 64 | Meetup chat | Send message | `POST /api/v1/meetups/:meetupId/chat/messages` | Bearer accepted, active meetup | **multipart:** clientMessageId UUID bắt buộc; text? max2000; files? max5, 10MiB/file, 25MiB/tổng<br>Type: `SendChatMessageRequest` | `201 MeetupChatMessageResponse` | `400 – INVALID_INPUT/file signature`<br>`403 – CHAT_FORBIDDEN` | Retry cùng clientMessageId không duplicate |
-| 65 | Direct chat | List messages | `GET /api/v1/chats/direct/:peerId/messages` | Bearer participant | Cursor query như STT63 | `200 DirectChatMessageResponse[]` | `403 – DIRECT_CHAT_FORBIDDEN` nếu chưa từng có conversation và không accepted friend | History cũ vẫn đọc sau unfriend/block |
-| 66 | Direct chat | Send message | `POST /api/v1/chats/direct/:peerId/messages` | Bearer accepted friend | multipart như STT64 | `201 DirectChatMessageResponse` | `400`<br>`403 – DIRECT_CHAT_FORBIDDEN` | Conversation tạo ở tin hợp lệ đầu tiên |
-| 67 | Notifications | Register device | `POST /api/v1/notifications/devices` | Bearer user | `{token:string 20..4096,platform:'android'\|'ios'}`<br>Type: `RegisterDeviceTokenRequest` | `201 DeviceTokenMutationResponse` | `400 – INVALID_INPUT` | Đăng ký FCM/APNs token |
-| 68 | Notifications | Update device | `PUT /api/v1/notifications/devices/:deviceTokenId` | Bearer owner | UUID + body như STT67 | `200 DeviceTokenMutationResponse` | `403/404 – device access error` | Rotate token/platform |
-| 69 | Notifications | Revoke device | `DELETE /api/v1/notifications/devices/:deviceTokenId` | Bearer owner | UUID | `204` | `403/404` | Logout/revoke device |
-| 70 | Admin | Lock account | `POST /api/v1/admin/accounts/:accountId/lock` | Bearer admin | accountId UUID + `{reason:string}`<br>Type: `AdminAccountLockRequest` | `200 AdminAccountLockResponse` | `403 – admin required`<br>`404 – ACCOUNT_NOT_FOUND`<br>`409 – ADMIN_SELF_LOCK` | Khóa và revoke session |
-| 71 | Admin | Unlock account | `DELETE /api/v1/admin/accounts/:accountId/lock` | Bearer admin | accountId UUID | `200 AdminAccountLockResponse` | `403/404` | Mở khóa |
-| 72 | System | Liveness | `GET /api/v1/health` | Public | — | `200 HealthResponse` | — | Process đang chạy |
-| 73 | System | Readiness | `GET /api/v1/health/ready` | Public | — | `200 ReadyResponse` hoặc `503 NotReadyResponse` | `503 – PostgreSQL/Redis/outbox worker unavailable` | Quyết định instance nhận traffic |
+| 64 | Meetup chat | List messages | `GET /api/v1/meetups/:meetupId/chat/messages` | Bearer member/former | **Query:** `before?` ISO và `beforeId?` UUID phải đi cùng; `limit?`1..100<br>Type: `ChatMessagePageParams` | `200 MeetupChatMessageResponse[]` | `400 – INVALID_INPUT`<br>`403 – CHAT_FORBIDDEN` | Late member xem full history; former tới leftAt |
+| 65 | Meetup chat | Send message | `POST /api/v1/meetups/:meetupId/chat/messages` | Bearer accepted, active meetup | **multipart:** clientMessageId UUID bắt buộc; text? max2000; files? max5, 10MiB/file, 25MiB/tổng<br>Type: `SendChatMessageRequest` | `201 MeetupChatMessageResponse` | `400 – INVALID_INPUT/file signature`<br>`403 – CHAT_FORBIDDEN` | Retry cùng clientMessageId không duplicate |
+| 66 | Direct chat | List messages | `GET /api/v1/chats/direct/:peerId/messages` | Bearer participant | Cursor query như STT64 | `200 DirectChatMessageResponse[]` | `403 – DIRECT_CHAT_FORBIDDEN` nếu chưa từng có conversation và không accepted friend | History cũ vẫn đọc sau unfriend/block |
+| 67 | Direct chat | Send message | `POST /api/v1/chats/direct/:peerId/messages` | Bearer accepted friend | multipart như STT65 | `201 DirectChatMessageResponse` | `400`<br>`403 – DIRECT_CHAT_FORBIDDEN` | Conversation tạo ở tin hợp lệ đầu tiên |
+| 68 | Notifications | Register device | `POST /api/v1/notifications/devices` | Bearer user | `{token:string 20..4096,platform:'android'\|'ios'}`<br>Type: `RegisterDeviceTokenRequest` | `201 DeviceTokenMutationResponse` | `400 – INVALID_INPUT` | Đăng ký FCM/APNs token |
+| 69 | Notifications | Update device | `PUT /api/v1/notifications/devices/:deviceTokenId` | Bearer owner | UUID + body như STT68 | `200 DeviceTokenMutationResponse` | `403/404 – device access error` | Rotate token/platform |
+| 70 | Notifications | Revoke device | `DELETE /api/v1/notifications/devices/:deviceTokenId` | Bearer owner | UUID | `204` | `403/404` | Logout/revoke device |
+| 71 | Admin | Lock account | `POST /api/v1/admin/accounts/:accountId/lock` | Bearer admin | accountId UUID + `{reason:string}`<br>Type: `AdminAccountLockRequest` | `200 AdminAccountLockResponse` | `403 – admin required`<br>`404 – ACCOUNT_NOT_FOUND`<br>`409 – ADMIN_SELF_LOCK` | Khóa và revoke session |
+| 72 | Admin | Unlock account | `DELETE /api/v1/admin/accounts/:accountId/lock` | Bearer admin | accountId UUID | `200 AdminAccountLockResponse` | `403/404` | Mở khóa |
+| 73 | System | Liveness | `GET /api/v1/health` | Public | — | `200 HealthResponse` | — | Process đang chạy |
+| 74 | System | Readiness | `GET /api/v1/health/ready` | Public | — | `200 ReadyResponse` hoặc `503 NotReadyResponse` | `503 – PostgreSQL/Redis/outbox worker unavailable` | Quyết định instance nhận traffic |
 
 Chat attachment response chứa `downloadUrl` signed có hạn và `expiresAt`; FE không persist URL. Outbox/realtime không chứa text/file metadata, vì vậy phải fetch REST resource sau event.
 
@@ -148,7 +149,7 @@ Không có `swagger.json`, `openapi.json` hoặc YAML được commit trong repo
 | 1 | Chat GET/POST | Response schema chưa khai báo đầy đủ | Use case trả `MeetupChatMessageResponse`/`DirectChatMessageResponse` | Controller chủ yếu khai báo request multipart, thiếu response schema |
 | 2 | Recommendation impression/feedback/replay | Response schema chưa khai báo | Use case trả receipt/replay result | Không có `@ApiOkResponse` schema chi tiết |
 | 3 | Favorites | Request/response schema chưa khai báo đầy đủ | DTO/use case/entity xác định contract | Controller chỉ có tag/not-found decorator |
-| 4 | Admin lock/unlock | Response schema chưa khai báo | Public account-lock adapter trả mutation result | Controller không khai báo `@ApiOkResponse` |
+| 4 | AI explanation | Route mới có response schema đầy đủ; lỗi domain dùng filter chung | Use case trả `AiExplanationListResponse` | `@ApiOkResponse` mô tả text/factKeys/source |
 | 5 | Candidate search | Opening contract mô tả `openNow` trong decorator cũ | Engine hiện dùng scheduled opening evidence cho run; candidate-only adapter vẫn có provider opening shape | Cần kiểm tra runtime JSON/client generator trước khi dùng field này cho UI |
 
 Tài liệu và `fe-api-types.ts` theo code/DTO/use case, không theo phần Swagger thiếu.
@@ -156,7 +157,7 @@ Tài liệu và `fe-api-types.ts` theo code/DTO/use case, không theo phần Swa
 ## 10. Cần xác nhận
 
 1. `AdminAccountLockResponse`: controller/use case không khai báo schema response chính xác ngoài `id/locked`; type giữ index signature `unknown` cho field bổ sung.
-2. Không có Swagger JSON runtime để so sánh tự động đủ 73 endpoint; cần boot app với dependency thật và export document nếu FE dùng code generation.
+2. Không có Swagger JSON runtime để so sánh tự động đủ 74 endpoint; cần boot app với dependency thật và export document nếu FE dùng code generation.
 3. `GET /locations/permissions/:ownerId` có mô tả controller rằng meetup-scope membership verification cần kết nối đầy đủ; không dùng endpoint này thay authorization của GET location.
 4. Candidate-only endpoint là API kỹ thuật trước run; UI production nên ưu tiên create/get `recommendation-runs` trừ khi luồng sản phẩm thật sự cần màn hình debug candidate.
 
@@ -164,6 +165,14 @@ Tài liệu và `fe-api-types.ts` theo code/DTO/use case, không theo phần Swa
 
 - Controller files: **14**.
 - Controller classes: **16**.
-- HTTP route decorators trong source: **73**.
-- HTTP endpoint rows trong tài liệu: **73** (STT 1–73).
+- HTTP route decorators trong source: **74**.
+- HTTP endpoint rows trong tài liệu: **74** (STT 1–74).
 - Socket client events: **3**; server event channels/contracts được liệt kê riêng.
+
+## Friend Live Location extension
+
+| Nhóm | Method + Endpoint | Auth | Input | Response | Mục đích |
+|---|---|---|---|---|---|
+| Friend live location | `GET /api/v1/friends/live-locations` | Bearer JWT, user | Không có body. | `200 { items: FriendLiveLocationItemResponse[] }` — chỉ sample Redis chưa hết TTL và đã project cho chính viewer. Type: `FriendLiveLocationsResponse`. | Khôi phục marker sau reconnect; FE tự hết hạn marker sau 300 giây. |
+
+Socket server events: `friend:location:updated` gửi vào `user:{viewerId}` sau khi owner publish hợp lệ; `friend:location:unavailable` yêu cầu FE xóa marker khi quyền bị thu hồi. Types: `FriendLocationUpdatedPayload`, `FriendLocationUnavailablePayload`. Không event nào có address, token, history, outbox reference hoặc FCM payload.

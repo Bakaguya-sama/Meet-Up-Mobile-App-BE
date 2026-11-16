@@ -15,6 +15,7 @@ export interface PrivacySettingsState {
   sharingExpiresAt: Date | null;
   useApproximateLocation: boolean;
   nearbyFeatureEnabled: boolean;
+  friendLiveLocationEnabled: boolean;
   selectedFriendIds: string[];
   updatedAt: Date;
 }
@@ -30,7 +31,8 @@ export class PrivacySettings {
       invalid('Invalid sharing mode');
     if (
       typeof state.useApproximateLocation !== 'boolean' ||
-      typeof state.nearbyFeatureEnabled !== 'boolean'
+      typeof state.nearbyFeatureEnabled !== 'boolean' ||
+      typeof state.friendLiveLocationEnabled !== 'boolean'
     )
       invalid('Privacy flags must be booleans');
     if (

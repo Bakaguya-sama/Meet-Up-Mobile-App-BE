@@ -17,6 +17,7 @@ describe('Privacy settings use cases', () => {
     sharingExpiresAt: null,
     useApproximateLocation: true,
     nearbyFeatureEnabled: false,
+    friendLiveLocationEnabled: false,
     selectedFriendIds: [],
   };
 

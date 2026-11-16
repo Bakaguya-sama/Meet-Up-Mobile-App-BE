@@ -33,6 +33,7 @@ import {
   RecordRecommendationImpressionRequest,
 } from '../../application/dto/recommendation-feedback.dto';
 import { ReplayRecommendationRunUseCase } from '../../application/use-cases/replay-recommendation-run.use-case';
+import { GetAiExplanationsUseCase } from '../../application/use-cases/get-ai-explanations.use-case';
 
 @ApiTags('Recommendations')
 @ApiBearerAuth()
@@ -50,6 +51,7 @@ export class RecommendationsController {
     private readonly getRun: GetRecommendationRunUseCase,
     private readonly feedback: RecordRecommendationFeedbackUseCase,
     private readonly replay: ReplayRecommendationRunUseCase,
+    private readonly aiExplanations: GetAiExplanationsUseCase,
   ) {}
 
   @Post(':meetupId/recommendations/candidates')
@@ -188,6 +190,52 @@ export class RecommendationsController {
     @Param('runId', new ParseUUIDPipe()) runId: string,
   ) {
     return this.replay.execute(actorId, meetupId, runId);
+  }
+
+  @Get(':meetupId/recommendation-runs/:runId/ai-explanations')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({
+    summary:
+      'Get privacy-safe AI wording or deterministic fallback for a completed run',
+  })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      required: ['runId', 'items'],
+      properties: {
+        runId: { type: 'string', format: 'uuid' },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['rank', 'canonicalCandidateKey', 'explanation'],
+            properties: {
+              rank: { type: 'integer', minimum: 1 },
+              canonicalCandidateKey: { type: 'string' },
+              explanation: {
+                type: 'object',
+                required: ['text', 'factKeys', 'source'],
+                properties: {
+                  text: { type: 'string', maxLength: 1500 },
+                  factKeys: { type: 'array', items: { type: 'string' } },
+                  source: {
+                    type: 'string',
+                    enum: ['ai', 'rule_fallback'],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  getAiExplanations(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+  ) {
+    return this.aiExplanations.execute(actorId, meetupId, runId);
   }
 }
 

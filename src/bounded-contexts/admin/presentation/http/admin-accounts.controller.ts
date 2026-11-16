@@ -12,13 +12,17 @@ import {
   ApiBearerAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { AccessTokenGuard } from '../../../../presentation/http/guards/access-token.guard';
 import { RolesGuard } from '../../../../presentation/http/guards/roles.guard';
 import { CurrentUser } from '../../../../presentation/http/decorators/current-user.decorator';
 import { Roles } from '../../../../presentation/http/decorators/roles.decorator';
-import { AdminAccountLockRequest } from '../../application/dto/admin-account-lock.dto';
+import {
+  AdminAccountLockRequest,
+  AdminAccountLockResponse,
+} from '../../application/dto/admin-account-lock.dto';
 import { ManageAccountLockUseCase } from '../../application/use-cases/manage-account-lock.use-case';
 
 @ApiTags('Administration')
@@ -33,6 +37,7 @@ export class AdminAccountsController {
 
   @Post(':accountId/lock')
   @HttpCode(200)
+  @ApiOkResponse({ type: AdminAccountLockResponse })
   lock(
     @CurrentUser('id') actorId: string,
     @Param('accountId', new ParseUUIDPipe()) accountId: string,
@@ -48,6 +53,7 @@ export class AdminAccountsController {
 
   @Delete(':accountId/lock')
   @HttpCode(200)
+  @ApiOkResponse({ type: AdminAccountLockResponse })
   unlock(
     @CurrentUser('id') actorId: string,
     @Param('accountId', new ParseUUIDPipe()) accountId: string,

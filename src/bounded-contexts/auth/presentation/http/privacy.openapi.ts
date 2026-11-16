@@ -15,6 +15,7 @@ export const privacySettingsBodySchema = {
     },
     useApproximateLocation: { type: 'boolean' as const },
     nearbyFeatureEnabled: { type: 'boolean' as const, default: false },
+    friendLiveLocationEnabled: { type: 'boolean' as const, default: false },
     selectedFriendIds: {
       type: 'array' as const,
       maxItems: 100,
@@ -31,6 +32,7 @@ export const privacySettingsSchema = {
   required: [
     ...privacySettingsBodySchema.required,
     'nearbyFeatureEnabled',
+    'friendLiveLocationEnabled',
     'selectedFriendIds',
     'isLocationSharingEnabled',
     'updatedAt',

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
@@ -25,9 +25,16 @@ import { RedisFriendQrSessionStore } from './infrastructure/persistence/redis/re
 import { FriendsController } from './presentation/http/friends.controller';
 import { FriendshipReader } from './application/public/friendship-reader';
 import { PrivacySelectedFriendPurge } from '../auth/application/public/privacy-selected-friend-purge';
+import {
+  FRIEND_LIVE_LOCATION_REVOKER,
+  type FriendLiveLocationRevokerPort,
+} from '../../shared-kernel/application/friend-live-location-revoker.port';
 
 @Module({
-  imports: [AuthModule, TypeOrmModule.forFeature([FriendshipEntity])],
+  imports: [
+    forwardRef(() => AuthModule),
+    TypeOrmModule.forFeature([FriendshipEntity]),
+  ],
   controllers: [FriendsController],
   providers: [
     {
@@ -97,8 +104,13 @@ import { PrivacySelectedFriendPurge } from '../auth/application/public/privacy-s
       useFactory: (
         store: FriendshipStorePort,
         purge: PrivacySelectedFriendPurge,
-      ) => new UnfriendUseCase(store, purge),
-      inject: [FRIENDSHIP_STORE, PrivacySelectedFriendPurge],
+        revoker: FriendLiveLocationRevokerPort,
+      ) => new UnfriendUseCase(store, purge, revoker),
+      inject: [
+        FRIENDSHIP_STORE,
+        PrivacySelectedFriendPurge,
+        FRIEND_LIVE_LOCATION_REVOKER,
+      ],
     },
     {
       provide: SearchUsersQuery,

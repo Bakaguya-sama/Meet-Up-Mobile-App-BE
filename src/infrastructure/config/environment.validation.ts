@@ -86,6 +86,21 @@ const environmentSchema = Joi.object({
     otherwise: Joi.number().integer().min(1).max(100000).required(),
   }),
   GOOGLE_MAPS_API_KEY: Joi.string().allow('').optional(),
+  AI_EXPLANATION_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
+  GEMINI_API_KEY: Joi.when('AI_EXPLANATION_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  AI_EXPLANATION_PROMPT_VERSION: Joi.string().valid('v1').default('v1'),
+  NEARBY_RADIUS_METERS: Joi.number()
+    .integer()
+    .min(100)
+    .max(50000)
+    .default(3000),
   ROUTES_ROUTING_PREFERENCE: Joi.string()
     .valid('TRAFFIC_UNAWARE', 'TRAFFIC_AWARE')
     .default('TRAFFIC_UNAWARE'),

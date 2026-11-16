@@ -88,6 +88,20 @@ import {
 import { TypeOrmRecommendationSnapshotRetention } from './infrastructure/persistence/typeorm/typeorm-recommendation-snapshot-retention';
 import { RunRecommendationSnapshotRetentionUseCase } from './application/use-cases/run-recommendation-snapshot-retention.use-case';
 import { RecommendationSnapshotRetentionJob } from './infrastructure/workers/recommendation-snapshot-retention.job';
+import {
+  AI_EXPLANATION_CACHE,
+  AI_EXPLANATION_PROVIDER,
+  type AiExplanationCache,
+  type AiExplanationProvider,
+} from './application/ports/ai-explanation.port';
+import { AiExplanationService } from './application/services/ai-explanation.service';
+import {
+  AiExplanationPromptBuilder,
+  type AiExplanationPromptVersion,
+} from './application/services/ai-explanation-prompt.builder';
+import { GetAiExplanationsUseCase } from './application/use-cases/get-ai-explanations.use-case';
+import { RedisAiExplanationCache } from './infrastructure/adapters/redis-ai-explanation-cache';
+import { GeminiAiExplanationAdapter } from './infrastructure/adapters/gemini-ai-explanation.adapter';
 
 @Module({
   imports: [
@@ -106,6 +120,60 @@ import { RecommendationSnapshotRetentionJob } from './infrastructure/workers/rec
   ],
   controllers: [RecommendationsController, FavoritePlacesController],
   providers: [
+    RedisAiExplanationCache,
+    { provide: AI_EXPLANATION_CACHE, useExisting: RedisAiExplanationCache },
+    {
+      provide: AI_EXPLANATION_PROVIDER,
+      useFactory: (config: ConfigService) =>
+        new GeminiAiExplanationAdapter(
+          config.get<string>('aiExplanation.geminiApiKey') ?? '',
+          config.get<string>('aiExplanation.model') ?? 'gemini-2.5-flash-lite',
+          config.get<number>('aiExplanation.timeoutMs') ?? 5_000,
+        ),
+      inject: [ConfigService],
+    },
+    {
+      provide: AiExplanationService,
+      useFactory: (
+        provider: AiExplanationProvider,
+        cache: AiExplanationCache,
+        config: ConfigService,
+      ) => {
+        const promptVersion = (config.get<string>(
+          'aiExplanation.promptVersion',
+        ) ?? 'v1') as AiExplanationPromptVersion;
+        return new AiExplanationService(
+          provider,
+          cache,
+          {
+            enabled: config.get<boolean>('aiExplanation.enabled') ?? false,
+            ttlSeconds:
+              config.get<number>('aiExplanation.cacheTtlSeconds') ?? 86_400,
+            model:
+              config.get<string>('aiExplanation.model') ??
+              'gemini-2.5-flash-lite',
+            provider: 'google-gemini',
+            promptVersion,
+            schemaVersion: 'ai-explanation-v1',
+          },
+          new AiExplanationPromptBuilder(promptVersion),
+        );
+      },
+      inject: [AI_EXPLANATION_PROVIDER, AI_EXPLANATION_CACHE, ConfigService],
+    },
+    {
+      provide: GetAiExplanationsUseCase,
+      useFactory: (
+        runs: RecommendationRunStore,
+        memberships: MeetupMembershipReader,
+        explanations: AiExplanationService,
+      ) => new GetAiExplanationsUseCase(runs, memberships, explanations),
+      inject: [
+        RECOMMENDATION_RUN_STORE,
+        MeetupMembershipReader,
+        AiExplanationService,
+      ],
+    },
     {
       provide: RecommendationObservabilityService,
       useFactory: () => {
