@@ -143,6 +143,16 @@ const environmentSchema = Joi.object({
     then: Joi.string().min(1).required(),
     otherwise: Joi.string().allow('').optional(),
   }),
+  FILE_STORAGE_ROOT_FOLDER: Joi.string()
+    .trim()
+    .pattern(/^[A-Za-z0-9][A-Za-z0-9/_-]*$/)
+    .max(180)
+    .default('mobile-meetup'),
+  CHAT_MEDIA_FOLDER: Joi.string()
+    .trim()
+    .pattern(/^[A-Za-z0-9][A-Za-z0-9/_-]*$/)
+    .max(180)
+    .default('chat'),
   DEVICE_TOKEN_ENCRYPTION_KEY: Joi.when('NODE_ENV', {
     is: 'test',
     then: Joi.string().allow('').optional(),

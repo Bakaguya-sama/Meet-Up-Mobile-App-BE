@@ -295,6 +295,8 @@ FIREBASE_PRIVATE_KEY=
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
+FILE_STORAGE_ROOT_FOLDER=mobile-meetup
+CHAT_MEDIA_FOLDER=chat
 ```
 
 Project phải cung cấp `.env.example` chỉ chứa tên biến và giá trị mẫu không nhạy cảm. Staging và production lấy secret từ secret manager của nền tảng deploy, không copy `.env` vào Docker image.

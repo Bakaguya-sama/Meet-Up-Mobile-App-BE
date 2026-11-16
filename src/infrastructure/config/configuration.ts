@@ -57,6 +57,12 @@ export const configuration = () => ({
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET,
   },
+  files: {
+    rootFolder: process.env.FILE_STORAGE_ROOT_FOLDER ?? 'mobile-meetup',
+  },
+  chat: {
+    mediaFolder: process.env.CHAT_MEDIA_FOLDER ?? 'chat',
+  },
   deviceTokens: {
     encryptionKey: process.env.DEVICE_TOKEN_ENCRYPTION_KEY,
   },

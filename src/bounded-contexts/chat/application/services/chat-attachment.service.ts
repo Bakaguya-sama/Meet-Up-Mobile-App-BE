@@ -50,7 +50,10 @@ const allowedMimeTypesByExtension: Record<string, string[]> = {
 };
 
 export class ChatAttachmentService {
-  constructor(private readonly storage: ChatMediaStoragePort) {}
+  constructor(
+    private readonly storage: ChatMediaStoragePort,
+    private readonly mediaFolder = 'chat',
+  ) {}
 
   async upload(
     files: IncomingChatFile[],
@@ -67,7 +70,7 @@ export class ChatAttachmentService {
             fileName,
             mimeType: file.mimeType,
             resourceType: resourceTypeFor(file.mimeType),
-            storageKey: `chat/${identity.scope}/${identity.clientMessageId}/${index}-${contentFingerprint(file.buffer)}`,
+            storageKey: `${this.mediaFolder}/${identity.scope}/${identity.clientMessageId}/${index}-${contentFingerprint(file.buffer)}`,
           }),
         );
       }

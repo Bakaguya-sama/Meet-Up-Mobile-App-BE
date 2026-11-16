@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { MeetupsModule } from '../meetups/meetups.module';
@@ -17,7 +18,7 @@ import { DirectChatController } from './presentation/http/direct-chat.controller
 import { CHAT_MEDIA_STORAGE } from './application/ports/chat-media-storage.port';
 import type { ChatMediaStoragePort } from './application/ports/chat-media-storage.port';
 import { ChatAttachmentService } from './application/services/chat-attachment.service';
-import { CloudinaryChatMediaStorageAdapter } from './infrastructure/adapters/cloudinary-chat-media-storage.adapter';
+import { ChatFileStorageAdapter } from './infrastructure/adapters/chat-file-storage.adapter';
 import { DIRECT_CHAT_STORE } from './application/ports/direct-chat-store.port';
 import type { DirectChatStore } from './application/ports/direct-chat-store.port';
 import { ChatConversationEntity } from './infrastructure/persistence/typeorm/entities/chat-conversation.typeorm-entity';
@@ -44,13 +45,16 @@ import { ListDirectChatMessagesQuery } from './application/queries/list-direct-c
   providers: [
     {
       provide: CHAT_MEDIA_STORAGE,
-      useClass: CloudinaryChatMediaStorageAdapter,
+      useClass: ChatFileStorageAdapter,
     },
     {
       provide: ChatAttachmentService,
-      useFactory: (storage: ChatMediaStoragePort) =>
-        new ChatAttachmentService(storage),
-      inject: [CHAT_MEDIA_STORAGE],
+      useFactory: (storage: ChatMediaStoragePort, config: ConfigService) =>
+        new ChatAttachmentService(
+          storage,
+          config.getOrThrow<string>('chat.mediaFolder'),
+        ),
+      inject: [CHAT_MEDIA_STORAGE, ConfigService],
     },
     { provide: DIRECT_CHAT_STORE, useClass: TypeOrmDirectChatStore },
     { provide: MEETUP_CHAT_STORE, useClass: TypeOrmMeetupChatStore },

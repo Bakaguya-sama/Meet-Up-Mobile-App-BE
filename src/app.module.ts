@@ -14,6 +14,7 @@ import { NotificationsModule } from './bounded-contexts/notifications/notificati
 import { RecommendationsModule } from './bounded-contexts/recommendations/recommendations.module';
 import { ChatModule } from './bounded-contexts/chat/chat.module';
 import { AdminModule } from './bounded-contexts/admin/admin.module';
+import { FilesModule } from './infrastructure/files/files.module';
 
 const runtimeModules =
   process.env.NODE_ENV === 'test'
@@ -21,6 +22,7 @@ const runtimeModules =
     : [
         DatabaseModule,
         RedisModule,
+        FilesModule,
         OutboxModule,
         AuthModule,
         FriendsModule,
