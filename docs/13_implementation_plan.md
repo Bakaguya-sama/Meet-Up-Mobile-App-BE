@@ -1077,6 +1077,8 @@ Người xác nhận: owner theo sheet; backend còn lại review integration co
 
 ### 5.12. Bước 7 — Offline dataset và evaluation
 
+**Trạng thái thực tế (16/11/2026): 🟡 Core implementation hoàn tất bằng fixture; chưa có beta dataset/approval promotion.** Dataset builder NDJSON, versioned label policy, deterministic manifest, time-split validation, snapshot-only baseline evaluator và privacy unit coverage đã được thêm. Command yêu cầu explicit output/window/salt và chỉ đọc database; report chưa là căn cứ LTR/A/B/production vì Q8 vẫn chưa có threshold được duyệt. Xem `docs/recommendation_offline_evaluation.md`.
+
 **Mục tiêu.** Tạo dataset tái lập và báo cáo so sánh strategy mà không leakage và không gọi provider lại. [Nguồn: workbook — BE-25; Doc 12 — Mục 9.3, 10, 14]
 
 **Function thuộc bước**
@@ -1208,7 +1210,7 @@ Người xác nhận: Dev Backend 2; Product/Tech Lead duyệt promotion. Docs c
 | BE-22 | Group ranking và fairness                        | Đã thực hiện           | Dev Backend 2 | Bước 2  | Three deterministic strategies                                 |
 | BE-23 | Explanation, persistence và API kết quả          | Đã thực hiện           | Dev Backend 2 | Bước 3  | Atomic full run + top-K API                                    |
 | BE-24 | Impression và feedback linkage                   | Chưa thực hiện         | Dev Backend 2 | Bước 5  | Idempotent feedback trail                                      |
-| BE-25 | Offline dataset và evaluation                    | Chưa thực hiện         | Dev Backend 2 | Bước 7  | Time-split dataset + report                                    |
+| BE-25 | Offline dataset và evaluation                    | Core bằng fixture; chờ beta/approval | Dev Backend 2 | Bước 7  | Time-split dataset + report                                    |
 | BE-26 | Learning-to-rank và model lifecycle              | Chưa thực hiện         | Dev Backend 2 | Bước 8  | Shadow-first model lifecycle                                   |
 | BE-27 | AI explanation mở rộng                           | ✅ Hoàn tất 15/11/2026 | Dev Backend 2 | Bước 6  | Gemini-safe aggregate explanation + fallback                   |
 | BE-28 | Temporal context và opening tại scheduledAt      | Đã thực hiện           | Dev Backend 2 | Bước 2A | Temporal snapshot, opening status, ETA per-member, stale guard |

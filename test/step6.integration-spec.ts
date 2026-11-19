@@ -26,11 +26,11 @@ import {
 } from '../src/bounded-contexts/nearby/application/nearby-detector';
 import { RedisFriendLiveLocationThrottle } from '../src/bounded-contexts/locations/infrastructure/adapters/redis-friend-live-location-throttle';
 
-const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
-const redisUrl = process.env.MEETUP_TEST_REDIS_URL ?? process.env.REDIS_URL;
+const databaseUrl = process.env.DATABASE_URL;
+const redisUrl = process.env.REDIS_URL;
 if (!databaseUrl || !redisUrl)
   throw new Error(
-    'MEETUP_TEST_DATABASE_URL and MEETUP_TEST_REDIS_URL are required',
+    'DATABASE_URL and REDIS_URL are required',
   );
 
 describe('Step 6 PostgreSQL + Redis integration', () => {
