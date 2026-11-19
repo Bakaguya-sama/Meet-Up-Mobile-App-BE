@@ -64,8 +64,8 @@ import { CreateRecommendationFeedbackEvents1792210000000 } from '../src/infrastr
 import { CreateRecommendationRetentionHolds1792220000000 } from '../src/infrastructure/database/migrations/1792220000000-create-recommendation-retention-holds';
 import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persistence/outbox-event.typeorm-entity';
 
-const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
-if (!databaseUrl) throw new Error('MEETUP_TEST_DATABASE_URL is required');
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) throw new Error('DATABASE_URL is required');
 
 describe('BE-10, BE-11, BE-12, BE-19 and BE-20 PostgreSQL integration', () => {
   const schema = `chat_favorite_admin_${randomUUID().replaceAll('-', '')}`;

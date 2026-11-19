@@ -48,11 +48,11 @@ import { CreateOutboxEventsTable1760000006000 } from '../src/infrastructure/data
 import { AccessTokenGuard } from '../src/presentation/http/guards/access-token.guard';
 import { RolesGuard } from '../src/presentation/http/guards/roles.guard';
 
-const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
-const redisUrl = process.env.MEETUP_TEST_REDIS_URL ?? process.env.REDIS_URL;
+const databaseUrl = process.env.DATABASE_URL;
+const redisUrl = process.env.REDIS_URL;
 if (!databaseUrl || !redisUrl)
   throw new Error(
-    'MEETUP_TEST_DATABASE_URL and MEETUP_TEST_REDIS_URL are required',
+    'DATABASE_URL and REDIS_URL are required',
   );
 
 describe('Step 6 nearby HTTP flow over PostgreSQL + Redis', () => {

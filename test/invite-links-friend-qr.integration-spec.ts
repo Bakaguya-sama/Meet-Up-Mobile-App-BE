@@ -39,11 +39,11 @@ import { OutboxEventTypeOrmEntity } from '../src/infrastructure/outbox/persisten
 import { RedisRateLimiter } from '../src/infrastructure/redis/redis-rate-limiter.service';
 import { RedisService } from '../src/infrastructure/redis/redis.service';
 
-const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
-const redisUrl = process.env.MEETUP_TEST_REDIS_URL;
+const databaseUrl = process.env.DATABASE_URL;
+const redisUrl = process.env.REDIS_URL;
 if (!databaseUrl || !redisUrl) {
   throw new Error(
-    'MEETUP_TEST_DATABASE_URL and MEETUP_TEST_REDIS_URL are required for BE-33/BE-34 integration tests',
+    'DATABASE_URL and REDIS_URL are required for BE-33/BE-34 integration tests',
   );
 }
 

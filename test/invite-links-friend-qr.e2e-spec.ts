@@ -69,11 +69,11 @@ import { RolesGuard } from '../src/presentation/http/guards/roles.guard';
 import type { Request } from 'express';
 
 jest.setTimeout(30000);
-const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
-const redisUrl = process.env.MEETUP_TEST_REDIS_URL;
+const databaseUrl = process.env.DATABASE_URL;
+const redisUrl = process.env.REDIS_URL;
 if (!databaseUrl || !redisUrl) {
   throw new Error(
-    'MEETUP_TEST_DATABASE_URL and MEETUP_TEST_REDIS_URL are required for BE-33/BE-34 E2E tests',
+    'DATABASE_URL and REDIS_URL are required for BE-33/BE-34 E2E tests',
   );
 }
 

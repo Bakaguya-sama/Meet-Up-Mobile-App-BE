@@ -39,11 +39,22 @@ import { RecordRecommendationFeedbackUseCase } from '../src/bounded-contexts/rec
 import { TypeOrmRecommendationFeedbackLedger } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/typeorm-recommendation-feedback-ledger';
 import { RunRecommendationSnapshotRetentionUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/run-recommendation-snapshot-retention.use-case';
 import { TypeOrmRecommendationSnapshotRetention } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/typeorm-recommendation-snapshot-retention';
+import { TypeOrmOfflineEvaluationSource } from '../src/bounded-contexts/recommendations/infrastructure/persistence/typeorm/typeorm-offline-evaluation-source';
+import { OfflineDatasetBuilderService } from '../src/bounded-contexts/recommendations/application/offline/offline-dataset-builder.service';
+import { createOfflineEvaluator } from '../src/bounded-contexts/recommendations/application/offline/offline-evaluator.service';
+import { RECOMMENDATION_CONFIG_DEV_V1 } from '../src/bounded-contexts/recommendations/application/recommendation-config';
+import {
+  buildSyntheticOfflineMatrix,
+  stableUuid,
+  SYNTHETIC_CANDIDATES_PER_RUN,
+  SYNTHETIC_OFFLINE_RUN_COUNT,
+  SYNTHETIC_SHOWN_PER_MEMBER,
+} from './support/recommendation-offline-dataset.fixture';
 
-const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
+const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   throw new Error(
-    'MEETUP_TEST_DATABASE_URL is required for recommendation integration tests',
+    'DATABASE_URL is required for recommendation integration tests',
   );
 }
 
@@ -710,6 +721,183 @@ describe('Recommendation PostgreSQL repository and migration cycle', () => {
       places: [expect.objectContaining({ canonicalCandidateKey: key })],
     });
   });
+
+  it('builds a redacted, deterministic offline dataset from PostgreSQL snapshots and the feedback ledger', async () => {
+    const offlineRun = run({ requestedAt: new Date('2026-10-30T12:00:00.000Z') });
+    const candidateId = randomUUID();
+    const key = 'google-places:offline-cafe';
+    await repository.create(offlineRun);
+    await repository.complete(
+      offlineRun.id,
+      {
+        candidates: [{ ...candidate(offlineRun.id, candidateId), canonicalCandidateKey: key, providerPlaceId: 'private-provider-id', name: 'Private candidate name' }],
+        memberFeatures: [{ ...memberFeature(offlineRun.id, candidateId, participantId), canonicalCandidateKey: key, rankingUtility: 0.7, staticDurationSeconds: 280 }],
+        places: [place(offlineRun.id, candidateId, key, 1)],
+        effectiveK: 1,
+        warnings: ['OPENING_CONTEXT_UNKNOWN'],
+        randomSeed: 'offline-seed',
+        routeBatchCount: 1,
+        routeElementCount: 1,
+        routingPreferenceEffective: 'TRAFFIC_UNAWARE',
+        weatherPolicyEffective: 'OFF',
+        readyEventId: randomUUID(),
+      },
+      new Date('2026-10-30T12:00:01.000Z'),
+    );
+    const ledger = new RecordRecommendationFeedbackUseCase(
+      new TypeOrmRecommendationFeedbackLedger(db),
+    );
+    const shownEventId = randomUUID();
+    await ledger.impression(actorId, meetupId, offlineRun.id, { eventId: shownEventId, canonicalCandidateKey: key, rank: 1, shownAt: '2026-10-30T12:01:00.000Z' });
+    await ledger.feedback(actorId, meetupId, offlineRun.id, { eventId: randomUUID(), eventType: 'PLACE_VOTED', canonicalCandidateKey: key, occurredAt: '2026-10-30T12:02:00.000Z' });
+    const source = new TypeOrmOfflineEvaluationSource(db);
+    const buildInput = { from: new Date('2026-10-30T11:59:00.000Z'), to: new Date('2026-10-30T12:30:00.000Z'), generatedAt: new Date('2026-11-01T00:00:00.000Z') };
+    const builder = new OfflineDatasetBuilderService(source, 'postgres-test-salt');
+    const first = await builder.build(buildInput);
+    const second = await builder.build(buildInput);
+    const row = first.rows.find((value) => value.runId === offlineRun.id);
+    expect(row).toMatchObject({ canonicalCandidateKey: key, label: 2, groupSize: 1, category: 'cafe', algorithmVersion: 'recommendation-engine-v1', configVersion: 'recommendation-config-dev-v1' });
+    expect(row?.participantPseudonym).not.toContain(participantId);
+    expect(JSON.stringify(row)).not.toContain('private-provider-id');
+    expect(JSON.stringify(row)).not.toContain('Private candidate name');
+    expect(first.manifest.contentSha256).toBe(second.manifest.contentSha256);
+    await db.query(`INSERT INTO recommendation_run_holds (run_id, reason) VALUES ($1, 'evaluation')`, [offlineRun.id]);
+    await expect(db.query(`SELECT reason FROM recommendation_run_holds WHERE run_id = $1`, [offlineRun.id])).resolves.toEqual([{ reason: 'evaluation' }]);
+  });
+
+  it('seeds a deterministic 120-run synthetic matrix and evaluates thousands of persisted exposure rows', async () => {
+    const matrix = buildSyntheticOfflineMatrix();
+    const syntheticParticipants = Array.from({ length: 5 }, (_, index) => stableUuid(81, index + 1));
+    await db.query(
+      `INSERT INTO user_accounts (id, email, display_name, created_at, updated_at)
+       SELECT value::uuid, value || '@synthetic.invalid', 'Synthetic', NOW(), NOW()
+       FROM unnest($1::text[]) AS value
+       ON CONFLICT (id) DO NOTHING`,
+      [syntheticParticipants],
+    );
+    await db.query(
+      `INSERT INTO meetup_participants (id, meetup_id, user_id, status, invited_by_id, responded_at, joined_at)
+       SELECT value::uuid, $1, value::uuid, 'accepted', $2, NOW(), NOW()
+       FROM unnest($3::text[]) AS value
+       ON CONFLICT (id) DO NOTHING`,
+      [meetupId, actorId, syntheticParticipants],
+    );
+    const impressions: RecommendationImpressionEntity[] = [];
+    const feedback: RecommendationFeedbackEventEntity[] = [];
+    for (const fixture of matrix) {
+      const runId = stableUuid(82, fixture.runIndex + 1);
+      const syntheticRun = run({
+        id: runId,
+        requestId: stableUuid(83, fixture.runIndex + 1),
+        requestedK: SYNTHETIC_SHOWN_PER_MEMBER,
+        algorithmVersion: fixture.algorithmVersion,
+        configVersion: fixture.configVersion,
+        requestedAt: fixture.requestedAt,
+        scheduledAtSnapshot: new Date(fixture.requestedAt.getTime() + 9 * 60 * 60 * 1000),
+      });
+      await repository.create(syntheticRun);
+      const memberIds = syntheticParticipants.slice(0, fixture.groupSize);
+      const candidates = fixture.categories.map((category, candidateIndex) => {
+        const candidateId = stableUuid(84 + fixture.runIndex, candidateIndex + 1);
+        return {
+          ...candidate(runId, candidateId),
+          canonicalCandidateKey: `synthetic:${fixture.runIndex}:${candidateIndex}`,
+          providerPlaceId: `redacted-provider-${fixture.runIndex}-${candidateIndex}`,
+          name: `Synthetic ${category} ${candidateIndex}`,
+          providerTypes: [category],
+          sourceCategories: [category],
+          finalRank: candidateIndex + 1,
+          rating0To5: 4.9 - candidateIndex / 10,
+          avgEtaSeconds: 240 + candidateIndex * 90,
+          maxEtaSeconds: 300 + candidateIndex * 120,
+          scheduledOpeningStatus: candidateIndex === 0 ? 'UNKNOWN' as const : 'OPEN' as const,
+        };
+      });
+      const features = memberIds.flatMap((participant, participantIndex) =>
+        candidates.map((candidateRow, candidateIndex) => ({
+          ...memberFeature(runId, candidateRow.id, participant),
+          id: stableUuid(100 + fixture.runIndex, participantIndex * SYNTHETIC_CANDIDATES_PER_RUN + candidateIndex + 1),
+          canonicalCandidateKey: candidateRow.canonicalCandidateKey,
+          etaSeconds: candidateRow.avgEtaSeconds + participantIndex * 15,
+          distanceMeters: 400 + candidateIndex * 100,
+          staticDurationSeconds: candidateRow.avgEtaSeconds,
+          travelUtility: 0.9 - candidateIndex * 0.08,
+          preferenceUtility: candidateIndex === 4 ? 0.1 : 0.8 - candidateIndex * 0.05,
+          placeQualityUtility: 0.8,
+          memberUtility: 0.85 - candidateIndex * 0.07,
+          rankingUtility: 0.85 - candidateIndex * 0.07,
+        })),
+      );
+      const places = candidates.map((candidateRow, candidateIndex) => ({
+        ...place(runId, candidateRow.id, candidateRow.canonicalCandidateKey, candidateIndex + 1),
+        groupUtility: 0.85 - candidateIndex * 0.07,
+        candidateLeastMiseryUtility: 0.75 - candidateIndex * 0.07,
+        avgEtaSeconds: candidateRow.avgEtaSeconds,
+        maxEtaSeconds: candidateRow.maxEtaSeconds,
+        scheduledOpeningStatus: candidateRow.scheduledOpeningStatus,
+      }));
+      await repository.complete(
+        runId,
+        {
+          candidates,
+          memberFeatures: features,
+          places,
+          effectiveK: 5,
+          warnings: fixture.runIndex % 10 === 0 ? ['SYNTHETIC_MISSING_CONTEXT'] : [],
+          randomSeed: `synthetic-seed-${fixture.runIndex}`,
+          routeBatchCount: 1,
+          routeElementCount: features.length,
+          routingPreferenceEffective: 'TRAFFIC_UNAWARE',
+          weatherPolicyEffective: 'OFF',
+          readyEventId: stableUuid(200, fixture.runIndex + 1),
+        },
+        new Date(fixture.requestedAt.getTime() + 1_000),
+      );
+      for (const [participantIndex, participant] of memberIds.entries()) {
+        for (let rank = 1; rank <= SYNTHETIC_SHOWN_PER_MEMBER; rank += 1) {
+          const candidateRow = candidates[rank - 1]!;
+          impressions.push({
+            eventId: stableUuid(300 + fixture.runIndex, participantIndex * SYNTHETIC_SHOWN_PER_MEMBER + rank),
+            runId,
+            meetupParticipantId: participant,
+            canonicalCandidateKey: candidateRow.canonicalCandidateKey,
+            rank,
+            payloadHash: 'b'.repeat(64),
+            shownAt: new Date(fixture.requestedAt.getTime() + rank * 1_000),
+            createdAt: fixture.requestedAt,
+          });
+        }
+        feedback.push({ eventId: stableUuid(500 + fixture.runIndex, participantIndex * 3 + 1), runId, meetupParticipantId: participant, eventType: 'PLACE_VOTED', canonicalCandidateKey: candidates[1]!.canonicalCandidateKey, fromCanonicalCandidateKey: null, payloadHash: 'c'.repeat(64), occurredAt: new Date(fixture.requestedAt.getTime() + 10_000), metadata: {}, createdAt: fixture.requestedAt });
+        feedback.push({ eventId: stableUuid(500 + fixture.runIndex, participantIndex * 3 + 2), runId, meetupParticipantId: participant, eventType: 'NAVIGATION_OPENED', canonicalCandidateKey: candidates[2]!.canonicalCandidateKey, fromCanonicalCandidateKey: null, payloadHash: 'd'.repeat(64), occurredAt: new Date(fixture.requestedAt.getTime() + 11_000), metadata: {}, createdAt: fixture.requestedAt });
+      }
+      feedback.push({ eventId: stableUuid(500 + fixture.runIndex, 99), runId, meetupParticipantId: null, eventType: 'MEETUP_PLACE_SELECTED', canonicalCandidateKey: candidates[0]!.canonicalCandidateKey, fromCanonicalCandidateKey: null, payloadHash: 'e'.repeat(64), occurredAt: new Date(fixture.requestedAt.getTime() + 12_000), metadata: {}, createdAt: fixture.requestedAt });
+    }
+    await db.getRepository(RecommendationImpressionEntity).insert(impressions);
+    await db.getRepository(RecommendationFeedbackEventEntity).insert(feedback);
+    const source = new TypeOrmOfflineEvaluationSource(db);
+    const input = { from: new Date('2026-01-01T00:00:00.000Z'), to: new Date('2026-04-01T00:00:00.000Z'), generatedAt: new Date('2026-04-02T00:00:00.000Z') };
+    const dataset = await new OfflineDatasetBuilderService(source, 'matrix-salt').build(input);
+    const expectedMemberFeatures = matrix.reduce((total, fixture) => total + fixture.groupSize * SYNTHETIC_CANDIDATES_PER_RUN, 0);
+    const expectedImpressions = matrix.reduce((total, fixture) => total + fixture.groupSize * SYNTHETIC_SHOWN_PER_MEMBER, 0);
+    expect(expectedMemberFeatures).toBeGreaterThanOrEqual(2_000);
+    expect(expectedImpressions).toBeGreaterThanOrEqual(1_000);
+    const matrixRunIds = new Set(matrix.map((fixture) => stableUuid(82, fixture.runIndex + 1)));
+    expect(dataset.rows.filter((row) => matrixRunIds.has(row.runId))).toHaveLength(expectedImpressions);
+    expect(dataset.rows.some((row) => row.canonicalCandidateKey.endsWith(':5'))).toBe(false);
+    expect(dataset.rows.some((row) => row.label === 3)).toBe(true);
+    expect(dataset.rows.some((row) => row.label === 2)).toBe(true);
+    expect(dataset.rows.some((row) => row.label === 1)).toBe(true);
+    expect(dataset.rows.some((row) => row.label === 0)).toBe(true);
+    expect(dataset.dataQuality.notShownCandidateCount).toBeGreaterThanOrEqual(SYNTHETIC_OFFLINE_RUN_COUNT);
+    const report = await createOfflineEvaluator(source, RECOMMENDATION_CONFIG_DEV_V1).evaluate({ ...input, k: 5 });
+    expect(report.map((entry) => entry.strategy)).toEqual(['min-sum', 'min-max', 'fair-pareto-v1']);
+    report.forEach((entry) => {
+      expect(entry.status).toBe('OK');
+      expect(Object.keys(entry.breakdown.groupSize)).toEqual(expect.arrayContaining(['2', '3', '5']));
+      expect(Object.keys(entry.breakdown.category)).toEqual(expect.arrayContaining(['bar', 'cafe', 'movie_theater', 'park', 'restaurant']));
+      expect(Object.keys(entry.breakdown.algorithmConfigVersion)).toHaveLength(3);
+    });
+  }, 120_000);
 
   it('dry-runs and concurrently cleans only expired unprotected run roots', async () => {
     const expiredOne = run();

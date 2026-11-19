@@ -75,8 +75,8 @@ import { AccessTokenGuard } from '../src/presentation/http/guards/access-token.g
 import { RolesGuard } from '../src/presentation/http/guards/roles.guard';
 import type { Request } from 'express';
 
-const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
-if (!databaseUrl) throw new Error('MEETUP_TEST_DATABASE_URL is required');
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) throw new Error('DATABASE_URL is required');
 
 describe('BE-11, BE-19 and BE-20 HTTP over PostgreSQL', () => {
   const schema = `chat_favorite_admin_http_${randomUUID().replaceAll('-', '')}`;

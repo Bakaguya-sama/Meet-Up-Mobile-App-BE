@@ -25,8 +25,8 @@ import { UserAccountEntity } from '../src/bounded-contexts/auth/infrastructure/p
 import { TypeOrmUserDirectory } from '../src/bounded-contexts/auth/infrastructure/persistence/typeorm/typeorm-user-directory';
 import { InviteeEligibilityAdapter } from '../src/bounded-contexts/meetups/infrastructure/adapters/invitee-eligibility.adapter';
 
-const databaseUrl = process.env.MEETUP_TEST_DATABASE_URL;
-// Always create an isolated schema; never fall back to the application's DATABASE_URL.
+const databaseUrl = process.env.DATABASE_URL;
+// Each suite still creates an isolated schema in the local DATABASE_URL database.
 const integration = databaseUrl ? describe : describe.skip;
 
 integration('Meetup PostgreSQL transactions and migrations', () => {
