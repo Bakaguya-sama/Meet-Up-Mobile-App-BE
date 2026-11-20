@@ -64,7 +64,11 @@ export class TypeOrmMeetupRepository implements MeetupStorePort {
       const changedIds = new Set(
         meetup
           .pendingEvents()
-          .filter((event) => event.name === 'MeetupMemberChanged')
+          .filter(
+            (event) =>
+              event.name === 'MeetupMemberChanged' ||
+              event.name === 'PreferenceUpdated',
+          )
           .map((event) => event.userId),
       );
       const changed = rows.participants.filter((p) => changedIds.has(p.userId));

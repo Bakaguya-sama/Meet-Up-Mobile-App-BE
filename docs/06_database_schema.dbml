@@ -4,7 +4,7 @@
 
   Project MeetUp_Backend {
     database_type: 'PostgreSQL'
-    Note: 'Schema for the agreed project scope. Budget filter and Google priceLevel are intentionally excluded.'
+    Note: 'Meetup member budgets are stored as user inputs. Budget ranking/filter algorithm remains separately owned.'
   }
 
   Enum friendship_status {
@@ -217,6 +217,7 @@
     responded_at timestamptz
     joined_at timestamptz
     left_at timestamptz
+    budget_vnd integer [note: 'Optional per-member meetup budget in VND; CHECK 0..2147483647 (PostgreSQL int32 range). Passed into recommendation context.']
 
     Indexes {
       (meetup_id, user_id) [unique]

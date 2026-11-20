@@ -29,4 +29,6 @@ export class ParticipantEntity implements ParticipantState {
   joinedAt: Date | null;
   @Column('timestamptz', { name: 'left_at', nullable: true })
   leftAt: Date | null;
+  @Column('integer', { name: 'budget_vnd', nullable: true })
+  budgetVnd: number | null;
 }

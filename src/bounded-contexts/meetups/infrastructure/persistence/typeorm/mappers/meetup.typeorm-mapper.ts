@@ -35,6 +35,7 @@ export class MeetupTypeOrmMapper {
         respondedAt: p.respondedAt,
         joinedAt: p.joinedAt,
         leftAt: p.leftAt,
+        budgetVnd: p.budgetVnd ?? null,
         preferences: prefMap.get(p.id) ?? [],
       })),
     });
@@ -55,6 +56,7 @@ export class MeetupTypeOrmMapper {
             respondedAt: p.respondedAt,
             joinedAt: p.joinedAt,
             leftAt: p.leftAt,
+            budgetVnd: p.budgetVnd,
           },
           { meetupId: state.id },
         ),
