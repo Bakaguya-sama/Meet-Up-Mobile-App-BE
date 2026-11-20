@@ -128,6 +128,12 @@ export const meetupDetailSchema: SchemaObject = {
           respondedAt: nullableDate,
           joinedAt: nullableDate,
           leftAt: nullableDate,
+          budgetVnd: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 2147483647,
+            nullable: true,
+          },
         },
       },
     },
@@ -195,6 +201,17 @@ export const setMeetupPreferencesBodySchema: SchemaObject = {
   required: ['preferences'],
   additionalProperties: false,
   properties: {
+    budgetVnd: {
+      type: 'integer',
+      minimum: 0,
+      maximum: 2147483647,
+      nullable: true,
+    },
+    aiSuggestionId: {
+      ...uuid,
+      description:
+        'Suggestion ID returned by the AI draft endpoint; used only for privacy-safe telemetry.',
+    },
     preferences: {
       type: 'array',
       items: {
@@ -234,6 +251,12 @@ export const meetupMemberPreferenceSchema: SchemaObject = {
     meetupId: uuid,
     participantId: uuid,
     userId: uuid,
+    budgetVnd: {
+      type: 'integer',
+      minimum: 0,
+      maximum: 2147483647,
+      nullable: true,
+    },
     hasExplicitMeetupPreference: { type: 'boolean' },
     tags: {
       type: 'array',
@@ -263,6 +286,12 @@ export const meetupPreferencesSummarySchema: SchemaObject = {
         properties: {
           participantId: uuid,
           userId: uuid,
+          budgetVnd: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 2147483647,
+            nullable: true,
+          },
           status: {
             type: 'string',
             enum: ['invited', 'accepted', 'declined', 'left', 'removed'],

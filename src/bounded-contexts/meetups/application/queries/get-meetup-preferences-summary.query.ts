@@ -29,6 +29,7 @@ export class GetMeetupPreferencesSummaryQuery {
         return {
           participantId: p.id,
           userId: p.userId,
+          budgetVnd: p.budgetVnd ?? null,
           status: p.status,
           source: resolved.hasExplicitMeetupPreference
             ? ('meetup_input' as const)

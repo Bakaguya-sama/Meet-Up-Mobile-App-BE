@@ -32,6 +32,7 @@ export class TypeOrmMeetupPreferenceReader implements MeetupPreferenceReader {
         .map(async (p) => ({
           participantId: p.id,
           userId: p.userId,
+          budgetVnd: p.budgetVnd ?? null,
           ...(await resolveMeetupPreferences(p, activeTags, this.fallbackPort)),
         })),
     );

@@ -14,6 +14,7 @@ export interface ResolvedTagPreference {
 export interface ResolvedParticipantPreference {
   participantId: string;
   userId: string;
+  budgetVnd: number | null;
   hasExplicitMeetupPreference: boolean;
   tags: ResolvedTagPreference[];
 }

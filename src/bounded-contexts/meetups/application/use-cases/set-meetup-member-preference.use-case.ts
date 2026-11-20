@@ -3,18 +3,22 @@ import type { PreferenceTagInput } from '../dto/meetup-request.dto';
 import type { MeetupMemberPreferenceResponseDto } from '../dto/meetup-response.dto';
 import type { MeetupStorePort } from '../ports/persistence/meetup-store.port';
 import type { ProfilePreferenceFallbackPort } from '../ports/profile-preference-fallback.port';
+import type { PreferenceSuggestionTelemetryPort } from '../ports/preference-suggestion-telemetry.port';
 import { resolveMeetupPreferences } from '../services/resolve-meetup-preferences';
 
 export class SetMeetupMemberPreferenceUseCase {
   constructor(
     private readonly store: MeetupStorePort,
     private readonly fallbackPort: ProfilePreferenceFallbackPort,
+    private readonly telemetry?: PreferenceSuggestionTelemetryPort,
   ) {}
 
   async execute(
     actorId: string,
     meetupId: string,
     preferences: PreferenceTagInput[],
+    budgetVnd?: number | null,
+    aiSuggestionId?: string,
   ): Promise<MeetupMemberPreferenceResponseDto> {
     actorId = actorId.toLowerCase();
     const activeTags = await this.fallbackPort.getActiveTags();
@@ -37,10 +41,15 @@ export class SetMeetupMemberPreferenceUseCase {
         : null;
     const now = new Date();
     const state = await this.store.updateLocked(meetupId, (meetup) => {
-      meetup.setParticipantPreferences(actorId, preferences, now);
+      meetup.setParticipantPreferences(actorId, preferences, budgetVnd, now);
     });
 
     const participant = state.participants.find((p) => p.userId === actorId)!;
+    this.telemetry?.recordConfirmation({
+      ...(aiSuggestionId ? { suggestionId: aiSuggestionId } : {}),
+      usedAi: Boolean(aiSuggestionId),
+      finalTagIds: preferences.map((item) => item.activityTagId),
+    });
     const resolved = await resolveMeetupPreferences(
       participant,
       activeTags,
@@ -56,6 +65,7 @@ export class SetMeetupMemberPreferenceUseCase {
       meetupId: state.id,
       participantId: participant.id,
       userId: participant.userId,
+      budgetVnd: participant.budgetVnd ?? null,
       ...resolved,
     };
   }

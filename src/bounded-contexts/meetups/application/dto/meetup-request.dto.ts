@@ -1,8 +1,10 @@
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  ArrayMaxSize,
   ArrayUnique,
   IsArray,
+  IsBase64,
   IsIn,
   IsInt,
   IsISO8601,
@@ -71,7 +73,7 @@ export class CreateMeetupRequest extends InviteParticipantsRequest {
 }
 
 export class UpdateMeetupRequest {
-  @ValidateIf(optional)
+  @ValidateIf((_, value: unknown) => value !== undefined && value !== null)
   @Transform(trim)
   @IsString()
   @Length(1, 150)
@@ -137,6 +139,60 @@ export class SetMeetupPreferencesRequest {
   @ValidateNested({ each: true })
   @Type(() => PreferenceTagInput)
   preferences: PreferenceTagInput[];
+
+  @ValidateIf((_, value: unknown) => value !== undefined && value !== null)
+  @IsInt()
+  @Min(0)
+  @Max(2147483647)
+  budgetVnd?: number | null;
+
+  @ValidateIf((_, value: unknown) => value !== undefined)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsUUID('all')
+  aiSuggestionId?: string;
+}
+
+export class SuggestMeetupPreferencesRequest {
+  @ValidateIf((_, value: unknown) => value !== undefined && value !== null)
+  @Transform(trim)
+  @IsString()
+  @MaxLength(2000)
+  message?: string;
+
+  @ValidateIf((_, value: unknown) => value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(12)
+  @ValidateNested({ each: true })
+  @Type(() => PreferenceConversationTurnRequest)
+  conversation?: PreferenceConversationTurnRequest[];
+
+  @ValidateIf((_, value: unknown) => value !== undefined)
+  @IsBase64()
+  @MaxLength(2_800_000)
+  audioBase64?: string;
+
+  @ValidateIf((_, value: unknown) => value !== undefined)
+  @IsIn([
+    'audio/wav',
+    'audio/mp3',
+    'audio/mpeg',
+    'audio/ogg',
+    'audio/webm',
+    'audio/flac',
+    'audio/aac',
+  ])
+  audioMimeType?: string;
+}
+
+export class PreferenceConversationTurnRequest {
+  @IsIn(['user', 'assistant'])
+  role: 'user' | 'assistant';
+
+  @IsString()
+  @MaxLength(2000)
+  text: string;
 }
 
 export class CastMeetupVoteRequest {
