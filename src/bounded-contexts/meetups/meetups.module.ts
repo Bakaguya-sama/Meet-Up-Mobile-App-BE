@@ -56,6 +56,15 @@ import { ListMeetupHistoryQuery } from './application/queries/list-meetup-histor
 import { TypeOrmMeetupRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-repository';
 import { TypeOrmMeetupInviteLinkRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-invite-link.repository';
 import { MeetupsController } from './presentation/http/meetups.controller';
+import { SuggestMeetupPreferencesUseCase } from './application/use-cases/suggest-meetup-preferences.use-case';
+import { GeminiPreferenceSuggestionAdapter } from './infrastructure/adapters/gemini-preference-suggestion.adapter';
+import {
+  PREFERENCE_SUGGESTION_PROVIDER,
+  type PreferenceSuggestionProvider,
+} from './application/ports/preference-suggestion.port';
+import { PREFERENCE_SUGGESTION_TELEMETRY } from './application/ports/preference-suggestion-telemetry.port';
+import type { PreferenceSuggestionTelemetryPort } from './application/ports/preference-suggestion-telemetry.port';
+import { MeetupPreferenceSuggestionTelemetryAdapter } from './infrastructure/adapters/meetup-preference-suggestion-telemetry.adapter';
 import {
   MeetupInviteLinkAcceptController,
   MeetupInviteLinkPreviewController,
@@ -132,6 +141,49 @@ import {
       useClass: TypeOrmMeetupPreferenceReader,
     },
     {
+      provide: GeminiPreferenceSuggestionAdapter,
+      useFactory: (config: ConfigService) =>
+        new GeminiPreferenceSuggestionAdapter(
+          config.get<string>('aiPreference.geminiApiKey') ?? '',
+          config.get<string>('aiPreference.model') ?? 'gemini-2.5-flash-lite',
+          config.get<number>('aiPreference.timeoutMs') ?? 8_000,
+        ),
+      inject: [ConfigService],
+    },
+    {
+      provide: PREFERENCE_SUGGESTION_PROVIDER,
+      useExisting: GeminiPreferenceSuggestionAdapter,
+    },
+    {
+      provide: SuggestMeetupPreferencesUseCase,
+      useFactory: (
+        store: MeetupStorePort,
+        fallback: ProfilePreferenceFallbackPort,
+        provider: PreferenceSuggestionProvider,
+        telemetry: PreferenceSuggestionTelemetryPort,
+        config: ConfigService,
+      ) =>
+        new SuggestMeetupPreferencesUseCase(
+          store,
+          fallback,
+          provider,
+          telemetry,
+          config.get<boolean>('aiPreference.enabled') ?? false,
+        ),
+      inject: [
+        MEETUP_STORE,
+        PROFILE_PREFERENCE_FALLBACK,
+        PREFERENCE_SUGGESTION_PROVIDER,
+        PREFERENCE_SUGGESTION_TELEMETRY,
+        ConfigService,
+      ],
+    },
+    MeetupPreferenceSuggestionTelemetryAdapter,
+    {
+      provide: PREFERENCE_SUGGESTION_TELEMETRY,
+      useExisting: MeetupPreferenceSuggestionTelemetryAdapter,
+    },
+    {
       provide: CreateMeetupInviteLinkUseCase,
       useFactory: (store: MeetupInviteLinkStorePort, config: ConfigService) =>
         new CreateMeetupInviteLinkUseCase(
@@ -157,18 +209,29 @@ import {
       ) => new useCase(store, eligibility),
       inject: [MEETUP_STORE, INVITEE_ELIGIBILITY],
     })),
-    ...[
-      SetMeetupMemberPreferenceUseCase,
-      GetMeetupMemberPreferenceUseCase,
-      GetMeetupPreferencesSummaryQuery,
-    ].map((useCase) => ({
-      provide: useCase,
+    ...[GetMeetupMemberPreferenceUseCase, GetMeetupPreferencesSummaryQuery].map(
+      (useCase) => ({
+        provide: useCase,
+        useFactory: (
+          store: MeetupStorePort,
+          fallback: ProfilePreferenceFallbackPort,
+        ) => new useCase(store, fallback),
+        inject: [MEETUP_STORE, PROFILE_PREFERENCE_FALLBACK],
+      }),
+    ),
+    {
+      provide: SetMeetupMemberPreferenceUseCase,
       useFactory: (
         store: MeetupStorePort,
         fallback: ProfilePreferenceFallbackPort,
-      ) => new useCase(store, fallback),
-      inject: [MEETUP_STORE, PROFILE_PREFERENCE_FALLBACK],
-    })),
+        telemetry: PreferenceSuggestionTelemetryPort,
+      ) => new SetMeetupMemberPreferenceUseCase(store, fallback, telemetry),
+      inject: [
+        MEETUP_STORE,
+        PROFILE_PREFERENCE_FALLBACK,
+        PREFERENCE_SUGGESTION_TELEMETRY,
+      ],
+    },
     ...[
       UpdateMeetupUseCase,
       RespondInvitationUseCase,

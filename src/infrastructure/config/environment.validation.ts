@@ -90,10 +90,18 @@ const environmentSchema = Joi.object({
     .truthy('true')
     .falsy('false')
     .default(false),
+  MEETUP_PREFERENCE_AI_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
   GEMINI_API_KEY: Joi.when('AI_EXPLANATION_ENABLED', {
     is: true,
     then: Joi.string().min(1).required(),
-    otherwise: Joi.string().allow('').optional(),
+    otherwise: Joi.when('MEETUP_PREFERENCE_AI_ENABLED', {
+      is: true,
+      then: Joi.string().min(1).required(),
+      otherwise: Joi.string().allow('').optional(),
+    }),
   }),
   AI_EXPLANATION_PROMPT_VERSION: Joi.string().valid('v1').default('v1'),
   NEARBY_RADIUS_METERS: Joi.number()

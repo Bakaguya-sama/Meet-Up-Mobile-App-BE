@@ -36,6 +36,7 @@ import {
   InviteParticipantsRequest,
   MeetupPageRequest,
   SetMeetupPreferencesRequest,
+  SuggestMeetupPreferencesRequest,
   CastMeetupVoteRequest,
   FinalizeMeetupRequest,
   UpdateMeetupRequest,
@@ -69,6 +70,7 @@ import {
 import { CastMeetupVoteUseCase } from '../../application/use-cases/cast-meetup-vote.use-case';
 import { FinalizeMeetupUseCase } from '../../application/use-cases/finalize-meetup.use-case';
 import { ListMeetupHistoryQuery } from '../../application/queries/list-meetup-history.query';
+import { SuggestMeetupPreferencesUseCase } from '../../application/use-cases/suggest-meetup-preferences.use-case';
 
 @ApiTags('Meetups')
 @ApiBearerAuth()
@@ -105,6 +107,7 @@ export class MeetupsController {
     private readonly castVote: CastMeetupVoteUseCase,
     private readonly finalizeMeetup: FinalizeMeetupUseCase,
     private readonly listMeetupHistory: ListMeetupHistoryQuery,
+    private readonly suggestMeetupPreferences: SuggestMeetupPreferencesUseCase,
   ) {}
 
   @Post()
@@ -306,7 +309,45 @@ export class MeetupsController {
       actorId,
       meetupId,
       body.preferences,
+      body.budgetVnd,
+      body.aiSuggestionId,
     );
+  }
+
+  @Post(':meetupId/preferences/suggest')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary:
+      'Draft meetup preferences from text or audio for member confirmation',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        message: { type: 'string', maxLength: 2000 },
+        conversation: { type: 'array', maxItems: 12 },
+        audioBase64: { type: 'string', maxLength: 2800000 },
+        audioMimeType: { type: 'string' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'AI draft, clarification question, or manual fallback',
+  })
+  suggestMyPreference(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+    @Body() body: SuggestMeetupPreferencesRequest,
+  ) {
+    return this.suggestMeetupPreferences.execute(actorId, meetupId, {
+      message: body.message,
+      conversation: body.conversation,
+      ...(body.audioBase64 && body.audioMimeType
+        ? { audio: { data: body.audioBase64, mimeType: body.audioMimeType } }
+        : {}),
+    });
   }
 
   @Get(':meetupId/preferences/summary')
