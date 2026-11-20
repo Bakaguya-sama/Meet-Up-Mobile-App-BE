@@ -37,11 +37,12 @@ Các function đã thực hiện không bị mặc định là “đạt”. Bư
 - Impression/feedback, observability/replay, offline dataset/evaluation và LTR lifecycle. [Nguồn: workbook — `Chức năng BE`, BE-21, BE-24 đến BE-26; Doc 12 — Mục 9–10, 14]
 - AI explanation tùy chọn và nearby friend detection theo phạm vi đã ghi trong sheet. [Nguồn: workbook — `Chức năng BE`, BE-18, BE-27]
 - Closing-soon soft ranking, viewer-aware result, link mời meetup và QR kết bạn hybrid. [Nguồn: workbook — `Chức năng BE`, BE-31 đến BE-34; Doc 02 — BR-22 đến BR-26]
+- Input mở rộng meetup: per-member budget được lưu/chuyển vào context, AI draft text/audio có xác nhận và dataset OSM tại TP.HCM; không thay scoring baseline. [Nguồn: `22_places_budget_ai_preferences.md`]
 
 ### 1.3. Ngoài phạm vi
 
 - Function không có trong sheet; microservice, Kafka hoặc RabbitMQ. [Nguồn: `09_cong_nghe_su_dung.md` — Mục 1, 10]
-- Budget filter, Google `priceLevel` hoặc `PricePenalty`. [Nguồn: workbook — `Giới thiệu`; `06_database_schema.dbml` — Project note]
+- Thực thi Budget filter, Google `priceLevel` hoặc `PricePenalty` trong công thức rank. Per-member budget là input được lưu và chuyển vào recommendation context theo yêu cầu mở rộng hiện tại; xem `22_places_budget_ai_preferences.md`.
 - GPS history, multi-stop routing, calendar/FreeBusy, reinforcement learning và real-time model update. [Nguồn: Doc 12 — Mục 1.5]
 - Future-traffic second pass tại thời điểm khởi hành, travel mode ngoài `TWO_WHEELER`/`DRIVE`, multi-place-provider retrieval trong cùng một run và diversity re-ranking. [Nguồn: Doc 12 — Mục 1.5, 4.5, 8.4, 13, 16.2]
 - Admin report handling, admin metrics UI và admin health UI không được đưa vào BE-19 vì sheet chỉ giao khóa/mở khóa tài khoản và audit. [Nguồn: workbook — `Chức năng BE`, BE-19; đối chiếu `07_usecase_admin.puml`]

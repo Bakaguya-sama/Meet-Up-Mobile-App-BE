@@ -29,6 +29,7 @@ Các tài liệu dùng thuật ngữ tiếng Việt khi có thể. Những tên 
 | `19_be10_voting_delivery.md` | Contract vote/finalize theo displayed run, transactional outbox và bằng chứng Bước 4. |
 | `20_be12_meetup_history.md` | API lịch sử meetup, quyền xem và snapshot địa điểm đã chốt theo BE-12. |
 | `21_step6_nearby_admin_ai_delivery.md` | Contract, luồng, Redis keys, privacy, Gemini fallback và bằng chứng triển khai Bước 6. |
+| `22_places_budget_ai_preferences.md` | Dataset OSM TP.HCM, budget từng participant, AI draft text/audio, xác nhận và telemetry privacy-safe. |
 
 ## Cách dùng nhanh
 
@@ -45,9 +46,9 @@ Meetup không giới hạn số thành viên ở cấp sản phẩm. Engine v1 k
 
 Các quyết định mở rộng đã khóa gồm: địa điểm còn mở nhưng sắp đóng chỉ bị cảnh báo và hạ hạng mềm; mọi participant được thấy ETA nhưng chỉ thấy preference/utility của chính mình; cùng GET recommendation run được dùng trước và sau vote. Link mời meetup dùng token hash bền vững có expiry/revoke. QR kết bạn dùng hybrid giữa public handle ổn định và phiên tạm thời Redis TTL; không lưu ảnh QR và không tự kết bạn khi quét.
 
-Sở thích profile chỉ là giá trị mặc định. Khi tạo hoặc nhận meetup, mỗi người chọn sở thích tạm thời cho meetup; lựa chọn này là dữ liệu chính để xếp hạng.
+Sở thích profile chỉ là giá trị mặc định. Mỗi participant có thể chọn sở thích tạm thời và nhập `budgetVnd` cho meetup. Budget được chuyển vào recommendation context, còn cách dùng nó trong thuật toán thuộc phần triển khai riêng.
 
-Budget filter và PricePenalty không nằm trong phạm vi vì `priceLevel` của Google Places là mức phân loại tham khảo, không đủ đáng tin để quyết định hoặc hạ hạng địa điểm. Giọng nói và gợi ý theo thời tiết vẫn là phần mở rộng. AI chỉ nhận dữ liệu tổng hợp của nhóm và kết quả xếp hạng; không gửi tọa độ chính xác hoặc lịch sử GPS cho dịch vụ AI.
+AI có thể tạo bản nháp sở thích/ngân sách từ text hoặc audio, hỏi làm rõ và chỉ lưu sau khi người dùng xác nhận. Data địa điểm mẫu khoảng 1.000 nơi dùng OpenStreetMap và có attribution/ODbL trong artifact. `priceLevel`/`priceRange` không được suy ra nếu OSM không có tag tương ứng. Chi tiết contract và cách chạy nằm trong `22_places_budget_ai_preferences.md`.
 # Chat media configuration
 
 Set `CLOUDINARY_ENABLED=true` and provide `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to enable image/file uploads. `FILE_STORAGE_ROOT_FOLDER` (default: `mobile-meetup`) is the shared Cloudinary root namespace, while `CHAT_MEDIA_FOLDER` (default: `chat`) is the namespace beneath it used by chat uploads. This lets a deployment choose a complete prefix such as `mobile-meetup/chat` without changing bounded-context code. Keep the API secret only in the backend environment. With the flag unset or false, text chat remains available and file uploads return a service-unavailable response. The backend stores assets as authenticated Cloudinary resources and returns signed download links that expire after 15 minutes. If the Cloudinary product environment blocks PDF/archive delivery, allow those delivery formats in the Cloudinary security settings.
