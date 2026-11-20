@@ -26,7 +26,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:integration": "jest --config ./test/jest-integration.json --runInBand",
-    "recommendation:offline-evaluate": "ts-node -r tsconfig-paths/register src/scripts/recommendation-offline-evaluate.ts"
+    "recommendation:offline-evaluate": "ts-node -r tsconfig-paths/register src/scripts/recommendation-offline-evaluate.ts",
+    "places:collect-hcmc": "ts-node -r tsconfig-paths/register src/scripts/collect-hcmc-places.ts"
   },
   "engines": {
     "node": ">=22"
