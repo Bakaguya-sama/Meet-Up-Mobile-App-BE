@@ -5,6 +5,7 @@ import type { MeetupPreferencePort } from '../ports/meetup-preference.port';
 
 export interface RecommendationMemberContext {
   participantId: string;
+  budgetVnd: number | null;
   latitude: number;
   longitude: number;
   travelMode: 'TWO_WHEELER';
@@ -58,7 +59,10 @@ export class RecommendationContextBuilder {
     const preferencesByParticipant = new Map(
       effectivePreferences.map((value) => [
         value.participantId.toLowerCase(),
-        value.tags.map((tag) => ({ ...tag })),
+        {
+          tags: value.tags.map((tag) => ({ ...tag })),
+          budgetVnd: value.budgetVnd,
+        },
       ]),
     );
     const locationByUserId = new Map(
@@ -78,7 +82,11 @@ export class RecommendationContextBuilder {
                 // Q20 has no persisted/member API source yet; do not infer it.
                 travelMode: 'TWO_WHEELER' as const,
                 preferences:
-                  preferencesByParticipant.get(member.participantId) ?? [],
+                  preferencesByParticipant.get(member.participantId)?.tags ??
+                  [],
+                budgetVnd:
+                  preferencesByParticipant.get(member.participantId)
+                    ?.budgetVnd ?? null,
               },
             ]
           : [];
