@@ -9,10 +9,15 @@ export interface PreferenceSuggestionTelemetryPort {
     outcome: 'proposal' | 'clarification' | 'manual_fallback';
     suggestedTagIds: number[];
     durationMs: number;
+    revision?: number;
+    reason?: string;
+    promptVersion?: string;
   }): void;
   recordConfirmation(input: {
     suggestionId?: string;
     usedAi: boolean;
     finalTagIds: number[];
+    durationMs?: number;
+    revision?: number;
   }): void;
 }
