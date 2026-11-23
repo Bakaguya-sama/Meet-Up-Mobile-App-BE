@@ -27,6 +27,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ADMIN_SELF_LOCK: HttpStatus.CONFLICT,
         ACTIVITY_TAG_NOT_FOUND: HttpStatus.NOT_FOUND,
         INVALID_INPUT: HttpStatus.BAD_REQUEST,
+        PREFERENCE_DRAFT_NOT_FOUND: HttpStatus.NOT_FOUND,
+        PREFERENCE_DRAFT_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
         INVALID_PREFERENCE_LEVEL: HttpStatus.BAD_REQUEST,
         SELF_FRIENDSHIP: HttpStatus.BAD_REQUEST,
         FRIEND_USER_NOT_FOUND: HttpStatus.NOT_FOUND,

@@ -38,8 +38,17 @@ export const configuration = () => ({
   aiPreference: {
     enabled: process.env.MEETUP_PREFERENCE_AI_ENABLED === 'true',
     geminiApiKey: process.env.GEMINI_API_KEY ?? '',
-    model: 'gemini-2.5-flash-lite',
-    timeoutMs: 8_000,
+    model: process.env.MEETUP_PREFERENCE_AI_MODEL ?? 'gemini-2.5-flash-lite',
+    timeoutMs: Number(process.env.MEETUP_PREFERENCE_AI_TIMEOUT_MS ?? 8000),
+    sessionTtlSeconds: Number(
+      process.env.MEETUP_PREFERENCE_AI_SESSION_TTL_SECONDS ?? 900,
+    ),
+    requestsPerMinute: Number(
+      process.env.MEETUP_PREFERENCE_AI_REQUESTS_PER_MINUTE ?? 6,
+    ),
+    requestsPerDay: Number(
+      process.env.MEETUP_PREFERENCE_AI_REQUESTS_PER_DAY ?? 60,
+    ),
   },
   nearby: {
     radiusMeters: Number(process.env.NEARBY_RADIUS_METERS ?? 3_000),

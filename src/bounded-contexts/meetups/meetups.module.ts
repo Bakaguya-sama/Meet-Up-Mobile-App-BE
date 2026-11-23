@@ -66,6 +66,16 @@ import { PREFERENCE_SUGGESTION_TELEMETRY } from './application/ports/preference-
 import type { PreferenceSuggestionTelemetryPort } from './application/ports/preference-suggestion-telemetry.port';
 import { MeetupPreferenceSuggestionTelemetryAdapter } from './infrastructure/adapters/meetup-preference-suggestion-telemetry.adapter';
 import {
+  PREFERENCE_DRAFT_STORE,
+  type PreferenceDraftStore,
+} from './application/ports/preference-draft-store.port';
+import {
+  PREFERENCE_AUDIO,
+  type PreferenceAudioPort,
+} from './application/ports/preference-audio.port';
+import { RedisPreferenceDraftStore } from './infrastructure/adapters/redis-preference-draft.store';
+import { PreferenceAudioAdapter } from './infrastructure/adapters/preference-audio.adapter';
+import {
   MeetupInviteLinkAcceptController,
   MeetupInviteLinkPreviewController,
   MeetupInviteLinksController,
@@ -92,6 +102,8 @@ import {
     MeetupInviteLinkAcceptController,
   ],
   providers: [
+    { provide: PREFERENCE_DRAFT_STORE, useClass: RedisPreferenceDraftStore },
+    { provide: PREFERENCE_AUDIO, useClass: PreferenceAudioAdapter },
     { provide: MEETUP_STORE, useClass: TypeOrmMeetupRepository },
     {
       provide: MEETUP_VOTING_UNIT_OF_WORK,
@@ -162,6 +174,8 @@ import {
         provider: PreferenceSuggestionProvider,
         telemetry: PreferenceSuggestionTelemetryPort,
         config: ConfigService,
+        sessions: PreferenceDraftStore,
+        audio: PreferenceAudioPort,
       ) =>
         new SuggestMeetupPreferencesUseCase(
           store,
@@ -169,6 +183,9 @@ import {
           provider,
           telemetry,
           config.get<boolean>('aiPreference.enabled') ?? false,
+          sessions,
+          audio,
+          config.get<number>('aiPreference.sessionTtlSeconds') ?? 900,
         ),
       inject: [
         MEETUP_STORE,
@@ -176,6 +193,8 @@ import {
         PREFERENCE_SUGGESTION_PROVIDER,
         PREFERENCE_SUGGESTION_TELEMETRY,
         ConfigService,
+        PREFERENCE_DRAFT_STORE,
+        PREFERENCE_AUDIO,
       ],
     },
     MeetupPreferenceSuggestionTelemetryAdapter,
@@ -225,11 +244,19 @@ import {
         store: MeetupStorePort,
         fallback: ProfilePreferenceFallbackPort,
         telemetry: PreferenceSuggestionTelemetryPort,
-      ) => new SetMeetupMemberPreferenceUseCase(store, fallback, telemetry),
+        drafts: PreferenceDraftStore,
+      ) =>
+        new SetMeetupMemberPreferenceUseCase(
+          store,
+          fallback,
+          telemetry,
+          drafts,
+        ),
       inject: [
         MEETUP_STORE,
         PROFILE_PREFERENCE_FALLBACK,
         PREFERENCE_SUGGESTION_TELEMETRY,
+        PREFERENCE_DRAFT_STORE,
       ],
     },
     ...[

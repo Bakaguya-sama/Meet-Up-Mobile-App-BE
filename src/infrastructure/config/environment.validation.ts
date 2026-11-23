@@ -103,6 +103,30 @@ const environmentSchema = Joi.object({
       otherwise: Joi.string().allow('').optional(),
     }),
   }),
+  MEETUP_PREFERENCE_AI_MODEL: Joi.string()
+    .pattern(/^[a-zA-Z0-9._-]+$/)
+    .max(100)
+    .default('gemini-2.5-flash-lite'),
+  MEETUP_PREFERENCE_AI_TIMEOUT_MS: Joi.number()
+    .integer()
+    .min(1000)
+    .max(15000)
+    .default(8000),
+  MEETUP_PREFERENCE_AI_SESSION_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(60)
+    .max(1800)
+    .default(900),
+  MEETUP_PREFERENCE_AI_REQUESTS_PER_MINUTE: Joi.number()
+    .integer()
+    .min(1)
+    .max(30)
+    .default(6),
+  MEETUP_PREFERENCE_AI_REQUESTS_PER_DAY: Joi.number()
+    .integer()
+    .min(1)
+    .max(1000)
+    .default(60),
   AI_EXPLANATION_PROMPT_VERSION: Joi.string().valid('v1').default('v1'),
   NEARBY_RADIUS_METERS: Joi.number()
     .integer()
