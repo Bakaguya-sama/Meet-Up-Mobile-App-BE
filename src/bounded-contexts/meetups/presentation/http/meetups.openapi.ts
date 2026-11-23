@@ -210,8 +210,9 @@ export const setMeetupPreferencesBodySchema: SchemaObject = {
     aiSuggestionId: {
       ...uuid,
       description:
-        'Suggestion ID returned by the AI draft endpoint; used only for privacy-safe telemetry.',
+        'Server-owned proposal session ID. Pair with aiSuggestionRevision; single-use and expires.',
     },
+    aiSuggestionRevision: { type: 'integer', minimum: 0 },
     preferences: {
       type: 'array',
       items: {

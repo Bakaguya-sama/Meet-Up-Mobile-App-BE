@@ -5,6 +5,7 @@ import {
   ArrayUnique,
   IsArray,
   IsBase64,
+  IsBoolean,
   IsIn,
   IsInt,
   IsISO8601,
@@ -136,6 +137,8 @@ export class PreferenceTagInput {
 
 export class SetMeetupPreferencesRequest {
   @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique((item: PreferenceTagInput | null) => item?.activityTagId)
   @ValidateNested({ each: true })
   @Type(() => PreferenceTagInput)
   preferences: PreferenceTagInput[];
@@ -152,21 +155,35 @@ export class SetMeetupPreferencesRequest {
   )
   @IsUUID('all')
   aiSuggestionId?: string;
+
+  @ValidateIf(optional)
+  @IsInt()
+  @Min(0)
+  aiSuggestionRevision?: number;
 }
 
 export class SuggestMeetupPreferencesRequest {
-  @ValidateIf((_, value: unknown) => value !== undefined && value !== null)
+  @ValidateIf(optional)
   @Transform(trim)
   @IsString()
   @MaxLength(2000)
   message?: string;
 
-  @ValidateIf((_, value: unknown) => value !== undefined)
-  @IsArray()
-  @ArrayMaxSize(12)
-  @ValidateNested({ each: true })
-  @Type(() => PreferenceConversationTurnRequest)
-  conversation?: PreferenceConversationTurnRequest[];
+  @ValidateIf(optional)
+  @IsUUID('all')
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  suggestionId?: string;
+
+  @ValidateIf(optional)
+  @IsInt()
+  @Min(0)
+  revision?: number;
+
+  @ValidateIf(optional)
+  @IsBoolean()
+  skipBudget?: boolean;
 
   @ValidateIf((_, value: unknown) => value !== undefined)
   @IsBase64()
@@ -182,17 +199,9 @@ export class SuggestMeetupPreferencesRequest {
     'audio/webm',
     'audio/flac',
     'audio/aac',
+    'audio/m4a',
   ])
   audioMimeType?: string;
-}
-
-export class PreferenceConversationTurnRequest {
-  @IsIn(['user', 'assistant'])
-  role: 'user' | 'assistant';
-
-  @IsString()
-  @MaxLength(2000)
-  text: string;
 }
 
 export class CastMeetupVoteRequest {

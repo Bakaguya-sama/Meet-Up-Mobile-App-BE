@@ -71,6 +71,11 @@ import { CastMeetupVoteUseCase } from '../../application/use-cases/cast-meetup-v
 import { FinalizeMeetupUseCase } from '../../application/use-cases/finalize-meetup.use-case';
 import { ListMeetupHistoryQuery } from '../../application/queries/list-meetup-history.query';
 import { SuggestMeetupPreferencesUseCase } from '../../application/use-cases/suggest-meetup-preferences.use-case';
+import { MeetupError } from '../../domain/errors/meetup.error';
+import {
+  preferenceSuggestionRequestSchema,
+  preferenceSuggestionResponseSchema,
+} from './preference-suggestion.openapi';
 
 @ApiTags('Meetups')
 @ApiBearerAuth()
@@ -311,6 +316,7 @@ export class MeetupsController {
       body.preferences,
       body.budgetVnd,
       body.aiSuggestionId,
+      body.aiSuggestionRevision,
     );
   }
 
@@ -321,29 +327,27 @@ export class MeetupsController {
     summary:
       'Draft meetup preferences from text or audio for member confirmation',
   })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        message: { type: 'string', maxLength: 2000 },
-        conversation: { type: 'array', maxItems: 12 },
-        audioBase64: { type: 'string', maxLength: 2800000 },
-        audioMimeType: { type: 'string' },
-      },
-    },
-  })
-  @ApiOkResponse({
-    description: 'AI draft, clarification question, or manual fallback',
-  })
+  @ApiBody({ schema: preferenceSuggestionRequestSchema })
+  @ApiOkResponse({ schema: preferenceSuggestionResponseSchema })
   suggestMyPreference(
     @CurrentUser('id') actorId: string,
     @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
     @Body() body: SuggestMeetupPreferencesRequest,
   ) {
+    if (
+      (body.audioBase64 === undefined) !==
+      (body.audioMimeType === undefined)
+    ) {
+      throw new MeetupError(
+        'INVALID_INPUT',
+        'audioBase64 and audioMimeType must be sent together',
+      );
+    }
     return this.suggestMeetupPreferences.execute(actorId, meetupId, {
       message: body.message,
-      conversation: body.conversation,
+      suggestionId: body.suggestionId,
+      revision: body.revision,
+      skipBudget: body.skipBudget,
       ...(body.audioBase64 && body.audioMimeType
         ? { audio: { data: body.audioBase64, mimeType: body.audioMimeType } }
         : {}),

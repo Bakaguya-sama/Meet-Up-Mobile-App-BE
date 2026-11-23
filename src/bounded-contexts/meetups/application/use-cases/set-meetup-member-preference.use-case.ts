@@ -5,12 +5,21 @@ import type { MeetupStorePort } from '../ports/persistence/meetup-store.port';
 import type { ProfilePreferenceFallbackPort } from '../ports/profile-preference-fallback.port';
 import type { PreferenceSuggestionTelemetryPort } from '../ports/preference-suggestion-telemetry.port';
 import { resolveMeetupPreferences } from '../services/resolve-meetup-preferences';
+import type {
+  PreferenceDraftSession,
+  PreferenceDraftStore,
+} from '../ports/preference-draft-store.port';
+import {
+  draftVersion,
+  memberDraftVersion,
+} from '../services/preference-draft-version';
 
 export class SetMeetupMemberPreferenceUseCase {
   constructor(
     private readonly store: MeetupStorePort,
     private readonly fallbackPort: ProfilePreferenceFallbackPort,
     private readonly telemetry?: PreferenceSuggestionTelemetryPort,
+    private readonly drafts?: PreferenceDraftStore,
   ) {}
 
   async execute(
@@ -19,9 +28,22 @@ export class SetMeetupMemberPreferenceUseCase {
     preferences: PreferenceTagInput[],
     budgetVnd?: number | null,
     aiSuggestionId?: string,
+    aiSuggestionRevision?: number,
   ): Promise<MeetupMemberPreferenceResponseDto> {
     actorId = actorId.toLowerCase();
-    const activeTags = await this.fallbackPort.getActiveTags();
+    meetupId = meetupId.toLowerCase();
+    if (
+      (aiSuggestionId === undefined) !==
+      (aiSuggestionRevision === undefined)
+    ) {
+      throw new MeetupError(
+        'INVALID_INPUT',
+        'Pair aiSuggestionId with aiSuggestionRevision',
+      );
+    }
+    const activeTags = (await this.fallbackPort.getActiveTags()).sort(
+      (a, b) => a.id - b.id,
+    );
     const activeTagMap = new Map(activeTags.map((t) => [t.id, t]));
 
     for (const item of preferences) {
@@ -40,16 +62,80 @@ export class SetMeetupMemberPreferenceUseCase {
         ? await this.fallbackPort.getProfilePreference(actorId)
         : null;
     const now = new Date();
-    const state = await this.store.updateLocked(meetupId, (meetup) => {
+    let draft: PreferenceDraftSession | null = null;
+    if (aiSuggestionId) {
+      try {
+        draft =
+          (await this.drafts?.consume(
+            aiSuggestionId,
+            actorId,
+            meetupId,
+            aiSuggestionRevision!,
+          )) ?? null;
+      } catch {
+        throw new MeetupError(
+          'PREFERENCE_DRAFT_UNAVAILABLE',
+          'Draft confirmation is temporarily unavailable; manual input is still available',
+        );
+      }
+      if (!draft)
+        throw new MeetupError(
+          'PREFERENCE_DRAFT_CONFLICT',
+          'Draft is expired, used, busy or belongs to another revision',
+        );
+    }
+    const state = await this.store.updateLocked(meetupId, async (meetup) => {
+      if (draft) {
+        const current = meetup.snapshot();
+        const member = current.participants.find((p) => p.userId === actorId);
+        if (
+          !member ||
+          draft.baseVersion !== memberDraftVersion(current, actorId) ||
+          draft.taxonomyVersion !== draftVersion(activeTags)
+        ) {
+          throw new MeetupError(
+            'PREFERENCE_DRAFT_STALE',
+            'Preferences or meetup changed; review a new draft',
+          );
+        }
+        const effective = await resolveMeetupPreferences(
+          member,
+          activeTags,
+          this.fallbackPort,
+        );
+        if (
+          draft.profileVersion !==
+          draftVersion(
+            effective.tags
+              .map(({ activityTagId, level }) => ({ activityTagId, level }))
+              .sort((a, b) => a.activityTagId - b.activityTagId),
+          )
+        ) {
+          throw new MeetupError(
+            'PREFERENCE_DRAFT_STALE',
+            'Profile preferences changed; review a new draft',
+          );
+        }
+      }
       meetup.setParticipantPreferences(actorId, preferences, budgetVnd, now);
     });
 
     const participant = state.participants.find((p) => p.userId === actorId)!;
-    this.telemetry?.recordConfirmation({
-      ...(aiSuggestionId ? { suggestionId: aiSuggestionId } : {}),
-      usedAi: Boolean(aiSuggestionId),
-      finalTagIds: preferences.map((item) => item.activityTagId),
-    });
+    try {
+      this.telemetry?.recordConfirmation({
+        ...(aiSuggestionId ? { suggestionId: aiSuggestionId } : {}),
+        usedAi: draft !== null,
+        finalTagIds: preferences.map((item) => item.activityTagId),
+        ...(draft
+          ? {
+              durationMs: Date.now() - draft.createdAt,
+              revision: draft.revision,
+            }
+          : {}),
+      });
+    } catch {
+      /* Measurement must not turn a committed save into an error. */
+    }
     const resolved = await resolveMeetupPreferences(
       participant,
       activeTags,
