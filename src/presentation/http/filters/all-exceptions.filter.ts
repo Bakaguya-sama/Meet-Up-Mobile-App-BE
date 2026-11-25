@@ -28,6 +28,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ACTIVITY_TAG_NOT_FOUND: HttpStatus.NOT_FOUND,
         INVALID_INPUT: HttpStatus.BAD_REQUEST,
         PREFERENCE_DRAFT_NOT_FOUND: HttpStatus.NOT_FOUND,
+        PREFERENCE_DRAFT_CONFLICT: HttpStatus.CONFLICT,
+        PREFERENCE_DRAFT_STALE: HttpStatus.CONFLICT,
         PREFERENCE_DRAFT_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
         INVALID_PREFERENCE_LEVEL: HttpStatus.BAD_REQUEST,
         SELF_FRIENDSHIP: HttpStatus.BAD_REQUEST,

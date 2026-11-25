@@ -191,10 +191,6 @@ export class SuggestMeetupPreferencesUseCase {
     }
     let lease: string | null = null;
     try {
-      if (!(await this.sessions.allowRequest(actorId))) {
-        record('manual_fallback', 'rate_limited');
-        return render('manual_fallback', 'rate_limited');
-      }
       lease = await this.sessions.acquire(session.id);
       if (!lease)
         throw new MeetupError(
@@ -272,6 +268,13 @@ export class SuggestMeetupPreferencesUseCase {
       const audio = input.audio
         ? await this.audio.validate(input.audio)
         : undefined;
+      if (!(await this.sessions.allowRequest(actorId))) {
+        session.mode = 'manual_fallback';
+        session.revision++;
+        await this.sessions.save(session, lease);
+        record('manual_fallback', 'rate_limited');
+        return render('manual_fallback', 'rate_limited');
+      }
       // Reserve the turn before calling the provider; failures also consume a turn.
       session.turns++;
       session.revision++;
