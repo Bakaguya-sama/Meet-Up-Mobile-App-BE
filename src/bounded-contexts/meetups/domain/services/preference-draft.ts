@@ -35,10 +35,22 @@ export class InvalidPreferenceExtraction extends Error {
 const normalize = (text: string) =>
   text.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
 
+const FOREIGN_CURRENCY =
+  /(?:[$€£¥฿₩]|(?:^|[^\p{L}])(?:usd|dollars?|eur|euros?|thb|baht|jpy|yen|cny|yuan|rmb|sgd|aud|gbp|cad|krw|won|inr|rupees?|myr|ringgit|php|peso|đô(?:\s+la)?|ngoại tệ)(?=$|[^\p{L}]))/iu;
+const GROUP_BUDGET_SCOPE =
+  /(?:cả\s+nhóm|tổng\s+(?:tiền\s+)?(?:nhóm|group)|(?:cho|của)\s+(?:cả\s+)?(?:nhóm|team|mọi\s+người)|chia\s+đều|cho\s+\d+\s+người|nhóm\s+\d+\s+người|budget\s+(?:for|of)\s+(?:the\s+)?group|\bgroup\b)/iu;
+const PERSONAL_BUDGET_SCOPE =
+  /(?:mỗi\s+(?:người|bạn|thành\s+viên)|đầu\s+người|\/\s*người|per\s+person|riêng\s+(?:tôi|mình|tui|em|anh|chị))/iu;
+
 /** Accept one unambiguous VND amount; uncertain ranges/words need a follow-up. */
 export function parseBudgetVnd(evidence: string): number | null {
   const text = normalize(evidence);
-  if (/\$|usd|eur|đô|cả nhóm|tổng nhóm|(?:^|\s)-\s*\d/.test(text)) return null;
+  if (
+    FOREIGN_CURRENCY.test(text) ||
+    (GROUP_BUDGET_SCOPE.test(text) && !PERSONAL_BUDGET_SCOPE.test(text)) ||
+    /(?:^|\s)-\s*\d/.test(text)
+  )
+    return null;
   if (/nửa triệu/.test(text) && !/\d/.test(text)) return 500_000;
   const amounts: number[] = [];
   const pattern =
@@ -49,6 +61,9 @@ export function parseBudgetVnd(evidence: string): number | null {
     const value = Number(
       thousands ? numeric.replace(/[.,]/g, '') : numeric.replace(',', '.'),
     );
+    // A small bare number is ambiguous in Vietnamese chat (e.g. 500 vs 500k).
+    // Larger integers can safely be interpreted as VND; explicit units always win.
+    if (!unit && value > 0 && value < 10_000) return null;
     const multiplier =
       unit === 'triệu' || unit === 'tr'
         ? 1_000_000
@@ -150,8 +165,8 @@ export function validatePreferenceExtraction(
       )
         fail();
       if (
-        /cả nhóm|tổng nhóm|cho nhóm|chia đều/.test(source) &&
-        !/mỗi người|\/người|riêng (tôi|mình|tui)/.test(source)
+        GROUP_BUDGET_SCOPE.test(source) &&
+        !PERSONAL_BUDGET_SCOPE.test(source)
       )
         fail();
     } else if (budget.amountVnd !== null) fail();

@@ -34,7 +34,16 @@ describe('Preference draft rules', () => {
   ])('normalizes %s without inventing a cap', (text, expected) => {
     expect(parseBudgetVnd(text)).toBe(expected);
   });
-  it.each(['100-200k', 'rẻ', '50 usd', '200k cả nhóm', '-100k'])(
+  it.each([
+    '100-200k',
+    'rẻ',
+    '50 usd',
+    '200k cả nhóm',
+    '-100k',
+    '500',
+    '50 EUR',
+    '200k group',
+  ])(
     'rejects ambiguous or invalid money %s',
     (text) => {
       expect(parseBudgetVnd(text)).toBeNull();
