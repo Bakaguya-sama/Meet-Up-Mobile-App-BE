@@ -341,24 +341,39 @@ export interface SetMeetupPreferencesRequest {
   preferences: MeetupPreferenceInput[];
   budgetVnd?: number | null;
   aiSuggestionId?: UUID;
+  aiSuggestionRevision?: number;
 }
 
 export interface SuggestMeetupPreferencesRequest {
   message?: string;
-  conversation?: Array<{ role: 'user' | 'assistant'; text: string }>;
+  suggestionId?: UUID;
+  revision?: number;
+  skipBudget?: boolean;
   audioBase64?: string;
-  audioMimeType?: 'audio/wav' | 'audio/mp3' | 'audio/mpeg' | 'audio/ogg' | 'audio/webm' | 'audio/flac' | 'audio/aac';
+  audioMimeType?: 'audio/wav' | 'audio/mp3' | 'audio/mpeg' | 'audio/ogg' | 'audio/webm' | 'audio/flac' | 'audio/aac' | 'audio/m4a';
 }
 
 export interface SuggestMeetupPreferencesResponse {
+  schemaVersion: 2;
   mode: 'clarification' | 'proposal' | 'manual_fallback';
-  suggestionId?: UUID;
+  suggestionId: UUID;
+  revision: number;
+  expiresAt: ISODateTime;
   replyText: string;
   readyToConfirm: boolean;
+  // Full explicit selection to PUT. [] keeps profile fallback.
   preferences: MeetupPreferenceInput[];
+  // Display values, including profile fallback.
+  effectivePreferences: MeetupPreferenceInput[];
   budgetVnd: number | null;
+  budgetAction: 'keep' | 'set' | 'clear';
+  clarification: 'none' | 'activity' | 'budget' | 'budget_scope' | 'unsupported';
   saved: false;
-  availableTags?: Array<{ activityTagId: number; tagCode: string; displayName: string }>;
+  availableTags: Array<{ activityTagId: number; tagCode: string; displayName: string }>;
+  transcript?: string;
+  fallbackReason?: string;
+  // Present only for proposal. PUT only after explicit user review/confirmation.
+  confirmation?: SetMeetupPreferencesRequest;
 }
 
 export interface MeetupPreferenceTagResponse extends UserPreferenceTagResponse {
