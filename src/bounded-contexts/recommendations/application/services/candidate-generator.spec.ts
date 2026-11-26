@@ -33,6 +33,10 @@ class ScriptedPlaceBoundary implements PlaceSearchPort {
     const page = this.pages.shift() ?? { candidates: [] };
     return page instanceof Error ? Promise.reject(page) : Promise.resolve(page);
   }
+
+  getDetails() {
+    return Promise.resolve(null);
+  }
 }
 
 const candidate = (id: string, categories: string[]) => ({

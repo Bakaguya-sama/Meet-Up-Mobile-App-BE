@@ -22,6 +22,7 @@ import {
 import { FindPlaceCandidatesUseCase } from './application/use-cases/find-place-candidates.use-case';
 import { CreateRecommendationRunUseCase } from './application/use-cases/create-recommendation-run.use-case';
 import { GetRecommendationRunUseCase } from './application/use-cases/get-recommendation-run.use-case';
+import { GetRecommendationPlaceDetailsUseCase } from './application/use-cases/get-recommendation-place-details.use-case';
 import { RecommendationContextBuilder } from './application/services/recommendation-context.builder';
 import { CandidateGenerator } from './application/services/candidate-generator';
 import { recommendationConfigForEnvironment } from './application/recommendation-config';
@@ -417,6 +418,14 @@ import { GeminiAiExplanationAdapter } from './infrastructure/adapters/gemini-ai-
         RecommendationRunFreshnessGuard,
         MeetupMembershipReader,
       ],
+    },
+    {
+      provide: GetRecommendationPlaceDetailsUseCase,
+      useFactory: (
+        getRun: GetRecommendationRunUseCase,
+        places: PlaceSearchPort,
+      ) => new GetRecommendationPlaceDetailsUseCase(getRun, places),
+      inject: [GetRecommendationRunUseCase, PLACE_SEARCH],
     },
     {
       provide: MEETUP_LOCATION,

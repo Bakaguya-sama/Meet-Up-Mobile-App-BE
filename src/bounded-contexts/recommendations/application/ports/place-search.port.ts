@@ -17,9 +17,19 @@ export interface PlaceCandidate {
   providerPlaceId: string;
   name: string;
   categories: string[];
+  primaryTypeDisplayName?: string;
   latitude: number;
   longitude: number;
   formattedAddress?: string;
+  nationalPhoneNumber?: string;
+  websiteUri?: string;
+  googleMapsUri?: string;
+  priceLevel?:
+    | 'PRICE_LEVEL_FREE'
+    | 'PRICE_LEVEL_INEXPENSIVE'
+    | 'PRICE_LEVEL_MODERATE'
+    | 'PRICE_LEVEL_EXPENSIVE'
+    | 'PRICE_LEVEL_VERY_EXPENSIVE';
   rating?: number;
   userRatingCount?: number;
   openingHours?: { openNow?: boolean };
@@ -50,4 +60,5 @@ export interface PlaceSearchPage {
 export interface PlaceSearchPort {
   search(input: PlaceSearchInput): Promise<PlaceCandidate[]>;
   searchPage(input: PlaceSearchInput): Promise<PlaceSearchPage>;
+  getDetails(providerPlaceId: string): Promise<PlaceCandidate | null>;
 }

@@ -17,4 +17,12 @@ export class PlaceSearchAdapter implements PlaceSearchPort {
     void input;
     return Promise.resolve({ candidates: [...this.candidates] });
   }
+
+  getDetails(providerPlaceId: string): Promise<PlaceCandidate | null> {
+    return Promise.resolve(
+      this.candidates.find(
+        (candidate) => candidate.providerPlaceId === providerPlaceId,
+      ) ?? null,
+    );
+  }
 }

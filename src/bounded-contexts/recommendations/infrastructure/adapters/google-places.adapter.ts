@@ -11,12 +11,37 @@ import { PLACE_SEARCH_REQUEST_OPTIONS_VERSION } from '../../application/ports/pl
 import { RecommendationError } from '../../domain/recommendation.error';
 
 const TEXT_SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
+const PLACE_DETAILS_URL = 'https://places.googleapis.com/v1/places';
+const PLACE_DETAILS_FIELD_MASK = [
+  'id',
+  'displayName',
+  'primaryTypeDisplayName',
+  'types',
+  'location',
+  'formattedAddress',
+  'nationalPhoneNumber',
+  'websiteUri',
+  'googleMapsUri',
+  'priceLevel',
+  'rating',
+  'userRatingCount',
+  'businessStatus',
+  'currentOpeningHours',
+  'regularOpeningHours',
+  'utcOffsetMinutes',
+  'timeZone',
+];
 const BASE_FIELD_MASK = [
   'places.id',
   'places.displayName',
+  'places.primaryTypeDisplayName',
   'places.types',
   'places.location',
   'places.formattedAddress',
+  'places.nationalPhoneNumber',
+  'places.websiteUri',
+  'places.googleMapsUri',
+  'places.priceLevel',
   'places.rating',
   'places.userRatingCount',
   'places.businessStatus',
@@ -39,9 +64,14 @@ export type PlacesFetch = (
 interface GooglePlace {
   id?: unknown;
   displayName?: { text?: unknown };
+  primaryTypeDisplayName?: { text?: unknown };
   types?: unknown;
   location?: { latitude?: unknown; longitude?: unknown };
   formattedAddress?: unknown;
+  nationalPhoneNumber?: unknown;
+  websiteUri?: unknown;
+  googleMapsUri?: unknown;
+  priceLevel?: unknown;
   rating?: unknown;
   userRatingCount?: unknown;
   currentOpeningHours?: GoogleOpeningHours;
@@ -83,6 +113,57 @@ export class GooglePlacesAdapter implements PlaceSearchPort {
     return (await this.searchPage(input)).candidates;
   }
 
+  async getDetails(providerPlaceId: string): Promise<PlaceCandidate | null> {
+    if (!this.apiKey) {
+      throw new RecommendationError(
+        'PLACE_SEARCH_UNAVAILABLE',
+        'Google Places API is not configured',
+      );
+    }
+    const placeId = providerPlaceId.startsWith('places/')
+      ? providerPlaceId.slice('places/'.length)
+      : providerPlaceId;
+    if (
+      !placeId ||
+      placeId === '.' ||
+      placeId === '..' ||
+      /[\/\\\u0000-\u001F\u007F]/.test(placeId)
+    ) {
+      return null;
+    }
+
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      try {
+        const response = await this.request(
+          `${PLACE_DETAILS_URL}/${encodeURIComponent(placeId)}?languageCode=vi&regionCode=VN`,
+          {
+            method: 'GET',
+            headers: {
+              'X-Goog-Api-Key': this.apiKey,
+              'X-Goog-FieldMask': PLACE_DETAILS_FIELD_MASK.join(','),
+            },
+            signal: AbortSignal.timeout(this.timeoutMs),
+          },
+        );
+        if (response.status === 404) return null;
+        if (!response.ok) {
+          if (response.status < 500 && response.status !== 429) break;
+          throw new Error(`Google Places Details HTTP ${response.status}`);
+        }
+        const place = (await response.json()) as GooglePlace;
+        return toCandidate(place, true, this.now());
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    void lastError;
+    throw new RecommendationError(
+      'PLACE_SEARCH_UNAVAILABLE',
+      'Google Places could not load place details',
+    );
+  }
+
   async searchPage(input: PlaceSearchInput): Promise<PlaceSearchPage> {
     if (!this.apiKey) {
       throw new RecommendationError(
@@ -110,6 +191,8 @@ export class GooglePlacesAdapter implements PlaceSearchPort {
           },
           body: JSON.stringify({
             textQuery: input.query,
+            languageCode: 'vi',
+            regionCode: 'VN',
             includedType: input.includedType ?? input.query,
             strictTypeFiltering: true,
             pageSize: 20,
@@ -184,11 +267,24 @@ function toCandidate(
     categories: Array.isArray(place.types)
       ? place.types.filter((type): type is string => typeof type === 'string')
       : [],
+    ...(typeof place.primaryTypeDisplayName?.text === 'string'
+      ? { primaryTypeDisplayName: place.primaryTypeDisplayName.text }
+      : {}),
     latitude: place.location.latitude,
     longitude: place.location.longitude,
     ...(typeof place.formattedAddress === 'string'
       ? { formattedAddress: place.formattedAddress }
       : {}),
+    ...(nonEmptyString(place.nationalPhoneNumber)
+      ? { nationalPhoneNumber: place.nationalPhoneNumber }
+      : {}),
+    ...(nonEmptyString(place.websiteUri)
+      ? { websiteUri: place.websiteUri }
+      : {}),
+    ...(nonEmptyString(place.googleMapsUri)
+      ? { googleMapsUri: place.googleMapsUri }
+      : {}),
+    ...(isPriceLevel(place.priceLevel) ? { priceLevel: place.priceLevel } : {}),
     ...(typeof place.rating === 'number' && Number.isFinite(place.rating)
       ? { rating: place.rating }
       : {}),
@@ -207,6 +303,25 @@ function toCandidate(
       ? { businessStatus: place.businessStatus }
       : {}),
   };
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isPriceLevel(
+  value: unknown,
+): value is NonNullable<PlaceCandidate['priceLevel']> {
+  return (
+    typeof value === 'string' &&
+    [
+      'PRICE_LEVEL_FREE',
+      'PRICE_LEVEL_INEXPENSIVE',
+      'PRICE_LEVEL_MODERATE',
+      'PRICE_LEVEL_EXPENSIVE',
+      'PRICE_LEVEL_VERY_EXPENSIVE',
+    ].includes(value)
+  );
 }
 
 function scheduledOpeningFields(place: GooglePlace, retrievedAt: Date) {

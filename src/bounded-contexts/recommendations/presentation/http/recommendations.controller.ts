@@ -27,6 +27,7 @@ import { FindPlaceCandidatesUseCase } from '../../application/use-cases/find-pla
 import { CreateRecommendationRunRequest } from '../../application/dto/recommendation-run.dto';
 import { CreateRecommendationRunUseCase } from '../../application/use-cases/create-recommendation-run.use-case';
 import { GetRecommendationRunUseCase } from '../../application/use-cases/get-recommendation-run.use-case';
+import { GetRecommendationPlaceDetailsUseCase } from '../../application/use-cases/get-recommendation-place-details.use-case';
 import { RecordRecommendationFeedbackUseCase } from '../../application/use-cases/record-recommendation-feedback.use-case';
 import {
   RecordRecommendationFeedbackRequest,
@@ -49,6 +50,7 @@ export class RecommendationsController {
     private readonly findCandidates: FindPlaceCandidatesUseCase,
     private readonly createRun: CreateRecommendationRunUseCase,
     private readonly getRun: GetRecommendationRunUseCase,
+    private readonly getPlaceDetailsUseCase: GetRecommendationPlaceDetailsUseCase,
     private readonly feedback: RecordRecommendationFeedbackUseCase,
     private readonly replay: ReplayRecommendationRunUseCase,
     private readonly aiExplanations: GetAiExplanationsUseCase,
@@ -89,9 +91,23 @@ export class RecommendationsController {
               providerPlaceId: { type: 'string' },
               name: { type: 'string' },
               categories: { type: 'array', items: { type: 'string' } },
+              primaryTypeDisplayName: { type: 'string' },
               latitude: { type: 'number' },
               longitude: { type: 'number' },
               formattedAddress: { type: 'string' },
+              nationalPhoneNumber: { type: 'string' },
+              websiteUri: { type: 'string', format: 'uri' },
+              googleMapsUri: { type: 'string', format: 'uri' },
+              priceLevel: {
+                type: 'string',
+                enum: [
+                  'PRICE_LEVEL_FREE',
+                  'PRICE_LEVEL_INEXPENSIVE',
+                  'PRICE_LEVEL_MODERATE',
+                  'PRICE_LEVEL_EXPENSIVE',
+                  'PRICE_LEVEL_VERY_EXPENSIVE',
+                ],
+              },
               rating: { type: 'number' },
               openingHours: {
                 type: 'object',
@@ -145,6 +161,63 @@ export class RecommendationsController {
     @Param('runId', new ParseUUIDPipe()) runId: string,
   ) {
     return this.getRun.execute(actorId, meetupId, runId);
+  }
+
+  @Get(':meetupId/recommendation-runs/:runId/place-details')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({
+    summary: 'Load live Google Places details for ranked results in a run',
+  })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      required: ['runId', 'items'],
+      properties: {
+        runId: { type: 'string', format: 'uuid' },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['rank', 'canonicalCandidateKey', 'details'],
+            properties: {
+              rank: { type: 'integer', minimum: 1 },
+              canonicalCandidateKey: { type: 'string' },
+              details: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  providerPlaceId: { type: 'string' },
+                  name: { type: 'string' },
+                  primaryTypeDisplayName: { type: 'string' },
+                  categories: { type: 'array', items: { type: 'string' } },
+                  latitude: { type: 'number' },
+                  longitude: { type: 'number' },
+                  formattedAddress: { type: 'string' },
+                  nationalPhoneNumber: { type: 'string' },
+                  websiteUri: { type: 'string', format: 'uri' },
+                  googleMapsUri: { type: 'string', format: 'uri' },
+                  priceLevel: { type: 'string' },
+                  rating: { type: 'number' },
+                  userRatingCount: { type: 'integer' },
+                  businessStatus: { type: 'string' },
+                  currentOpeningHours: { type: 'object' },
+                  regularOpeningHours: { type: 'object' },
+                  timeZoneId: { type: 'string' },
+                  utcOffsetMinutes: { type: 'integer' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  getPlaceDetails(
+    @CurrentUser('id') actorId: string,
+    @Param('meetupId', new ParseUUIDPipe()) meetupId: string,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
+  ) {
+    return this.getPlaceDetailsUseCase.execute(actorId, meetupId, runId);
   }
 
   @Post(':meetupId/recommendation-runs/:runId/impressions')
