@@ -37,6 +37,7 @@ export interface ParticipantState {
   respondedAt: Date | null;
   joinedAt: Date | null;
   leftAt: Date | null;
+  budgetVnd?: number | null;
   preferences?: ParticipantPreferenceState[];
 }
 
@@ -136,6 +137,7 @@ export class Meetup {
           respondedAt: new Date(now),
           joinedAt: new Date(now),
           leftAt: null,
+          budgetVnd: null,
           preferences: [],
         },
         ...input.invitees.map((p): ParticipantState => ({
@@ -145,6 +147,7 @@ export class Meetup {
           respondedAt: null,
           joinedAt: null,
           leftAt: null,
+          budgetVnd: null,
           preferences: [],
         })),
       ],
@@ -285,6 +288,7 @@ export class Meetup {
       respondedAt: new Date(now),
       joinedAt: new Date(now),
       leftAt: null,
+      budgetVnd: null,
       preferences: [],
     };
     participant.status = 'accepted';
@@ -317,6 +321,7 @@ export class Meetup {
         respondedAt: null,
         joinedAt: null,
         leftAt: null,
+        budgetVnd: previous?.budgetVnd ?? null,
       };
       if (previous) Object.assign(previous, participant);
       else this.state.participants.push(participant);
@@ -495,6 +500,7 @@ export class Meetup {
   setParticipantPreferences(
     actorId: string,
     items: Array<{ activityTagId: number; level: PreferenceLevel }>,
+    budgetVnd: number | null | undefined,
     now: Date,
   ): void {
     this.assertVisible(actorId);
@@ -512,6 +518,19 @@ export class Meetup {
       );
     }
     validatePreferences(items);
+    if (
+      budgetVnd !== undefined &&
+      budgetVnd !== null &&
+      (!Number.isSafeInteger(budgetVnd) ||
+        budgetVnd < 0 ||
+        budgetVnd > 2_147_483_647)
+    ) {
+      throw new MeetupError(
+        'INVALID_INPUT',
+        'Budget must be between 0 and 2147483647 VND',
+      );
+    }
+    if (budgetVnd !== undefined) participant.budgetVnd = budgetVnd;
     participant.preferences = items.map((item) => ({
       activityTagId: item.activityTagId,
       level: item.level,

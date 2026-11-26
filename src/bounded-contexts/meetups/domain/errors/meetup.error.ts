@@ -2,6 +2,10 @@ import { DomainError } from '../../../../shared-kernel/domain/domain-error';
 
 export type MeetupErrorCode =
   | 'INVALID_INPUT'
+  | 'PREFERENCE_DRAFT_NOT_FOUND'
+  | 'PREFERENCE_DRAFT_CONFLICT'
+  | 'PREFERENCE_DRAFT_STALE'
+  | 'PREFERENCE_DRAFT_UNAVAILABLE'
   | 'MEETUP_NOT_FOUND'
   | 'MEETUP_FORBIDDEN'
   | 'MEETUP_NOT_EDITABLE'

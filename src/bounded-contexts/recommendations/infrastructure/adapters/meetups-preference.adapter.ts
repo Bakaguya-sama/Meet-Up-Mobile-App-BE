@@ -8,6 +8,7 @@ export class MeetupsPreferenceAdapter implements MeetupPreferencePort {
     const values = await this.reader.getEffectivePreferences(meetupId);
     return values.map((value) => ({
       participantId: value.participantId,
+      budgetVnd: value.budgetVnd,
       tags: value.tags.map((tag) => ({
         tagCode: tag.tagCode,
         level: tag.level,

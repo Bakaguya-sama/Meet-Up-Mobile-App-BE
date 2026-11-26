@@ -36,6 +36,7 @@ export class GetMeetupMemberPreferenceUseCase {
       meetupId: state.id,
       participantId: participant.id,
       userId: participant.userId,
+      budgetVnd: participant.budgetVnd ?? null,
       ...resolved,
     };
   }

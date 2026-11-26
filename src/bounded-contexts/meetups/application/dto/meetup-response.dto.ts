@@ -19,6 +19,7 @@ export interface MeetupMemberPreferenceResponseDto {
   meetupId: string;
   participantId: string;
   userId: string;
+  budgetVnd: number | null;
   hasExplicitMeetupPreference: boolean;
   tags: MeetupMemberPreferenceTagDto[];
 }
@@ -26,6 +27,7 @@ export interface MeetupMemberPreferenceResponseDto {
 export interface ParticipantPreferenceSummaryItemDto {
   participantId: string;
   userId: string;
+  budgetVnd: number | null;
   status: ParticipantStatus;
   hasExplicitMeetupPreference: boolean;
   source: PreferenceSource;
@@ -79,6 +81,7 @@ function toParticipant(state: ParticipantState) {
     respondedAt: state.respondedAt?.toISOString() ?? null,
     joinedAt: state.joinedAt?.toISOString() ?? null,
     leftAt: state.leftAt?.toISOString() ?? null,
+    budgetVnd: state.budgetVnd ?? null,
     preferences: (state.preferences ?? []).map((p) => ({
       activityTagId: p.activityTagId,
       level: p.level,

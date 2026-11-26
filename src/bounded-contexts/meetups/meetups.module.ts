@@ -56,6 +56,25 @@ import { ListMeetupHistoryQuery } from './application/queries/list-meetup-histor
 import { TypeOrmMeetupRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-repository';
 import { TypeOrmMeetupInviteLinkRepository } from './infrastructure/persistence/typeorm/typeorm-meetup-invite-link.repository';
 import { MeetupsController } from './presentation/http/meetups.controller';
+import { SuggestMeetupPreferencesUseCase } from './application/use-cases/suggest-meetup-preferences.use-case';
+import { GeminiPreferenceSuggestionAdapter } from './infrastructure/adapters/gemini-preference-suggestion.adapter';
+import {
+  PREFERENCE_SUGGESTION_PROVIDER,
+  type PreferenceSuggestionProvider,
+} from './application/ports/preference-suggestion.port';
+import { PREFERENCE_SUGGESTION_TELEMETRY } from './application/ports/preference-suggestion-telemetry.port';
+import type { PreferenceSuggestionTelemetryPort } from './application/ports/preference-suggestion-telemetry.port';
+import { MeetupPreferenceSuggestionTelemetryAdapter } from './infrastructure/adapters/meetup-preference-suggestion-telemetry.adapter';
+import {
+  PREFERENCE_DRAFT_STORE,
+  type PreferenceDraftStore,
+} from './application/ports/preference-draft-store.port';
+import {
+  PREFERENCE_AUDIO,
+  type PreferenceAudioPort,
+} from './application/ports/preference-audio.port';
+import { RedisPreferenceDraftStore } from './infrastructure/adapters/redis-preference-draft.store';
+import { PreferenceAudioAdapter } from './infrastructure/adapters/preference-audio.adapter';
 import {
   MeetupInviteLinkAcceptController,
   MeetupInviteLinkPreviewController,
@@ -83,6 +102,8 @@ import {
     MeetupInviteLinkAcceptController,
   ],
   providers: [
+    { provide: PREFERENCE_DRAFT_STORE, useClass: RedisPreferenceDraftStore },
+    { provide: PREFERENCE_AUDIO, useClass: PreferenceAudioAdapter },
     { provide: MEETUP_STORE, useClass: TypeOrmMeetupRepository },
     {
       provide: MEETUP_VOTING_UNIT_OF_WORK,
@@ -132,6 +153,56 @@ import {
       useClass: TypeOrmMeetupPreferenceReader,
     },
     {
+      provide: GeminiPreferenceSuggestionAdapter,
+      useFactory: (config: ConfigService) =>
+        new GeminiPreferenceSuggestionAdapter(
+          config.get<string>('aiPreference.geminiApiKey') ?? '',
+          config.get<string>('aiPreference.model') ?? 'gemini-2.5-flash-lite',
+          config.get<number>('aiPreference.timeoutMs') ?? 8_000,
+        ),
+      inject: [ConfigService],
+    },
+    {
+      provide: PREFERENCE_SUGGESTION_PROVIDER,
+      useExisting: GeminiPreferenceSuggestionAdapter,
+    },
+    {
+      provide: SuggestMeetupPreferencesUseCase,
+      useFactory: (
+        store: MeetupStorePort,
+        fallback: ProfilePreferenceFallbackPort,
+        provider: PreferenceSuggestionProvider,
+        telemetry: PreferenceSuggestionTelemetryPort,
+        config: ConfigService,
+        sessions: PreferenceDraftStore,
+        audio: PreferenceAudioPort,
+      ) =>
+        new SuggestMeetupPreferencesUseCase(
+          store,
+          fallback,
+          provider,
+          telemetry,
+          config.get<boolean>('aiPreference.enabled') ?? false,
+          sessions,
+          audio,
+          config.get<number>('aiPreference.sessionTtlSeconds') ?? 900,
+        ),
+      inject: [
+        MEETUP_STORE,
+        PROFILE_PREFERENCE_FALLBACK,
+        PREFERENCE_SUGGESTION_PROVIDER,
+        PREFERENCE_SUGGESTION_TELEMETRY,
+        ConfigService,
+        PREFERENCE_DRAFT_STORE,
+        PREFERENCE_AUDIO,
+      ],
+    },
+    MeetupPreferenceSuggestionTelemetryAdapter,
+    {
+      provide: PREFERENCE_SUGGESTION_TELEMETRY,
+      useExisting: MeetupPreferenceSuggestionTelemetryAdapter,
+    },
+    {
       provide: CreateMeetupInviteLinkUseCase,
       useFactory: (store: MeetupInviteLinkStorePort, config: ConfigService) =>
         new CreateMeetupInviteLinkUseCase(
@@ -157,18 +228,37 @@ import {
       ) => new useCase(store, eligibility),
       inject: [MEETUP_STORE, INVITEE_ELIGIBILITY],
     })),
-    ...[
-      SetMeetupMemberPreferenceUseCase,
-      GetMeetupMemberPreferenceUseCase,
-      GetMeetupPreferencesSummaryQuery,
-    ].map((useCase) => ({
-      provide: useCase,
+    ...[GetMeetupMemberPreferenceUseCase, GetMeetupPreferencesSummaryQuery].map(
+      (useCase) => ({
+        provide: useCase,
+        useFactory: (
+          store: MeetupStorePort,
+          fallback: ProfilePreferenceFallbackPort,
+        ) => new useCase(store, fallback),
+        inject: [MEETUP_STORE, PROFILE_PREFERENCE_FALLBACK],
+      }),
+    ),
+    {
+      provide: SetMeetupMemberPreferenceUseCase,
       useFactory: (
         store: MeetupStorePort,
         fallback: ProfilePreferenceFallbackPort,
-      ) => new useCase(store, fallback),
-      inject: [MEETUP_STORE, PROFILE_PREFERENCE_FALLBACK],
-    })),
+        telemetry: PreferenceSuggestionTelemetryPort,
+        drafts: PreferenceDraftStore,
+      ) =>
+        new SetMeetupMemberPreferenceUseCase(
+          store,
+          fallback,
+          telemetry,
+          drafts,
+        ),
+      inject: [
+        MEETUP_STORE,
+        PROFILE_PREFERENCE_FALLBACK,
+        PREFERENCE_SUGGESTION_TELEMETRY,
+        PREFERENCE_DRAFT_STORE,
+      ],
+    },
     ...[
       UpdateMeetupUseCase,
       RespondInvitationUseCase,

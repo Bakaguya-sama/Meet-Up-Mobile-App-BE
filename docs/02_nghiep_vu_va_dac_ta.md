@@ -54,6 +54,8 @@ Không lưu ảnh QR trong database. PostgreSQL chỉ lưu public handle và fri
 
 Profile có thể lưu sở thích dài hạn để gợi ý trong form, nhưng giá trị điền sẵn không tự trở thành lựa chọn meetup nếu người dùng chưa xác nhận. Khi tạo hoặc nhận meetup, mỗi người có thể chọn một số tag hoạt động/bối cảnh với mức `high`, `normal`, `avoid`. Nếu đã chọn ít nhất một tag, chỉ những tag đã chọn được dùng; tag khác không tính và không lấy thêm từ profile. Nếu chưa chọn tag nào, dùng các tag đã lưu trong `UserPreference` làm `profile_fallback`. Không có tag trong cả hai nguồn thì không có preference để tính; không tự coi là `normal`. Xóa toàn bộ lựa chọn meetup sẽ trở lại fallback profile.
 
+Mỗi participant có thể khai báo `budgetVnd` (số nguyên VND, 0–2.147.483.647) cho meetup. Đây là dữ liệu đầu vào riêng theo thành viên, được lưu cùng participant và chuyển nguyên trạng vào recommendation context; cách engine sử dụng ngân sách thuộc phần thuật toán riêng. AI chỉ tạo bản nháp tag/ngân sách từ text hoặc audio. Mobile phải cho thành viên xem và xác nhận trước khi lưu; AI không tự ghi preference. Nếu AI lỗi hoặc tắt, người dùng tiếp tục nhập thủ công. Bản nháp có session/revision do server quản lý, thời hạn tuyệt đối và chỉ xác nhận một lần; contract v2 và quy tắc giữ/đổi/xóa ngân sách nằm trong `22_places_budget_ai_preferences.md`.
+
 Hệ thống dùng một thuật toán cố định: cân bằng Avg ETA, Max ETA, điểm sở thích meetup và rating. Tag `avoid` làm hạ điểm địa điểm không phù hợp nhưng không có chế độ xếp hạng do người dùng chọn.
 
 ### 3.2 Chia sẻ vị trí
@@ -111,7 +113,7 @@ Với mỗi nơi `p`, hệ thống tính ETA của từng người bằng Google
 
 `PhatNguyenVong` tính từ `MeetupMemberPreference`. Tag `high` có trọng số cao hơn `normal`; tag `avoid` hạ điểm địa điểm không phù hợp. Max ETA luôn được dùng để bảo vệ tính công bằng.
 
-Hệ thống không dùng `priceLevel`, Budget filter hoặc PricePenalty. `priceLevel` là mức phân loại tham khảo từ Google Places, không phải giá thực tế; dùng nó để loại hoặc hạ hạng địa điểm có thể tạo gợi ý sai.
+Engine hiện chưa áp dụng Budget filter hoặc PricePenalty. `priceLevel`/`priceRange` nếu có chỉ là metadata tham khảo của provider, không thay thế `budgetVnd` do participant nhập. Dataset địa điểm mẫu dùng OpenStreetMap để hỗ trợ tải/lưu hàng loạt; `primaryType` được suy ra từ tag OSM và không phải Google Places type.
 
 Các trọng số đặt trong cấu hình backend để nhóm có thể thử nghiệm. UI phải hiển thị Avg ETA, Max ETA và ETA từng người. Candidate sắp đóng cửa được áp soft penalty có version theo thiết kế tại `12_meetup_group_recommendation_engine.md`; không được hard-filter chỉ vì `CLOSING_SOON`. UI không cần tiết lộ toàn bộ công thức cho người dùng cuối.
 
@@ -206,7 +208,7 @@ Sau khi có kết quả, API vote/finalize trả `runId` và candidate được 
 **Điều kiện trước:** Đã đăng nhập; với dẫn đường, meetup đã chốt.
 **Luồng chính:** Người dùng bật/tắt bộ lọc đang mở cửa; lưu/bỏ lưu địa điểm; xem lịch sử meetup; bấm Dẫn đường để mở Google Maps.
 **Ngoại lệ:** Places không có giờ mở thì hiển thị “chưa có dữ liệu”; địa điểm đã đóng không bị ẩn nếu người dùng không bật lọc.
-**Kết quả:** Người dùng kiểm soát bộ lọc và dùng lại thông tin hữu ích mà không lưu lịch sử GPS. Hệ thống không có Budget filter vì `priceLevel` không phải giá thực tế.
+**Kết quả:** Người dùng kiểm soát bộ lọc và preference; có thể nhập ngân sách riêng cho meetup. Engine nhận budget nhưng quyết định lọc/xếp hạng thuộc phần thuật toán. Hệ thống không dùng `priceLevel` thay cho ngân sách thực.
 
 ### UC-12 Chat nhóm trong meetup
 

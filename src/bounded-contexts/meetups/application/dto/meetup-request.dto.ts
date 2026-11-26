@@ -1,8 +1,11 @@
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  ArrayMaxSize,
   ArrayUnique,
   IsArray,
+  IsBase64,
+  IsBoolean,
   IsIn,
   IsInt,
   IsISO8601,
@@ -71,7 +74,7 @@ export class CreateMeetupRequest extends InviteParticipantsRequest {
 }
 
 export class UpdateMeetupRequest {
-  @ValidateIf(optional)
+  @ValidateIf((_, value: unknown) => value !== undefined && value !== null)
   @Transform(trim)
   @IsString()
   @Length(1, 150)
@@ -134,9 +137,71 @@ export class PreferenceTagInput {
 
 export class SetMeetupPreferencesRequest {
   @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique((item: PreferenceTagInput | null) => item?.activityTagId)
   @ValidateNested({ each: true })
   @Type(() => PreferenceTagInput)
   preferences: PreferenceTagInput[];
+
+  @ValidateIf((_, value: unknown) => value !== undefined && value !== null)
+  @IsInt()
+  @Min(0)
+  @Max(2147483647)
+  budgetVnd?: number | null;
+
+  @ValidateIf((_, value: unknown) => value !== undefined)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsUUID('all')
+  aiSuggestionId?: string;
+
+  @ValidateIf(optional)
+  @IsInt()
+  @Min(0)
+  aiSuggestionRevision?: number;
+}
+
+export class SuggestMeetupPreferencesRequest {
+  @ValidateIf(optional)
+  @Transform(trim)
+  @IsString()
+  @MaxLength(2000)
+  message?: string;
+
+  @ValidateIf(optional)
+  @IsUUID('all')
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  suggestionId?: string;
+
+  @ValidateIf(optional)
+  @IsInt()
+  @Min(0)
+  revision?: number;
+
+  @ValidateIf(optional)
+  @IsBoolean()
+  skipBudget?: boolean;
+
+  @ValidateIf((_, value: unknown) => value !== undefined)
+  @IsBase64()
+  @MaxLength(2_800_000)
+  audioBase64?: string;
+
+  @ValidateIf((_, value: unknown) => value !== undefined)
+  @IsIn([
+    'audio/wav',
+    'audio/mp3',
+    'audio/mpeg',
+    'audio/ogg',
+    'audio/webm',
+    'audio/flac',
+    'audio/aac',
+    'audio/m4a',
+  ])
+  audioMimeType?: string;
 }
 
 export class CastMeetupVoteRequest {
