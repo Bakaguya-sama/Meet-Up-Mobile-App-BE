@@ -452,8 +452,44 @@ export interface CandidateSearchResponse {
   searchedAround: { latitude: number; longitude: number };
   candidates: Array<{
     providerPlaceId: string; name: string; categories: string[];
+    primaryTypeDisplayName?: string;
     latitude: number; longitude: number; formattedAddress?: string;
+    nationalPhoneNumber?: string; websiteUri?: string; googleMapsUri?: string;
+    priceLevel?: 'PRICE_LEVEL_FREE' | 'PRICE_LEVEL_INEXPENSIVE'
+      | 'PRICE_LEVEL_MODERATE' | 'PRICE_LEVEL_EXPENSIVE'
+      | 'PRICE_LEVEL_VERY_EXPENSIVE';
     rating?: number; openingHours?: { openNow?: boolean };
+  }>;
+}
+
+/** GET /api/v1/meetups/:meetupId/recommendation-runs/:runId/place-details */
+export interface RecommendationPlaceDetailsResponse {
+  runId: UUID;
+  items: Array<{
+    rank: number;
+    canonicalCandidateKey: string;
+    details: null | {
+      providerPlaceId: string; name: string; categories: string[];
+      primaryTypeDisplayName?: string;
+      latitude: number; longitude: number; formattedAddress?: string;
+      nationalPhoneNumber?: string; websiteUri?: string; googleMapsUri?: string;
+      priceLevel?: CandidateSearchResponse['candidates'][number]['priceLevel'];
+      rating?: number; userRatingCount?: number;
+      businessStatus?: 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY';
+      currentOpeningHours?: NormalizedPlaceOpeningHours;
+      regularOpeningHours?: NormalizedPlaceOpeningHours;
+      timeZoneId?: string; utcOffsetMinutes?: number;
+    };
+  }>;
+}
+
+export interface NormalizedPlaceOpeningHours {
+  source: 'CURRENT' | 'REGULAR';
+  coverageStartDate?: string;
+  coverageEndDate?: string;
+  periods: Array<{
+    open: { day: number; hour: number; minute: number; date?: string };
+    close?: { day: number; hour: number; minute: number; date?: string };
   }>;
 }
 

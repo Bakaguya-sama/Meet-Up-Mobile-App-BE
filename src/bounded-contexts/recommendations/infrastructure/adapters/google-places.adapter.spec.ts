@@ -12,9 +12,14 @@ describe('GooglePlacesAdapter', () => {
             {
               id: 'places/abc',
               displayName: { text: 'Cafe Example' },
+              primaryTypeDisplayName: { text: 'Cafe' },
               types: ['cafe', 'food'],
               location: { latitude: 10.77, longitude: 106.69 },
               formattedAddress: 'District 1',
+              nationalPhoneNumber: '028 1234 5678',
+              websiteUri: 'https://example.com',
+              googleMapsUri: 'https://maps.google.com/?cid=123',
+              priceLevel: 'PRICE_LEVEL_MODERATE',
               rating: 4.5,
               userRatingCount: 99,
               currentOpeningHours: { openNow: true },
@@ -38,9 +43,14 @@ describe('GooglePlacesAdapter', () => {
         providerPlaceId: 'places/abc',
         name: 'Cafe Example',
         categories: ['cafe', 'food'],
+        primaryTypeDisplayName: 'Cafe',
         latitude: 10.77,
         longitude: 106.69,
         formattedAddress: 'District 1',
+        nationalPhoneNumber: '028 1234 5678',
+        websiteUri: 'https://example.com',
+        googleMapsUri: 'https://maps.google.com/?cid=123',
+        priceLevel: 'PRICE_LEVEL_MODERATE',
         rating: 4.5,
         userRatingCount: 99,
         openingHours: { openNow: true },
@@ -51,9 +61,18 @@ describe('GooglePlacesAdapter', () => {
     const [url, init] = request.mock.calls[0];
     expect(url).toBe('https://places.googleapis.com/v1/places:searchText');
     expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      languageCode: 'vi',
+      regionCode: 'VN',
+    });
     const headers = new Headers(init.headers);
     expect(headers.get('X-Goog-Api-Key')).toBe('test-key');
     expect(headers.get('X-Goog-FieldMask')).toContain('places.location');
+    expect(headers.get('X-Goog-FieldMask')).toContain(
+      'places.nationalPhoneNumber',
+    );
+    expect(headers.get('X-Goog-FieldMask')).toContain('places.websiteUri');
+    expect(headers.get('X-Goog-FieldMask')).toContain('places.priceLevel');
   });
 
   it('does not call Google when its API key is missing', async () => {
@@ -69,6 +88,89 @@ describe('GooglePlacesAdapter', () => {
       }),
     ).rejects.toMatchObject({ code: 'PLACE_SEARCH_UNAVAILABLE' });
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it('loads live place details by Google Place ID with a details field mask', async () => {
+    const request: jest.MockedFunction<PlacesFetch> = jest.fn();
+    request.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          id: 'places/abc',
+          displayName: { text: 'Cafe Example' },
+          primaryTypeDisplayName: { text: 'Cafe' },
+          types: ['cafe'],
+          location: { latitude: 10.77, longitude: 106.69 },
+          formattedAddress: 'District 1',
+          nationalPhoneNumber: '028 1234 5678',
+          websiteUri: 'https://example.com',
+          googleMapsUri: 'https://maps.google.com/?cid=123',
+          priceLevel: 'PRICE_LEVEL_MODERATE',
+          rating: 4.5,
+          userRatingCount: 99,
+          utcOffsetMinutes: 420,
+          timeZone: { id: 'Asia/Ho_Chi_Minh' },
+          currentOpeningHours: {
+            periods: [
+              {
+                open: { day: 1, hour: 8, minute: 0 },
+                close: { day: 1, hour: 22, minute: 0 },
+              },
+            ],
+          },
+          regularOpeningHours: {
+            periods: [
+              {
+                open: { day: 1, hour: 8, minute: 0 },
+                close: { day: 1, hour: 22, minute: 0 },
+              },
+            ],
+          },
+        }),
+    });
+    const adapter = new GooglePlacesAdapter('test-key', request);
+
+    await expect(adapter.getDetails('places/abc')).resolves.toMatchObject({
+      provider: 'google-places',
+      providerPlaceId: 'places/abc',
+      primaryTypeDisplayName: 'Cafe',
+      formattedAddress: 'District 1',
+      nationalPhoneNumber: '028 1234 5678',
+      websiteUri: 'https://example.com',
+      googleMapsUri: 'https://maps.google.com/?cid=123',
+      priceLevel: 'PRICE_LEVEL_MODERATE',
+      rating: 4.5,
+      userRatingCount: 99,
+      currentOpeningHours: { source: 'CURRENT' },
+      regularOpeningHours: { source: 'REGULAR' },
+      timeZoneId: 'Asia/Ho_Chi_Minh',
+      utcOffsetMinutes: 420,
+    });
+    expect(request).toHaveBeenCalledWith(
+      'https://places.googleapis.com/v1/places/abc?languageCode=vi&regionCode=VN',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    const headers = new Headers(request.mock.calls[0][1].headers);
+    expect(headers.get('X-Goog-FieldMask')).toContain('priceLevel');
+    expect(headers.get('X-Goog-FieldMask')).toContain('websiteUri');
+    expect(headers.get('X-Goog-FieldMask')).not.toContain('places.');
+    expect(headers.get('X-Goog-FieldMask')).toContain('currentOpeningHours');
+    expect(headers.get('X-Goog-FieldMask')).toContain('regularOpeningHours');
+  });
+
+  it('returns null for missing Google places and rejects invalid IDs without a request', async () => {
+    const request: jest.MockedFunction<PlacesFetch> = jest.fn();
+    request.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: () => Promise.resolve({}),
+    });
+    const adapter = new GooglePlacesAdapter('test-key', request);
+
+    await expect(adapter.getDetails('places/missing')).resolves.toBeNull();
+    await expect(adapter.getDetails('places/invalid/id')).resolves.toBeNull();
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it('passes pageToken/openNow and exposes the next page token', async () => {

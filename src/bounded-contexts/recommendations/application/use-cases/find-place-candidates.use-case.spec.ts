@@ -13,6 +13,7 @@ describe('FindPlaceCandidatesUseCase', () => {
   const places: jest.Mocked<PlaceSearchPort> = {
     search: jest.fn(),
     searchPage: jest.fn(),
+    getDetails: jest.fn(),
   };
   const useCase = new FindPlaceCandidatesUseCase(meetups, locations, places);
 

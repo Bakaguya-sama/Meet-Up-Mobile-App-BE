@@ -15,6 +15,7 @@ import { AccessTokenGuard } from '../src/presentation/http/guards/access-token.g
 import { RecommendationError } from '../src/bounded-contexts/recommendations/domain/recommendation.error';
 import { CreateRecommendationRunUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/create-recommendation-run.use-case';
 import { GetRecommendationRunUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/get-recommendation-run.use-case';
+import { GetRecommendationPlaceDetailsUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/get-recommendation-place-details.use-case';
 import { RecordRecommendationFeedbackUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/record-recommendation-feedback.use-case';
 import { ReplayRecommendationRunUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/replay-recommendation-run.use-case';
 import { GetAiExplanationsUseCase } from '../src/bounded-contexts/recommendations/application/use-cases/get-ai-explanations.use-case';
@@ -26,6 +27,7 @@ describe('BE-13 candidate-only HTTP contract', () => {
   const findCandidates = { execute: jest.fn() };
   const createRun = { execute: jest.fn() };
   const getRun = { execute: jest.fn() };
+  const getPlaceDetails = { execute: jest.fn() };
   const feedback = { impression: jest.fn(), feedback: jest.fn() };
   const replay = { execute: jest.fn() };
   const aiExplanations = { execute: jest.fn() };
@@ -37,6 +39,10 @@ describe('BE-13 candidate-only HTTP contract', () => {
         { provide: FindPlaceCandidatesUseCase, useValue: findCandidates },
         { provide: CreateRecommendationRunUseCase, useValue: createRun },
         { provide: GetRecommendationRunUseCase, useValue: getRun },
+        {
+          provide: GetRecommendationPlaceDetailsUseCase,
+          useValue: getPlaceDetails,
+        },
         { provide: RecordRecommendationFeedbackUseCase, useValue: feedback },
         { provide: ReplayRecommendationRunUseCase, useValue: replay },
         { provide: GetAiExplanationsUseCase, useValue: aiExplanations },
@@ -69,6 +75,26 @@ describe('BE-13 candidate-only HTTP contract', () => {
 
   afterAll(async () => app.close());
   beforeEach(() => jest.resetAllMocks());
+
+  it('serves ranked Google Place details as a private no-store response', async () => {
+    const payload = { runId: 'cccccccc-0000-4000-8000-000000000003', items: [] };
+    getPlaceDetails.execute.mockResolvedValue(payload);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `/api/v1/meetups/${meetupId}/recommendation-runs/${payload.runId}/place-details`,
+      )
+      .set('Authorization', `Bearer ${actorId}`)
+      .expect(200);
+
+    expect(response.body).toEqual(payload);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(getPlaceDetails.execute).toHaveBeenCalledWith(
+      actorId,
+      meetupId,
+      payload.runId,
+    );
+  });
 
   it.each([
     ['MEETUP_NOT_FOUND', 404],
